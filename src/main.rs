@@ -9,12 +9,10 @@ use std::sync::{Arc, Mutex};
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _ = rustls::crypto::ring::default_provider().install_default();
     let app_state = Arc::new(Mutex::new(AppState::new()));
-    println!("Starting TUI application...");
+    // starting the tui, wish me luck
     if let Err(e) = tui::run_tui(app_state.clone()).await {
         eprintln!("TUI application error: {:?}", e);
     }
-
-    println!("TUI application exited.");
 
     Ok(())
 }

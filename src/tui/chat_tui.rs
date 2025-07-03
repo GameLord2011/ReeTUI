@@ -1,9 +1,9 @@
 use crate::api::models::{BroadcastMessage, Channel};
-use crate::api::websocket::{self, ServerMessage}; // Removed WsWriter, WsReader from here
+use crate::api::websocket::{self, ServerMessage};
 use crate::app::AppState;
 use crate::tui::TuiPage;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
-use futures_util::{SinkExt, StreamExt}; // Added SinkExt for the send method
+use futures_util::{SinkExt, StreamExt};
 use ratatui::{
     backend::Backend,
     layout::{Alignment, Constraint, Direction, Layout},
@@ -17,7 +17,7 @@ use std::{
     sync::{Arc, Mutex},
     time::Duration,
 };
-use tokio_tungstenite::tungstenite; // Explicitly import tungstenite
+use tokio_tungstenite::tungstenite;
 
 pub async fn run_chat_page<B: Backend>(
     terminal: &mut Terminal<B>,
@@ -25,9 +25,8 @@ pub async fn run_chat_page<B: Backend>(
 ) -> io::Result<TuiPage> {
     let mut input_text = String::new();
     let mut channel_list_state = ListState::default();
-    channel_list_state.select(Some(0)); // Select the first channel by default
+    channel_list_state.select(Some(0));
 
-    // WebSocket connection
     let (mut ws_writer, mut ws_reader) = {
         let state = app_state.lock().unwrap();
         let token = state
@@ -40,20 +39,17 @@ pub async fn run_chat_page<B: Backend>(
     };
 
     loop {
-        // Draw the UI
         terminal.draw(|f| {
             draw_chat_ui::<B>(f, app_state.clone(), &input_text, &mut channel_list_state);
         })?;
 
-        // Handle events
         if event::poll(Duration::from_millis(50))? {
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press {
                     match key.code {
-                        KeyCode::Char('q') => return Ok(TuiPage::Exit), // Global exit
-                        KeyCode::Char('h') => return Ok(TuiPage::Home), // Transition to Home page
+                        KeyCode::Char('q') => return Ok(TuiPage::Exit),
+                        KeyCode::Char('h') => return Ok(TuiPage::Home),
                         KeyCode::Tab => {
-                            // Cycle through channels
                             let mut state = app_state.lock().unwrap();
                             let i = match channel_list_state.selected() {
                                 Some(i) => {
@@ -110,7 +106,6 @@ pub async fn run_chat_page<B: Backend>(
                                 if let Some(current_channel) = &state.current_channel {
                                     let channel_id = current_channel.id.clone();
                                     let content = input_text.clone();
-                                    // Send message via WebSocket
                                     if let Err(e) = websocket::send_message(
                                         &mut ws_writer,
                                         &channel_id,
@@ -120,7 +115,6 @@ pub async fn run_chat_page<B: Backend>(
                                     {
                                         eprintln!("Failed to send message: {:?}", e);
                                     }
-                                    // Add message to state immediately for local display
                                     let new_message = BroadcastMessage {
                                         user: state
                                             .username
@@ -138,7 +132,7 @@ pub async fn run_chat_page<B: Backend>(
                                     };
                                     state.add_message(new_message);
                                 }
-                                input_text.clear(); // Clear input after sending
+                                input_text.clear();
                             }
                         }
                         KeyCode::Backspace => {
@@ -153,8 +147,6 @@ pub async fn run_chat_page<B: Backend>(
             }
         }
 
-        // Handle incoming WebSocket messages
-        // Use a non-blocking poll to check for new messages
         if let Ok(Some(msg)) =
             tokio::time::timeout(Duration::from_millis(10), ws_reader.next()).await
         {
@@ -183,7 +175,6 @@ pub async fn run_chat_page<B: Backend>(
                     }
                 }
                 Ok(tungstenite::Message::Ping(_)) => {
-                    // Respond to ping with pong
                     if let Err(e) = ws_writer
                         .send(tungstenite::Message::Pong(vec![].into()))
                         .await
@@ -193,16 +184,14 @@ pub async fn run_chat_page<B: Backend>(
                 }
                 Err(e) => {
                     eprintln!("WebSocket error: {:?}", e);
-                    // Exit chat page on critical WebSocket error
-                    return Ok(TuiPage::Exit); // Corrected return type for break
+                    return Ok(TuiPage::Exit);
                 }
-                _ => {} // Ignore other message types like Binary, Close, etc.
+                _ => {} // ignore other message types, they're not as cool as text messages
             }
         }
     }
 }
 
-/// Draws the chat page UI.
 fn draw_chat_ui<B: Backend>(
     f: &mut Frame,
     app_state: Arc<Mutex<AppState>>,
@@ -224,20 +213,18 @@ fn draw_chat_ui<B: Backend>(
 
     f.render_widget(main_block, size);
 
-    // Main layout: sidebar (20%) and chat area (80%)
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
-        .margin(1) // Margin inside the main block
+        .margin(1)
         .constraints(
             [
-                Constraint::Percentage(20), // Sidebar for channels
-                Constraint::Percentage(80), // Chat messages and input
+                Constraint::Percentage(20),
+                Constraint::Percentage(80),
             ]
             .as_ref(),
         )
         .split(f.area());
 
-    // --- Sidebar for Channels ---
     let channels_block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Plain)
@@ -270,19 +257,17 @@ fn draw_chat_ui<B: Backend>(
 
     f.render_stateful_widget(channels_list, chunks[0], channel_list_state);
 
-    // --- Chat Area (Messages + Input) ---
     let chat_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints(
             [
-                Constraint::Min(1),    // Messages display area
-                Constraint::Length(3), // Input field
+                Constraint::Min(1),
+                Constraint::Length(3),
             ]
             .as_ref(),
         )
-        .split(chunks[1]); // Split the right chunk
+        .split(chunks[1]);
 
-    // Messages display area
     let messages_block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Plain)
@@ -312,11 +297,10 @@ fn draw_chat_ui<B: Backend>(
     };
 
     let messages_paragraph = Paragraph::new(messages_content)
-        .block(Block::default()) // No additional borders, already handled by messages_block
-        .wrap(ratatui::widgets::Wrap { trim: false }); // Allow text wrapping
+        .block(Block::default())
+        .wrap(ratatui::widgets::Wrap { trim: false });
     f.render_widget(messages_paragraph, chat_chunks[0]);
 
-    // Input field
     let input_block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Plain)
@@ -326,7 +310,6 @@ fn draw_chat_ui<B: Backend>(
     let input_paragraph = Paragraph::new(Line::from(input_text.to_string())).block(input_block);
     f.render_widget(input_paragraph, chat_chunks[1]);
 
-    // Instructions
     let instructions = Paragraph::new(Line::from(
         "Press <Enter> to send, <Tab>/<Up>/<Down> to switch channels, 'H' for Home, 'Q' to quit.",
     ))

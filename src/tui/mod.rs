@@ -1,4 +1,4 @@
-use crate::app::AppState; // Import AppState for shared application data
+use crate::app::AppState;
 use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
@@ -6,7 +6,7 @@ use crossterm::{
 use ratatui::{backend::CrosstermBackend, Terminal};
 use std::{
     io::{self},
-    sync::{Arc, Mutex}, // For shared mutable access to AppState
+    sync::{Arc, Mutex},
 };
 
 pub mod auth_tui;
@@ -19,17 +19,17 @@ pub enum TuiPage {
     Auth,
     Home,
     Chat,
-    Exit, // Special state to signal application exit
+    Exit,
 }
 pub async fn run_tui(app_state: Arc<Mutex<AppState>>) -> io::Result<()> {
-    enable_raw_mode()?; // Enable raw mode for direct input handling
+    enable_raw_mode()?; // prepare for some tui magic
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen)?; // Enter alternate screen buffer
+    execute!(stdout, EnterAlternateScreen)?;
 
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut current_page = TuiPage::Auth; // Start with the authentication page
+    let mut current_page = TuiPage::Auth;
 
     loop {
         match current_page {
@@ -42,13 +42,13 @@ pub async fn run_tui(app_state: Arc<Mutex<AppState>>) -> io::Result<()> {
             TuiPage::Chat => {
                 current_page = chat_tui::run_chat_page(&mut terminal, app_state.clone()).await?;
             }
-            TuiPage::Exit => break, // Exit the loop if the page signals to exit
+            TuiPage::Exit => break,
         }
     }
 
-    disable_raw_mode()?; // Disable raw mode
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?; // Leave alternate screen
-    terminal.show_cursor()?; // Show cursor again
+    disable_raw_mode()?;
+    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+    terminal.show_cursor()?;
 
     Ok(())
 }

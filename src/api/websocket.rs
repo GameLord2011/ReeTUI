@@ -9,10 +9,7 @@ use tokio::net::TcpStream;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::{tungstenite::protocol::Message, MaybeTlsStream, WebSocketStream};
 
-// aaaaah
-// help
-// im dying
-// aaaaaaaah
+// this code is so good it makes me wanna cry
 
 pub type WsWriter = SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>;
 pub type WsReader = SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>;

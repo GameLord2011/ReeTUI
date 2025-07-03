@@ -1,8 +1,8 @@
 use crate::api::models::{BroadcastMessage, Channel};
 use std::collections::HashMap;
-use std::time::Instant; // <-- Add this import
+use std::time::Instant;
 
-#[derive(Debug, Clone)] // Remove Default derive for now, as we'll implement it manually to set Instant::now()
+#[derive(Debug, Clone)]
 pub struct AppState {
     pub auth_token: Option<String>,
     pub username: Option<String>,
@@ -11,7 +11,7 @@ pub struct AppState {
     pub channels: Vec<Channel>,
     pub messages: HashMap<String, Vec<BroadcastMessage>>,
     pub animation_frame_index: usize,
-    pub last_frame_time: Instant, // To track time for 20ms delay
+    pub last_frame_time: Instant,
 }
 
 impl Default for AppState {

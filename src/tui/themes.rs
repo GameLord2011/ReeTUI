@@ -84,8 +84,8 @@ pub fn get_theme(theme_name: ThemeName) -> Theme {
             button_text_inactive: Rgb(205, 214, 244), // Text
             button_border_active: Rgb(148, 226, 213), // Teal
             button_border_inactive: Rgb(166, 227, 161), // Green
-            button_bg_active: Rgb(148, 226, 213), // Teal - Added for active button background
-            button_bg_inactive: Rgb(30, 30, 46), // Base - Added for inactive button background
+            button_bg_active: Rgb(148, 226, 213),
+            button_bg_inactive: Rgb(30, 30, 46), // this is where the magic happens
             help_text: Rgb(108, 112, 134),       // Overlay0
             instructions_text: Rgb(108, 112, 134), // Overlay0
             popup_border: Rgb(243, 139, 168),    // Red
