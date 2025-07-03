@@ -9,6 +9,11 @@ use tokio::net::TcpStream;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::{tungstenite::protocol::Message, MaybeTlsStream, WebSocketStream};
 
+// aaaaah
+// help
+// im dying
+// aaaaaaaah
+
 pub type WsWriter = SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>;
 pub type WsReader = SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>;
 
@@ -16,12 +21,10 @@ const WS_URL: &str = "wss://isock.reetui.hackclub.app";
 
 pub async fn connect(token: &str) -> Result<(WsWriter, WsReader), Box<dyn std::error::Error>> {
     let (ws_stream, _) = connect_async(WS_URL).await?;
-    println!("WebSocket connection established.");
 
     let (mut writer, reader) = ws_stream.split();
 
     writer.send(Message::Text(token.to_string().into())).await?;
-    println!("Authentication token sent.");
 
     Ok((writer, reader))
 }
