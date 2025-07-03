@@ -1,92 +1,152 @@
 use crate::app::AppState;
-use crate::tui::utils::{interpolate_rgb, rgb_to_color, Rgb, Theme}; // Assuming these are in tui::utils
 use crate::tui::TuiPage; // Import TuiPage enum
+                         // Import the necessary items from your themes module
+use crate::tui::themes::{get_theme, interpolate_rgb, rgb_to_color, Rgb, Theme, ThemeName};
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::{
     backend::Backend,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Style},
+    style::{Color, Style, Stylize},
     text::{Line, Span},
-    widgets::{Block, BorderType, Borders, Paragraph},
-    Frame, Terminal,
+    widgets::{Block, Paragraph}, // Removed Borders, BorderType from use
+    Frame,
+    Terminal,
 };
 use std::{
     io,
     sync::{Arc, Mutex},
-    time::{Duration, Instant}, // Import Instant
+    time::{Duration, Instant},
 };
 
 // --- ASCII Art Animation Frames ---
-// Replace this with your actual animation frames
-const ANIMATION_FRAMES: [&str; 4] = [
+const ANIMATION_FRAMES: [&str; 9] = [
     r#"
-  _____
- /     \
-|       |
- \  O  /
-  -----
+▄▄▄  ▄▄▄ .▄▄▄ .▄▄▄▄▄▄• ▄▌▪  
+▀▄ █·▀▄.▀·▀▄.▀·•██  █▪██▌██ 
+▐▀▀▄ ▐▀▀▪▄▐▀▀▪▄ ▐█.▪█▌▐█▌▐█·
+▐█•█▌▐█▄▄▌▐█▄▄▌ ▐█▌·▐█▄█▌▐█▌
+.▀  ▀ ▀▀▀  ▀▀▀  ▀▀▀  ▀▀▀ ▀▀▀
 "#,
     r#"
-  _____
- / _   \
-| | |   |
- \/ O  /
-  -----
+ ________  _______   _______  _________  ___  ___  ___     
+|\   __  \|\  ___ \ |\  ___ \|\___   ___\\  \|\  \|\  \    
+\ \  \|\  \ \   __/|\ \   __/\|___ \  \_\ \  \\\  \ \  \   
+ \ \   _  _\ \  \_|/_\ \  \_|/__  \ \  \ \ \  \\\  \ \  \  
+  \ \  \\  \\ \  \_|\ \ \  \_|\ \  \ \  \ \ \  \\\  \ \  \ 
+   \ \__\\ _\\ \_______\ \_______\  \ \__\ \ \_______\ \__\
+    \|__|\|__|\|_______|\|_______|   \|__|  \|_______|\|__|
 "#,
     r#"
-  _____
- /   _ \
-|   | | |
- \ O \/
-  -----
+     ___           ___           ___           ___           ___                 
+    /\  \         /\  \         /\  \         /\  \         /\__\          ___   
+   /::\  \       /::\  \       /::\  \        \:\  \       /:/  /         /\  \  
+  /:/\:\  \     /:/\:\  \     /:/\:\  \        \:\  \     /:/  /          \:\  \ 
+ /::\~\:\  \   /::\~\:\  \   /::\~\:\  \       /::\  \   /:/  /  ___      /::\__\
+/:/\:\ \:\__\ /:/\:\ \:\__\ /:/\:\ \:\__\     /:/\:\__\ /:/__/  /\__\  __/:/\/__/
+\/_|::\/:/  / \:\~\:\ \/__/ \:\~\:\ \/__/    /:/  \/__/ \:\  \ /:/  / /\/:/  /   
+   |:|::/  /   \:\ \:\__\    \:\ \:\__\     /:/  /       \:\  /:/  /  \::/__/    
+   |:|\/__/     \:\ \/__/     \:\ \/__/     \/__/         \:\/:/  /    \:\__\    
+   |:|  |        \:\__\        \:\__\                      \::/  /      \/__/    
+    \|__|         \/__/         \/__/                       \/__/                
 "#,
     r#"
-  _____
- /     \
-|_______|
- \  O  /
-  -----
+____/\\\\\\\\\____________________________________/\\\\\\\\\\\\\\\__/\\\________/\\\__/\\\\\\\\\\\_        
+ __/\\\///////\\\_________________________________\///////\\\/////__\/\\\_______\/\\\_\/////\\\///__       
+  _\/\\\_____\/\\\_______________________________________\/\\\_______\/\\\_______\/\\\_____\/\\\_____      
+   _\/\\\\\\\\\\\/________/\\\\\\\\______/\\\\\\\\________\/\\\_______\/\\\_______\/\\\_____\/\\\_____     
+    _\/\\\//////\\\______/\\\/////\\\___/\\\/////\\\_______\/\\\_______\/\\\_______\/\\\_____\/\\\_____    
+     _\/\\\____\//\\\____/\\\\\\\\\\\___/\\\\\\\\\\\________\/\\\_______\/\\\_______\/\\\_____\/\\\_____   
+      _\/\\\_____\//\\\__\//\\///////___\//\\///////_________\/\\\_______\//\\\______/\\\______\/\\\_____  
+       _\/\\\______\//\\\__\//\\\\\\\\\\__\//\\\\\\\\\\_______\/\\\________\///\\\\\\\\\/____/\\\\\\\\\\\_ 
+        _\///________\///____\//////////____\//////////________\///___________\/////////_____\///////////__
+"#,
+    r#"
+   ▄████████    ▄████████    ▄████████     ███     ███    █▄   ▄█ 
+  ███    ███   ███    ███   ███    ███ ▀█████████▄ ███    ███ ███ 
+  ███    ███   ███    █▀    ███    █▀     ▀███▀▀██ ███    ███ ███▌
+ ▄███▄▄▄▄██▀  ▄███▄▄▄      ▄███▄▄▄         ███   ▀ ███    ███ ███▌
+▀▀███▀▀▀▀▀   ▀▀███▀▀▀     ▀▀███▀▀▀         ███     ███    ███ ███▌
+▀███████████   ███    █▄    ███    █▄      ███     ███    ███ ███ 
+  ███    ███   ███    ███   ███    ███     ███     ███    ███ ███ 
+  ███    ███   ██████████   ██████████    ▄████▀   ████████▀  █▀  
+  ███    ███                                                      
+"#,
+    r#"
+ _____        _______ _    _ _____ 
+|  __ \      |__   __| |  | |_   _|
+| |__) |___  ___| |  | |  | | | |  
+|  _  // _ \/ _ \ |  | |  | | | |  
+| | \ \  __/  __/ |  | |__| |_| |_ 
+|_|  \_\___|\___|_|   \____/|_____|
+"#,
+    r#"
+ ██▀███  ▓█████ ▓█████▄▄▄█████▓ █    ██  ██▓
+▓██ ▒ ██▒▓█   ▀ ▓█   ▀▓  ██▒ ▓▒ ██  ▓██▒▓██▒
+▓██ ░▄█ ▒▒███   ▒███  ▒ ▓██░ ▒░▓██  ▒██░▒██▒
+▒██▀▀█▄  ▒▓█  ▄ ▒▓█  ▄░ ▓██▓ ░ ▓▓█  ░██░░██░
+░██▓ ▒██▒░▒████▒░▒████▒ ▒██▒ ░ ▒▒█████▓ ░██░
+░ ▒▓ ░▒▓░░░ ▒░ ░░░ ▒░ ░ ▒ ░░   ░▒▓▒ ▒ ▒ ░▓  
+  ░▒ ░ ▒░ ░ ░  ░ ░ ░  ░   ░    ░░▒░ ░ ░  ▒ ░
+  ░░   ░    ░      ░    ░       ░░░ ░ ░  ▒ ░
+   ░        ░  ░   ░  ░           ░      ░  
+"#,
+    r#"
+██████╗ ███████╗███████╗████████╗██╗   ██╗██╗
+██╔══██╗██╔════╝██╔════╝╚══██╔══╝██║   ██║██║
+██████╔╝█████╗  █████╗     ██║   ██║   ██║██║
+██╔══██╗██╔══╝  ██╔══╝     ██║   ██║   ██║██║
+██║  ██║███████╗███████╗   ██║   ╚██████╔╝██║
+╚═╝  ╚═╝╚══════╝╚══════╝   ╚═╝    ╚═════╝ ╚═╝
+"#,
+    r#"
+ ███████████                     ███████████ █████  █████ █████
+░░███░░░░░███                   ░█░░░███░░░█░░███  ░░███ ░░███ 
+ ░███    ░███   ██████   ██████ ░   ░███  ░  ░███   ░███  ░███ 
+ ░██████████   ███░░███ ███░░███    ░███     ░███   ░███  ░███ 
+ ░███░░░░░███ ░███████ ░███████     ░███     ░███   ░███  ░███ 
+ ░███    ░███ ░███░░░  ░███░░░      ░███     ░███   ░███  ░███ 
+ █████   █████░░██████ ░░██████     █████    ░░████████   █████
+░░░░░   ░░░░░  ░░░░░░   ░░░░░░     ░░░░░      ░░░░░░░░   ░░░░░ 
 "#,
 ];
-const FRAME_DURATION_MS: u64 = 20; // 20 milliseconds per frame
+const FRAME_DURATION_MS: u64 = 1500; // ms
 
 pub async fn run_home_page<B: Backend>(
     terminal: &mut Terminal<B>,
     app_state: Arc<Mutex<AppState>>,
 ) -> io::Result<TuiPage> {
-    // You'll need a default theme or get it from app_state if it's stored there.
-    let default_theme = Theme {
-        title_gradient_start: Rgb { r: 255, g: 0, b: 0 }, // Red
-        title_gradient_end: Rgb { r: 0, g: 0, b: 255 },   // Blue
-        background_color: Color::Black,
-        text_color: Color::White,
-        border_color: Color::Green,
-    };
+    let current_theme = get_theme(ThemeName::CatppuccinMocha);
 
     loop {
         // Draw the UI
         terminal.draw(|f| {
-            draw_home_ui::<B>(f, app_state.clone(), &default_theme);
+            draw_home_ui::<B>(f, app_state.clone(), &current_theme);
         })?;
 
-        // Handle animation update and events
+        // --- Animation Update and Dynamic Polling Logic ---
         let mut state = app_state.lock().unwrap();
+        let mut wait_time = Duration::from_millis(0); // Default to no wait if animation needs update
 
-        if !state.animation_finished {
-            let now = Instant::now();
-            if now.duration_since(state.last_frame_time).as_millis() as u64 >= FRAME_DURATION_MS {
-                state.animation_frame_index += 1;
-                if state.animation_frame_index >= ANIMATION_FRAMES.len() {
-                    state.animation_frame_index = ANIMATION_FRAMES.len() - 1; // Stay on last frame
-                    state.animation_finished = true;
-                }
-                state.last_frame_time = now;
-            }
+        let now = Instant::now();
+        let elapsed_since_last_frame = now.duration_since(state.last_frame_time);
+        let required_duration_per_frame = Duration::from_millis(FRAME_DURATION_MS);
+
+        if elapsed_since_last_frame >= required_duration_per_frame {
+            // Enough time has passed for the next frame, update it
+            // Use modulo to loop the animation infinitely
+            state.animation_frame_index =
+                (state.animation_frame_index + 1) % ANIMATION_FRAMES.len();
+            state.last_frame_time = now; // Reset last frame time
+            wait_time = Duration::from_millis(0); // Don't wait, draw next frame immediately
+        } else {
+            // Not enough time has passed, calculate how long to wait until the next frame is due
+            wait_time = required_duration_per_frame.saturating_sub(elapsed_since_last_frame);
         }
-        drop(state); // Release the lock before polling events
 
-        // Handle user input events
-        if event::poll(Duration::from_millis(50))? {
+        drop(state); // bye bye
+
+        // Handle user input events with the calculated dynamic wait time
+        if event::poll(wait_time)? {
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press {
                     match key.code {
@@ -103,66 +163,38 @@ pub async fn run_home_page<B: Backend>(
 fn draw_home_ui<B: Backend>(f: &mut Frame, app_state: Arc<Mutex<AppState>>, theme: &Theme) {
     let size = f.area();
 
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_type(BorderType::Rounded)
-        .title(" Home Page ")
-        .title_alignment(Alignment::Center)
-        .style(Style::default().fg(Color::Green));
+    // Set the entire background color of the terminal frame
+    f.render_widget(Block::default().bg(rgb_to_color(&theme.background)), size);
 
-    f.render_widget(block, size);
-
-    // Define layout for the main content within the bordered area
-    let outer_chunks = Layout::default()
+    // Define main layout for the screen content without borders
+    let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .margin(2) // Reduced margin to give more space inside the main border
         .constraints(
             [
-                Constraint::Length(3), // User info
-                Constraint::Min(0),    // Space for ASCII logo
-                Constraint::Length(3), // Instructions
+                Constraint::Length(2), // Top padding/empty space
+                Constraint::Min(0),    // Flexible space for ASCII logo (this will be chunks[1])
+                Constraint::Length(1), // Instructions (this will be chunks[2])
+                Constraint::Length(1), // Gemini notice (this will be chunks[3])
+                Constraint::Length(1), // Bottom padding/empty space
             ]
             .as_ref(),
         )
-        .split(size); // Split the entire frame area
-
-    // User Info Paragraph
-    let user_info_text = {
-        let state = app_state.lock().unwrap();
-        if let Some(username) = &state.username {
-            format!(
-                "Welcome, {} {}",
-                username,
-                state.user_icon.as_deref().unwrap_or("")
-            )
-        } else {
-            "Not logged in.".to_string()
-        }
-    };
-
-    let user_info_paragraph = Paragraph::new(Line::from(user_info_text))
-        .block(Block::default().borders(Borders::ALL).title("User Info"))
-        .style(Style::default().fg(Color::LightGreen))
-        .alignment(Alignment::Center);
-    f.render_widget(user_info_paragraph, outer_chunks[0]);
+        .split(size);
 
     // --- ASCII Animation Drawing ---
     let current_frame_index = app_state.lock().unwrap().animation_frame_index;
     let current_frame_str = ANIMATION_FRAMES[current_frame_index];
 
-    // The `trim_start()` is important here to remove the leading newline from the r#"..."# literal,
-    // but preserve any trailing blank lines if they're part of your art's vertical spacing.
-    let lines: Vec<&str> = current_frame_str
-        .trim_start()
-        .lines()
-        .filter(|&line| !line.is_empty() || line.chars().any(|c| !c.is_whitespace()))
-        .collect();
+    // Removed the filter to ensure all lines, including those with only whitespace, are preserved.
+    // This should fix "deformed" lines if they were caused by the filter removing intended spacing.
+    let lines: Vec<&str> = current_frame_str.lines().collect(); // No filter here
 
     let num_logo_lines = lines.len();
     let max_logo_line_width = lines.iter().map(|line| line.len()).max().unwrap_or(0) as u16;
 
     let mut text_lines: Vec<Line> = Vec::new();
 
+    // Calculate gradient progression based on line index
     let num_lines_for_gradient = if num_logo_lines <= 1 {
         1.0
     } else {
@@ -171,9 +203,11 @@ fn draw_home_ui<B: Backend>(f: &mut Frame, app_state: Arc<Mutex<AppState>>, them
 
     for (line_idx, line_str) in lines.iter().enumerate() {
         let mut spans = Vec::new();
+        // Calculate the vertical fraction for the gradient
         let fraction_y = line_idx as f32 / num_lines_for_gradient;
 
         for ch in line_str.chars() {
+            // Apply gradient to each character
             let interpolated_rgb = interpolate_rgb(
                 &theme.title_gradient_start,
                 &theme.title_gradient_end,
@@ -189,32 +223,34 @@ fn draw_home_ui<B: Backend>(f: &mut Frame, app_state: Arc<Mutex<AppState>>, them
 
     let logo_paragraph = Paragraph::new(text_lines).alignment(Alignment::Center);
 
-    // Calculate the area for the logo within the main content chunk (outer_chunks[1])
-    let logo_area_width = outer_chunks[1].width.saturating_sub(4); // Give some horizontal padding
     let logo_area_height = num_logo_lines as u16;
 
-    let logo_x =
-        outer_chunks[1].x + (outer_chunks[1].width.saturating_sub(max_logo_line_width)) / 2;
-    let logo_y = outer_chunks[1].y + (outer_chunks[1].height.saturating_sub(logo_area_height)) / 2;
+    let logo_x = chunks[1].x + (chunks[1].width.saturating_sub(max_logo_line_width)) / 2;
+    let logo_y = chunks[1].y + (chunks[1].height.saturating_sub(logo_area_height)) / 2;
 
     let centered_logo_rect = Rect {
-        x: logo_x.max(outer_chunks[1].x), // Ensure x is not less than chunk start
-        y: logo_y.max(outer_chunks[1].y), // Ensure y is not less than chunk start
-        width: max_logo_line_width.min(outer_chunks[1].width),
-        height: logo_area_height.min(outer_chunks[1].height),
+        x: logo_x.max(chunks[1].x), // Ensure x is not less than chunk start
+        y: logo_y.max(chunks[1].y), // Ensure y is not less than chunk start
+        width: max_logo_line_width.min(chunks[1].width),
+        height: logo_area_height.min(chunks[1].height),
     };
 
     f.render_widget(logo_paragraph, centered_logo_rect);
 
-    // Instructions Paragraph
-    let instructions_text = if app_state.lock().unwrap().animation_finished {
-        "Press any key to go to Chat, 'Q' to quit."
-    } else {
-        "Loading... Please wait."
-    };
+    // Instructions Paragraph (in chunks[2])
+    // The instructions no longer depend on `animation_finished` as it's an infinite loop
+    let instructions_text = "Press any key to go to Chat, 'Q' to quit.";
 
     let instructions = Paragraph::new(Line::from(instructions_text))
-        .style(Style::default().fg(Color::DarkGray))
+        .style(Style::default().fg(rgb_to_color(&theme.instructions_text)))
         .alignment(Alignment::Center);
-    f.render_widget(instructions, outer_chunks[2]);
+    f.render_widget(instructions, chunks[2]); // Render in chunks[2]
+
+    // Gemini Notice (in chunks[3])
+    let gemini_notice = Paragraph::new(Line::from(
+        "This app may contain some code generated by Gemini.",
+    ))
+    .style(Style::default().fg(rgb_to_color(&theme.help_text))) // Using help_text for a slightly dimmed look
+    .alignment(Alignment::Center);
+    f.render_widget(gemini_notice, chunks[3]); // Render in chunks[3]
 }

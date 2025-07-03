@@ -1,6 +1,7 @@
 use crate::api::auth_api;
 use crate::app::AppState;
-use crate::tui::themes::{get_theme, rgb_to_color, Rgb, Theme, ThemeName};
+use crate::tui::themes::interpolate_rgb;
+use crate::tui::themes::{get_theme, rgb_to_color, Theme, ThemeName};
 use crate::tui::TuiPage;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::{
@@ -35,13 +36,6 @@ enum SelectedField {
 }
 
 const ICONS: [&str; 11] = ["󰱨", "󰱩", "󱃞", "󰱫", "󰱬", "󰱮", "󰱰", "󰽌", "󰱱", "󰱸", "󰇹"];
-
-fn interpolate_rgb(start: &Rgb, end: &Rgb, fraction: f32) -> Rgb {
-    let r = (start.0 as f32 + (end.0 as f32 - start.0 as f32) * fraction) as u8;
-    let g = (start.1 as f32 + (end.1 as f32 - start.1 as f32) * fraction) as u8;
-    let b = (start.2 as f32 + (end.2 as f32 - start.2 as f32) * fraction) as u8;
-    Rgb(r, g, b)
-}
 
 pub async fn run_auth_page<B: Backend>(
     terminal: &mut Terminal<B>,
@@ -370,7 +364,6 @@ fn draw_ascii_title(f: &mut Frame, area: Rect, theme: &Theme, current_mode: &Aut
     // Use trim_start() to preserve trailing blank lines if they are part of the art.
     // Then filter out truly empty lines if the raw string had extra newlines at the end.
     let lines: Vec<&str> = ascii_art_str
-        .trim_start()
         .lines()
         .filter(|&line| !line.is_empty() || line.chars().any(|c| !c.is_whitespace()))
         .collect();

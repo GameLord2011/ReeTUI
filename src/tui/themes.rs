@@ -3,6 +3,13 @@ use ratatui::style::Color;
 #[derive(Clone, Debug)]
 pub struct Rgb(pub u8, pub u8, pub u8);
 
+pub fn interpolate_rgb(start: &Rgb, end: &Rgb, fraction: f32) -> Rgb {
+    let r = (start.0 as f32 + (end.0 as f32 - start.0 as f32) * fraction) as u8;
+    let g = (start.1 as f32 + (end.1 as f32 - start.1 as f32) * fraction) as u8;
+    let b = (start.2 as f32 + (end.2 as f32 - start.2 as f32) * fraction) as u8;
+    Rgb(r, g, b)
+}
+
 #[derive(Debug, Clone, Copy)]
 pub enum ThemeName {
     Default,

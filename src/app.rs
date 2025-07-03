@@ -1,8 +1,9 @@
 use crate::api::models::{BroadcastMessage, Channel};
 use std::collections::HashMap;
+use std::time::Instant; // <-- Add this import
 
 /// Represents the overall application state.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)] // Remove Default derive for now, as we'll implement it manually to set Instant::now()
 pub struct AppState {
     pub auth_token: Option<String>,
     pub username: Option<String>,
@@ -10,6 +11,27 @@ pub struct AppState {
     pub current_channel: Option<Channel>,
     pub channels: Vec<Channel>,
     pub messages: HashMap<String, Vec<BroadcastMessage>>,
+    // New fields for animation
+    pub animation_frame_index: usize,
+    pub animation_finished: bool,
+    pub last_frame_time: Instant, // To track time for 20ms delay
+}
+
+impl Default for AppState {
+    fn default() -> Self {
+        Self {
+            auth_token: None,
+            username: None,
+            user_icon: None,
+            current_channel: None,
+            channels: Vec::new(),
+            messages: HashMap::new(),
+            // Default values for animation fields
+            animation_frame_index: 0,
+            animation_finished: false,
+            last_frame_time: Instant::now(), // Initialize with the current time
+        }
+    }
 }
 
 impl AppState {
@@ -37,6 +59,10 @@ impl AppState {
         self.current_channel = None;
         self.channels.clear();
         self.messages.clear();
+        // Reset animation state when logging out, if desired
+        self.animation_frame_index = 0;
+        self.animation_finished = false;
+        self.last_frame_time = Instant::now();
         println!("App State: User logged out.");
     }
 
