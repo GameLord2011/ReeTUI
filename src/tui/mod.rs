@@ -14,6 +14,7 @@ use std::{
 pub mod auth_tui;
 pub mod chat_tui;
 pub mod home_tui;
+pub mod themes;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum TuiPage {

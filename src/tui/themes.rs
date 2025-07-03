@@ -1,0 +1,329 @@
+use ratatui::style::Color;
+
+#[derive(Clone, Debug)]
+pub struct Rgb(pub u8, pub u8, pub u8);
+
+#[derive(Debug, Clone, Copy)]
+pub enum ThemeName {
+    Default,
+    Oceanic,
+    Forest,
+    Monochrome,
+    CatppuccinMocha,
+    Dracula,
+    SolarizedDark,
+    GruvboxDark,
+    Nord,
+}
+
+#[derive(Debug, Clone)]
+pub struct Theme {
+    pub background: Rgb,
+    pub border: Rgb,
+    pub border_focus: Rgb,
+    pub button: Rgb,
+    pub button_focus: Rgb,
+    pub text: Rgb,
+    pub error: Rgb,
+    pub dim: Rgb,
+    pub accent: Rgb,
+    pub title_gradient_start: Rgb,
+    pub title_gradient_end: Rgb,
+    pub input_border_active: Rgb,
+    pub input_border_inactive: Rgb,
+    pub input_text_active: Rgb,
+    pub input_text_inactive: Rgb,
+    pub placeholder_text: Rgb,
+    pub selected_icon: Rgb,
+    pub dimmed_icon: Rgb,
+    pub button_text_active: Rgb,
+    pub button_text_inactive: Rgb,
+    pub button_border_active: Rgb,
+    pub button_border_inactive: Rgb,
+    pub button_bg_active: Rgb,   // Added new field
+    pub button_bg_inactive: Rgb, // Added new field
+    pub help_text: Rgb,
+    pub instructions_text: Rgb,
+    pub popup_border: Rgb,
+    pub popup_text: Rgb,
+}
+
+pub fn rgb_to_color(rgb: &Rgb) -> Color {
+    Color::Rgb(rgb.0, rgb.1, rgb.2)
+}
+
+pub fn get_theme(theme_name: ThemeName) -> Theme {
+    match theme_name {
+        ThemeName::CatppuccinMocha => Theme {
+            background: Rgb(30, 30, 46),                // Base
+            border: Rgb(88, 91, 112),                   // Surface2
+            border_focus: Rgb(250, 179, 135),           // Peach
+            button: Rgb(166, 227, 161),                 // Green
+            button_focus: Rgb(148, 226, 213),           // Teal
+            text: Rgb(205, 214, 244),                   // Text
+            error: Rgb(243, 139, 168),                  // Red
+            dim: Rgb(108, 112, 134),                    // Overlay0
+            accent: Rgb(245, 224, 220),                 // Rosewater
+            title_gradient_start: Rgb(235, 160, 172),   // Maroon
+            title_gradient_end: Rgb(221, 120, 120),     // Flamingo
+            input_border_active: Rgb(250, 179, 135),    // Peach
+            input_border_inactive: Rgb(88, 91, 112),    // Surface2
+            input_text_active: Rgb(205, 214, 244),      // Text
+            input_text_inactive: Rgb(170, 180, 200),    // Subtext1
+            placeholder_text: Rgb(108, 112, 134),       // Overlay0
+            selected_icon: Rgb(148, 226, 213),          // Teal
+            dimmed_icon: Rgb(108, 112, 134),            // Overlay0
+            button_text_active: Rgb(30, 30, 46), // Base (for focused button) - Adjusted to be dark for contrast
+            button_text_inactive: Rgb(205, 214, 244), // Text
+            button_border_active: Rgb(148, 226, 213), // Teal
+            button_border_inactive: Rgb(166, 227, 161), // Green
+            button_bg_active: Rgb(148, 226, 213), // Teal - Added for active button background
+            button_bg_inactive: Rgb(30, 30, 46), // Base - Added for inactive button background
+            help_text: Rgb(108, 112, 134),       // Overlay0
+            instructions_text: Rgb(108, 112, 134), // Overlay0
+            popup_border: Rgb(243, 139, 168),    // Red
+            popup_text: Rgb(243, 139, 168),      // Red
+        },
+        ThemeName::Dracula => Theme {
+            background: Rgb(40, 42, 54),
+            border: Rgb(98, 114, 164),
+            border_focus: Rgb(255, 121, 198),
+            button: Rgb(80, 250, 123),
+            button_focus: Rgb(189, 147, 249),
+            text: Rgb(248, 248, 242),
+            error: Rgb(255, 85, 85),
+            dim: Rgb(68, 71, 90),
+            accent: Rgb(255, 184, 108),
+            title_gradient_start: Rgb(255, 121, 198),
+            title_gradient_end: Rgb(255, 184, 108),
+            input_border_active: Rgb(255, 121, 198),
+            input_border_inactive: Rgb(98, 114, 164),
+            input_text_active: Rgb(248, 248, 242),
+            input_text_inactive: Rgb(200, 200, 190),
+            placeholder_text: Rgb(68, 71, 90),
+            selected_icon: Rgb(189, 147, 249),
+            dimmed_icon: Rgb(68, 71, 90),
+            button_text_active: Rgb(248, 248, 242),
+            button_text_inactive: Rgb(248, 248, 242),
+            button_border_active: Rgb(189, 147, 249),
+            button_border_inactive: Rgb(80, 250, 123),
+            button_bg_active: Rgb(189, 147, 249), // Added for active button background
+            button_bg_inactive: Rgb(40, 42, 54),  // Added for inactive button background
+            help_text: Rgb(68, 71, 90),
+            instructions_text: Rgb(68, 71, 90),
+            popup_border: Rgb(255, 85, 85),
+            popup_text: Rgb(255, 85, 85),
+        },
+        ThemeName::SolarizedDark => Theme {
+            background: Rgb(0, 43, 54),
+            border: Rgb(88, 110, 117),
+            border_focus: Rgb(108, 113, 196),
+            button: Rgb(38, 139, 210),
+            button_focus: Rgb(42, 161, 152),
+            text: Rgb(131, 148, 150),
+            error: Rgb(220, 50, 47),
+            dim: Rgb(7, 54, 66),
+            accent: Rgb(203, 75, 22),
+            title_gradient_start: Rgb(211, 54, 130),
+            title_gradient_end: Rgb(108, 113, 196),
+            input_border_active: Rgb(108, 113, 196),
+            input_border_inactive: Rgb(88, 110, 117),
+            input_text_active: Rgb(131, 148, 150),
+            input_text_inactive: Rgb(101, 123, 131),
+            placeholder_text: Rgb(7, 54, 66),
+            selected_icon: Rgb(42, 161, 152),
+            dimmed_icon: Rgb(7, 54, 66),
+            button_text_active: Rgb(253, 246, 227),
+            button_text_inactive: Rgb(131, 148, 150),
+            button_border_active: Rgb(42, 161, 152),
+            button_border_inactive: Rgb(38, 139, 210),
+            button_bg_active: Rgb(38, 139, 210), // Added for active button background
+            button_bg_inactive: Rgb(0, 43, 54),  // Added for inactive button background
+            help_text: Rgb(7, 54, 66),
+            instructions_text: Rgb(7, 54, 66),
+            popup_border: Rgb(220, 50, 47),
+            popup_text: Rgb(220, 50, 47),
+        },
+        ThemeName::GruvboxDark => Theme {
+            background: Rgb(40, 40, 40),
+            border: Rgb(146, 122, 97),
+            border_focus: Rgb(250, 184, 100),
+            button: Rgb(184, 187, 38),
+            button_focus: Rgb(142, 192, 124),
+            text: Rgb(235, 219, 178),
+            error: Rgb(251, 73, 52),
+            dim: Rgb(102, 92, 84),
+            accent: Rgb(250, 125, 78),
+            title_gradient_start: Rgb(250, 125, 78),
+            title_gradient_end: Rgb(250, 184, 100),
+            input_border_active: Rgb(250, 184, 100),
+            input_border_inactive: Rgb(146, 122, 97),
+            input_text_active: Rgb(235, 219, 178),
+            input_text_inactive: Rgb(215, 153, 33),
+            placeholder_text: Rgb(102, 92, 84),
+            selected_icon: Rgb(142, 192, 124),
+            dimmed_icon: Rgb(102, 92, 84),
+            button_text_active: Rgb(40, 40, 40),
+            button_text_inactive: Rgb(235, 219, 178),
+            button_border_active: Rgb(142, 192, 124),
+            button_border_inactive: Rgb(184, 187, 38),
+            button_bg_active: Rgb(142, 192, 124), // Added for active button background
+            button_bg_inactive: Rgb(40, 40, 40),  // Added for inactive button background
+            help_text: Rgb(102, 92, 84),
+            instructions_text: Rgb(102, 92, 84),
+            popup_border: Rgb(251, 73, 52),
+            popup_text: Rgb(251, 73, 52),
+        },
+        ThemeName::Nord => Theme {
+            background: Rgb(46, 52, 64),
+            border: Rgb(67, 76, 94),
+            border_focus: Rgb(136, 192, 208),
+            button: Rgb(163, 190, 140),
+            button_focus: Rgb(180, 142, 173),
+            text: Rgb(229, 233, 240),
+            error: Rgb(191, 97, 106),
+            dim: Rgb(76, 86, 106),
+            accent: Rgb(235, 203, 139),
+            title_gradient_start: Rgb(191, 97, 106),
+            title_gradient_end: Rgb(180, 142, 173),
+            input_border_active: Rgb(136, 192, 208),
+            input_border_inactive: Rgb(67, 76, 94),
+            input_text_active: Rgb(229, 233, 240),
+            input_text_inactive: Rgb(188, 200, 220),
+            placeholder_text: Rgb(76, 86, 106),
+            selected_icon: Rgb(180, 142, 173),
+            dimmed_icon: Rgb(76, 86, 106),
+            button_text_active: Rgb(46, 52, 64),
+            button_text_inactive: Rgb(229, 233, 240),
+            button_border_active: Rgb(180, 142, 173),
+            button_border_inactive: Rgb(163, 190, 140),
+            button_bg_active: Rgb(163, 190, 140), // Added for active button background
+            button_bg_inactive: Rgb(46, 52, 64),  // Added for inactive button background
+            help_text: Rgb(76, 86, 106),
+            instructions_text: Rgb(76, 86, 106),
+            popup_border: Rgb(191, 97, 106),
+            popup_text: Rgb(191, 97, 106),
+        },
+        ThemeName::Oceanic => Theme {
+            background: Rgb(23, 32, 42),
+            border: Rgb(52, 73, 94),
+            border_focus: Rgb(46, 204, 113),
+            button: Rgb(52, 152, 219),
+            button_focus: Rgb(142, 68, 173),
+            text: Rgb(236, 240, 241),
+            error: Rgb(231, 76, 60),
+            dim: Rgb(44, 62, 80),
+            accent: Rgb(241, 196, 15),
+            title_gradient_start: Rgb(241, 196, 15),
+            title_gradient_end: Rgb(46, 204, 113),
+            input_border_active: Rgb(46, 204, 113),
+            input_border_inactive: Rgb(52, 73, 94),
+            input_text_active: Rgb(236, 240, 241),
+            input_text_inactive: Rgb(189, 195, 199),
+            placeholder_text: Rgb(44, 62, 80),
+            selected_icon: Rgb(142, 68, 173),
+            dimmed_icon: Rgb(44, 62, 80),
+            button_text_active: Rgb(23, 32, 42),
+            button_text_inactive: Rgb(236, 240, 241),
+            button_border_active: Rgb(142, 68, 173),
+            button_border_inactive: Rgb(52, 152, 219),
+            button_bg_active: Rgb(52, 152, 219), // Added for active button background
+            button_bg_inactive: Rgb(23, 32, 42), // Added for inactive button background
+            help_text: Rgb(44, 62, 80),
+            instructions_text: Rgb(44, 62, 80),
+            popup_border: Rgb(231, 76, 60),
+            popup_text: Rgb(231, 76, 60),
+        },
+        ThemeName::Forest => Theme {
+            background: Rgb(34, 54, 46),
+            border: Rgb(82, 114, 98),
+            border_focus: Rgb(128, 192, 176),
+            button: Rgb(92, 162, 110),
+            button_focus: Rgb(160, 210, 180),
+            text: Rgb(200, 230, 210),
+            error: Rgb(210, 80, 80),
+            dim: Rgb(60, 80, 70),
+            accent: Rgb(180, 200, 170),
+            title_gradient_start: Rgb(150, 190, 160),
+            title_gradient_end: Rgb(128, 192, 176),
+            input_border_active: Rgb(128, 192, 176),
+            input_border_inactive: Rgb(82, 114, 98),
+            input_text_active: Rgb(200, 230, 210),
+            input_text_inactive: Rgb(150, 180, 160),
+            placeholder_text: Rgb(60, 80, 70),
+            selected_icon: Rgb(160, 210, 180),
+            dimmed_icon: Rgb(60, 80, 70),
+            button_text_active: Rgb(34, 54, 46),
+            button_text_inactive: Rgb(200, 230, 210),
+            button_border_active: Rgb(160, 210, 180),
+            button_border_inactive: Rgb(92, 162, 110),
+            button_bg_active: Rgb(92, 162, 110), // Added for active button background
+            button_bg_inactive: Rgb(34, 54, 46), // Added for inactive button background
+            help_text: Rgb(60, 80, 70),
+            instructions_text: Rgb(60, 80, 70),
+            popup_border: Rgb(210, 80, 80),
+            popup_text: Rgb(210, 80, 80),
+        },
+        ThemeName::Monochrome => Theme {
+            background: Rgb(15, 15, 15),
+            border: Rgb(100, 100, 100),
+            border_focus: Rgb(200, 200, 200),
+            button: Rgb(80, 80, 80),
+            button_focus: Rgb(150, 150, 150),
+            text: Rgb(220, 220, 220),
+            error: Rgb(255, 0, 0),
+            dim: Rgb(60, 60, 60),
+            accent: Rgb(180, 180, 180),
+            title_gradient_start: Rgb(180, 180, 180),
+            title_gradient_end: Rgb(220, 220, 220),
+            input_border_active: Rgb(200, 200, 200),
+            input_border_inactive: Rgb(100, 100, 100),
+            input_text_active: Rgb(220, 220, 220),
+            input_text_inactive: Rgb(160, 160, 160),
+            placeholder_text: Rgb(60, 60, 60),
+            selected_icon: Rgb(150, 150, 150),
+            dimmed_icon: Rgb(60, 60, 60),
+            button_text_active: Rgb(15, 15, 15),
+            button_text_inactive: Rgb(220, 220, 220),
+            button_border_active: Rgb(150, 150, 150),
+            button_border_inactive: Rgb(80, 80, 80),
+            button_bg_active: Rgb(80, 80, 80), // Added for active button background
+            button_bg_inactive: Rgb(15, 15, 15), // Added for inactive button background
+            help_text: Rgb(60, 60, 60),
+            instructions_text: Rgb(60, 60, 60),
+            popup_border: Rgb(255, 0, 0),
+            popup_text: Rgb(255, 0, 0),
+        },
+        ThemeName::Default => Theme {
+            // Default Theme
+            background: Rgb(20, 20, 30),
+            border: Rgb(120, 120, 120),
+            border_focus: Rgb(255, 215, 0),
+            button: Rgb(50, 150, 50),
+            button_focus: Rgb(80, 200, 80),
+            text: Rgb(240, 240, 240),
+            error: Rgb(230, 60, 60),
+            dim: Rgb(90, 90, 90),
+            accent: Rgb(255, 165, 0),
+            title_gradient_start: Rgb(255, 165, 0),
+            title_gradient_end: Rgb(255, 215, 0),
+            input_border_active: Rgb(255, 215, 0),
+            input_border_inactive: Rgb(120, 120, 120),
+            input_text_active: Rgb(240, 240, 240),
+            input_text_inactive: Rgb(180, 180, 180),
+            placeholder_text: Rgb(90, 90, 90),
+            selected_icon: Rgb(80, 200, 80),
+            dimmed_icon: Rgb(90, 90, 90),
+            button_text_active: Rgb(255, 255, 255),
+            button_text_inactive: Rgb(240, 240, 240),
+            button_border_active: Rgb(80, 200, 80),
+            button_border_inactive: Rgb(50, 150, 50),
+            button_bg_active: Rgb(80, 200, 80), // Added for active button background
+            button_bg_inactive: Rgb(20, 20, 30), // Added for inactive button background
+            help_text: Rgb(90, 90, 90),
+            instructions_text: Rgb(90, 90, 90),
+            popup_border: Rgb(230, 60, 60),
+            popup_text: Rgb(230, 60, 60),
+        },
+    }
+}
