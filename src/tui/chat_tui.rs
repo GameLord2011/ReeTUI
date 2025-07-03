@@ -1,12 +1,15 @@
+use crate::api::models::{BroadcastMessage, Channel};
+use crate::api::websocket::{self, ServerMessage}; // Removed WsWriter, WsReader from here
 use crate::app::AppState;
-use crate::tui::TuiPage; // Import TuiPage enum
+use crate::tui::TuiPage;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
+use futures_util::{SinkExt, StreamExt}; // Added SinkExt for the send method
 use ratatui::{
     backend::Backend,
     layout::{Alignment, Constraint, Direction, Layout},
-    style::Style,
+    style::{Modifier, Style},
     text::Line,
-    widgets::{Block, BorderType, Borders, Paragraph},
+    widgets::{Block, BorderType, Borders, List, ListItem, ListState, Paragraph},
     Frame, Terminal,
 };
 use std::{
@@ -14,17 +17,32 @@ use std::{
     sync::{Arc, Mutex},
     time::Duration,
 };
+use tokio_tungstenite::tungstenite; // Explicitly import tungstenite
 
 pub async fn run_chat_page<B: Backend>(
     terminal: &mut Terminal<B>,
     app_state: Arc<Mutex<AppState>>,
 ) -> io::Result<TuiPage> {
     let mut input_text = String::new();
+    let mut channel_list_state = ListState::default();
+    channel_list_state.select(Some(0)); // Select the first channel by default
+
+    // WebSocket connection
+    let (mut ws_writer, mut ws_reader) = {
+        let state = app_state.lock().unwrap();
+        let token = state
+            .auth_token
+            .clone()
+            .expect("Auth token not found for WebSocket connection");
+        websocket::connect(&token)
+            .await
+            .expect("Failed to connect to WebSocket")
+    };
 
     loop {
         // Draw the UI
         terminal.draw(|f| {
-            draw_chat_ui::<B>(f, app_state.clone(), &input_text);
+            draw_chat_ui::<B>(f, app_state.clone(), &input_text, &mut channel_list_state);
         })?;
 
         // Handle events
@@ -34,14 +52,76 @@ pub async fn run_chat_page<B: Backend>(
                     match key.code {
                         KeyCode::Char('q') => return Ok(TuiPage::Exit), // Global exit
                         KeyCode::Char('h') => return Ok(TuiPage::Home), // Transition to Home page
+                        KeyCode::Tab => {
+                            // Cycle through channels
+                            let mut state = app_state.lock().unwrap();
+                            let i = match channel_list_state.selected() {
+                                Some(i) => {
+                                    if i >= state.channels.len() - 1 {
+                                        0
+                                    } else {
+                                        i + 1
+                                    }
+                                }
+                                None => 0,
+                            };
+                            channel_list_state.select(Some(i));
+                            if let Some(selected_channel) = state.channels.get(i).cloned() {
+                                state.set_current_channel(selected_channel);
+                            }
+                        }
+                        KeyCode::Up => {
+                            let mut state = app_state.lock().unwrap();
+                            let i = match channel_list_state.selected() {
+                                Some(i) => {
+                                    if i == 0 {
+                                        state.channels.len() - 1
+                                    } else {
+                                        i - 1
+                                    }
+                                }
+                                None => 0,
+                            };
+                            channel_list_state.select(Some(i));
+                            if let Some(selected_channel) = state.channels.get(i).cloned() {
+                                state.set_current_channel(selected_channel);
+                            }
+                        }
+                        KeyCode::Down => {
+                            let mut state = app_state.lock().unwrap();
+                            let i = match channel_list_state.selected() {
+                                Some(i) => {
+                                    if i >= state.channels.len() - 1 {
+                                        0
+                                    } else {
+                                        i + 1
+                                    }
+                                }
+                                None => 0,
+                            };
+                            channel_list_state.select(Some(i));
+                            if let Some(selected_channel) = state.channels.get(i).cloned() {
+                                state.set_current_channel(selected_channel);
+                            }
+                        }
                         KeyCode::Enter => {
-                            // Simulate sending a message
                             if !input_text.is_empty() {
                                 let mut state = app_state.lock().unwrap();
                                 if let Some(current_channel) = &state.current_channel {
-                                    // In a real app, you'd send this message via WebSocket
-                                    // For now, just add it to the state for display
-                                    let new_message = crate::api::models::BroadcastMessage {
+                                    let channel_id = current_channel.id.clone();
+                                    let content = input_text.clone();
+                                    // Send message via WebSocket
+                                    if let Err(e) = websocket::send_message(
+                                        &mut ws_writer,
+                                        &channel_id,
+                                        &content,
+                                    )
+                                    .await
+                                    {
+                                        eprintln!("Failed to send message: {:?}", e);
+                                    }
+                                    // Add message to state immediately for local display
+                                    let new_message = BroadcastMessage {
                                         user: state
                                             .username
                                             .clone()
@@ -72,25 +152,127 @@ pub async fn run_chat_page<B: Backend>(
                 }
             }
         }
+
+        // Handle incoming WebSocket messages
+        // Use a non-blocking poll to check for new messages
+        if let Ok(Some(msg)) =
+            tokio::time::timeout(Duration::from_millis(10), ws_reader.next()).await
+        {
+            match msg {
+                Ok(tungstenite::Message::Text(text)) => {
+                    let server_message = websocket::parse_server_message(&text);
+                    let mut state = app_state.lock().unwrap();
+                    match server_message {
+                        ServerMessage::ChatMessage(chat_msg) => {
+                            state.add_message(chat_msg);
+                        }
+                        ServerMessage::ChannelUpdate(channel_broadcast) => {
+                            let channel = Channel {
+                                id: channel_broadcast.id,
+                                name: channel_broadcast.name,
+                                icon: channel_broadcast.icon,
+                            };
+                            state.add_or_update_channel(channel);
+                        }
+                        ServerMessage::ChannelDelete(channel_id) => {
+                            state.remove_channel(&channel_id);
+                        }
+                        ServerMessage::Unknown(unknown_msg) => {
+                            eprintln!("Received unknown WebSocket message: {}", unknown_msg);
+                        }
+                    }
+                }
+                Ok(tungstenite::Message::Ping(_)) => {
+                    // Respond to ping with pong
+                    if let Err(e) = ws_writer
+                        .send(tungstenite::Message::Pong(vec![].into()))
+                        .await
+                    {
+                        eprintln!("Failed to send pong: {:?}", e);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("WebSocket error: {:?}", e);
+                    // Exit chat page on critical WebSocket error
+                    return Ok(TuiPage::Exit); // Corrected return type for break
+                }
+                _ => {} // Ignore other message types like Binary, Close, etc.
+            }
+        }
     }
 }
 
 /// Draws the chat page UI.
-fn draw_chat_ui<B: Backend>(f: &mut Frame, app_state: Arc<Mutex<AppState>>, input_text: &str) {
+fn draw_chat_ui<B: Backend>(
+    f: &mut Frame,
+    app_state: Arc<Mutex<AppState>>,
+    input_text: &str,
+    channel_list_state: &mut ListState,
+) {
     let size = f.area();
+    let state = app_state.lock().unwrap();
 
     let main_block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .title(" Chat ")
+        .title(format!(
+            " Chat - {}",
+            state.username.as_deref().unwrap_or("Guest")
+        ))
         .title_alignment(Alignment::Center)
         .style(Style::default().fg(ratatui::style::Color::LightBlue));
 
     f.render_widget(main_block, size);
 
+    // Main layout: sidebar (20%) and chat area (80%)
     let chunks = Layout::default()
-        .direction(Direction::Vertical)
+        .direction(Direction::Horizontal)
         .margin(1) // Margin inside the main block
+        .constraints(
+            [
+                Constraint::Percentage(20), // Sidebar for channels
+                Constraint::Percentage(80), // Chat messages and input
+            ]
+            .as_ref(),
+        )
+        .split(f.area());
+
+    // --- Sidebar for Channels ---
+    let channels_block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Plain)
+        .title("Channels")
+        .style(Style::default().fg(ratatui::style::Color::Cyan));
+
+    let channel_items: Vec<ListItem> = state
+        .channels
+        .iter()
+        .map(|channel| {
+            let is_current = state
+                .current_channel
+                .as_ref()
+                .map_or(false, |c| c.id == channel.id);
+            let style = if is_current {
+                Style::default()
+                    .add_modifier(Modifier::BOLD)
+                    .fg(ratatui::style::Color::Yellow)
+            } else {
+                Style::default().fg(ratatui::style::Color::White)
+            };
+            ListItem::new(format!("{} {}", channel.icon, channel.name)).style(style)
+        })
+        .collect();
+
+    let channels_list = List::new(channel_items)
+        .block(channels_block)
+        .highlight_style(Style::default().add_modifier(Modifier::REVERSED))
+        .highlight_symbol(">> ");
+
+    f.render_stateful_widget(channels_list, chunks[0], channel_list_state);
+
+    // --- Chat Area (Messages + Input) ---
+    let chat_chunks = Layout::default()
+        .direction(Direction::Vertical)
         .constraints(
             [
                 Constraint::Min(1),    // Messages display area
@@ -98,18 +280,23 @@ fn draw_chat_ui<B: Backend>(f: &mut Frame, app_state: Arc<Mutex<AppState>>, inpu
             ]
             .as_ref(),
         )
-        .split(f.area());
+        .split(chunks[1]); // Split the right chunk
 
     // Messages display area
     let messages_block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Plain)
-        .title("Messages")
+        .title(format!(
+            "Messages - {}",
+            state
+                .current_channel
+                .as_ref()
+                .map_or("No Channel Selected".to_string(), |c| c.name.clone())
+        ))
         .style(Style::default().fg(ratatui::style::Color::White));
-    f.render_widget(messages_block, chunks[0]);
+    f.render_widget(messages_block, chat_chunks[0]);
 
     let messages_content = {
-        let state = app_state.lock().unwrap();
         if let Some(current_channel) = &state.current_channel {
             if let Some(messages) = state.get_messages_for_channel(&current_channel.id) {
                 messages
@@ -127,7 +314,7 @@ fn draw_chat_ui<B: Backend>(f: &mut Frame, app_state: Arc<Mutex<AppState>>, inpu
     let messages_paragraph = Paragraph::new(messages_content)
         .block(Block::default()) // No additional borders, already handled by messages_block
         .wrap(ratatui::widgets::Wrap { trim: false }); // Allow text wrapping
-    f.render_widget(messages_paragraph, chunks[0]);
+    f.render_widget(messages_paragraph, chat_chunks[0]);
 
     // Input field
     let input_block = Block::default()
@@ -137,11 +324,11 @@ fn draw_chat_ui<B: Backend>(f: &mut Frame, app_state: Arc<Mutex<AppState>>, inpu
         .style(Style::default().fg(ratatui::style::Color::Yellow));
 
     let input_paragraph = Paragraph::new(Line::from(input_text.to_string())).block(input_block);
-    f.render_widget(input_paragraph, chunks[1]);
+    f.render_widget(input_paragraph, chat_chunks[1]);
 
     // Instructions
     let instructions = Paragraph::new(Line::from(
-        "Press <Enter> to send, 'H' for Home, 'Q' to quit.",
+        "Press <Enter> to send, <Tab>/<Up>/<Down> to switch channels, 'H' for Home, 'Q' to quit.",
     ))
     .style(Style::default().fg(ratatui::style::Color::DarkGray))
     .alignment(Alignment::Center);

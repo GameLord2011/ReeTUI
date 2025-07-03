@@ -1,16 +1,14 @@
 use crate::app::AppState;
-use crate::tui::TuiPage; // Import TuiPage enum
-                         // Import the necessary items from your themes module
-use crate::tui::themes::{get_theme, interpolate_rgb, rgb_to_color, Rgb, Theme, ThemeName};
+use crate::tui::themes::{get_theme, interpolate_rgb, rgb_to_color, Theme, ThemeName};
+use crate::tui::TuiPage;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::{
     backend::Backend,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Style, Stylize},
+    style::{Style, Stylize},
     text::{Line, Span},
-    widgets::{Block, Paragraph}, // Removed Borders, BorderType from use
-    Frame,
-    Terminal,
+    widgets::{Block, Paragraph},
+    Frame, Terminal,
 };
 use std::{
     io,
@@ -18,7 +16,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-// --- ASCII Art Animation Frames ---
 const ANIMATION_FRAMES: [&str; 9] = [
     r#"
 ▄▄▄  ▄▄▄ .▄▄▄ .▄▄▄▄▄▄• ▄▌▪  
@@ -109,7 +106,7 @@ ____/\\\\\\\\\____________________________________/\\\\\\\\\\\\\\\__/\\\________
 ░░░░░   ░░░░░  ░░░░░░   ░░░░░░     ░░░░░      ░░░░░░░░   ░░░░░ 
 "#,
 ];
-const FRAME_DURATION_MS: u64 = 1500; // ms
+const FRAME_DURATION_MS: u64 = 700; // ms
 
 pub async fn run_home_page<B: Backend>(
     terminal: &mut Terminal<B>,
@@ -118,40 +115,33 @@ pub async fn run_home_page<B: Backend>(
     let current_theme = get_theme(ThemeName::CatppuccinMocha);
 
     loop {
-        // Draw the UI
         terminal.draw(|f| {
             draw_home_ui::<B>(f, app_state.clone(), &current_theme);
         })?;
 
-        // --- Animation Update and Dynamic Polling Logic ---
         let mut state = app_state.lock().unwrap();
-        let mut wait_time = Duration::from_millis(0); // Default to no wait if animation needs update
-
+        let mut wait_time = Duration::from_millis(0);
         let now = Instant::now();
         let elapsed_since_last_frame = now.duration_since(state.last_frame_time);
         let required_duration_per_frame = Duration::from_millis(FRAME_DURATION_MS);
 
         if elapsed_since_last_frame >= required_duration_per_frame {
-            // Enough time has passed for the next frame, update it
-            // Use modulo to loop the animation infinitely
             state.animation_frame_index =
                 (state.animation_frame_index + 1) % ANIMATION_FRAMES.len();
-            state.last_frame_time = now; // Reset last frame time
-            wait_time = Duration::from_millis(0); // Don't wait, draw next frame immediately
+            state.last_frame_time = now;
+            wait_time = Duration::from_millis(0);
         } else {
-            // Not enough time has passed, calculate how long to wait until the next frame is due
             wait_time = required_duration_per_frame.saturating_sub(elapsed_since_last_frame);
         }
 
         drop(state); // bye bye
 
-        // Handle user input events with the calculated dynamic wait time
         if event::poll(wait_time)? {
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press {
                     match key.code {
-                        KeyCode::Char('q') => return Ok(TuiPage::Exit), // Global exit
-                        _ => return Ok(TuiPage::Chat), // Any other key goes to Chat
+                        KeyCode::Char('q') => return Ok(TuiPage::Exit),
+                        _ => return Ok(TuiPage::Chat),
                     }
                 }
             }
@@ -159,34 +149,27 @@ pub async fn run_home_page<B: Backend>(
     }
 }
 
-/// Draws the home page UI.
 fn draw_home_ui<B: Backend>(f: &mut Frame, app_state: Arc<Mutex<AppState>>, theme: &Theme) {
     let size = f.area();
 
-    // Set the entire background color of the terminal frame
     f.render_widget(Block::default().bg(rgb_to_color(&theme.background)), size);
 
-    // Define main layout for the screen content without borders
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints(
             [
-                Constraint::Length(2), // Top padding/empty space
-                Constraint::Min(0),    // Flexible space for ASCII logo (this will be chunks[1])
-                Constraint::Length(1), // Instructions (this will be chunks[2])
-                Constraint::Length(1), // Gemini notice (this will be chunks[3])
-                Constraint::Length(1), // Bottom padding/empty space
+                Constraint::Length(2),
+                Constraint::Min(0),
+                Constraint::Length(1),
+                Constraint::Length(1),
+                Constraint::Length(1),
             ]
             .as_ref(),
         )
         .split(size);
 
-    // --- ASCII Animation Drawing ---
     let current_frame_index = app_state.lock().unwrap().animation_frame_index;
     let current_frame_str = ANIMATION_FRAMES[current_frame_index];
-
-    // Removed the filter to ensure all lines, including those with only whitespace, are preserved.
-    // This should fix "deformed" lines if they were caused by the filter removing intended spacing.
     let lines: Vec<&str> = current_frame_str.lines().collect(); // No filter here
 
     let num_logo_lines = lines.len();
@@ -194,7 +177,6 @@ fn draw_home_ui<B: Backend>(f: &mut Frame, app_state: Arc<Mutex<AppState>>, them
 
     let mut text_lines: Vec<Line> = Vec::new();
 
-    // Calculate gradient progression based on line index
     let num_lines_for_gradient = if num_logo_lines <= 1 {
         1.0
     } else {
@@ -203,11 +185,9 @@ fn draw_home_ui<B: Backend>(f: &mut Frame, app_state: Arc<Mutex<AppState>>, them
 
     for (line_idx, line_str) in lines.iter().enumerate() {
         let mut spans = Vec::new();
-        // Calculate the vertical fraction for the gradient
         let fraction_y = line_idx as f32 / num_lines_for_gradient;
 
         for ch in line_str.chars() {
-            // Apply gradient to each character
             let interpolated_rgb = interpolate_rgb(
                 &theme.title_gradient_start,
                 &theme.title_gradient_end,
@@ -229,17 +209,13 @@ fn draw_home_ui<B: Backend>(f: &mut Frame, app_state: Arc<Mutex<AppState>>, them
     let logo_y = chunks[1].y + (chunks[1].height.saturating_sub(logo_area_height)) / 2;
 
     let centered_logo_rect = Rect {
-        x: logo_x.max(chunks[1].x), // Ensure x is not less than chunk start
-        y: logo_y.max(chunks[1].y), // Ensure y is not less than chunk start
+        x: logo_x.max(chunks[1].x),
+        y: logo_y.max(chunks[1].y),
         width: max_logo_line_width.min(chunks[1].width),
         height: logo_area_height.min(chunks[1].height),
     };
-
     f.render_widget(logo_paragraph, centered_logo_rect);
-
-    // Instructions Paragraph (in chunks[2])
-    // The instructions no longer depend on `animation_finished` as it's an infinite loop
-    let instructions_text = "Press any key to go to Chat, 'Q' to quit.";
+    let instructions_text = "Press any  key to go to Chat, 'Q' to quit.";
 
     let instructions = Paragraph::new(Line::from(instructions_text))
         .style(Style::default().fg(rgb_to_color(&theme.instructions_text)))

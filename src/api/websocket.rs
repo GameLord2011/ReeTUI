@@ -6,9 +6,8 @@ use futures_util::{
     SinkExt, StreamExt,
 };
 use tokio::net::TcpStream;
-use tokio_tungstenite::{
-    connect_async, tungstenite::protocol::Message, MaybeTlsStream, WebSocketStream,
-};
+use tokio_tungstenite::connect_async;
+use tokio_tungstenite::{tungstenite::protocol::Message, MaybeTlsStream, WebSocketStream};
 
 pub type WsWriter = SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>;
 pub type WsReader = SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>;

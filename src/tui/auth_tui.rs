@@ -361,8 +361,6 @@ fn draw_ascii_title(f: &mut Frame, area: Rect, theme: &Theme, current_mode: &Aut
         }
     };
 
-    // Use trim_start() to preserve trailing blank lines if they are part of the art.
-    // Then filter out truly empty lines if the raw string had extra newlines at the end.
     let lines: Vec<&str> = ascii_art_str
         .lines()
         .filter(|&line| !line.is_empty() || line.chars().any(|c| !c.is_whitespace()))
@@ -370,20 +368,15 @@ fn draw_ascii_title(f: &mut Frame, area: Rect, theme: &Theme, current_mode: &Aut
 
     let num_lines = lines.len();
     let max_line_width = lines.iter().map(|line| line.len()).max().unwrap_or(0) as u16;
-
     let mut text_lines: Vec<Line> = Vec::new();
-
-    // Adjust num_lines_for_gradient to avoid division by zero if there's only one line
     let num_lines_for_gradient = if num_lines <= 1 {
         1.0
     } else {
         (num_lines - 1) as f32
     };
-
     for (line_idx, line_str) in lines.iter().enumerate() {
         let mut spans = Vec::new();
         let fraction_y = line_idx as f32 / num_lines_for_gradient;
-
         for ch in line_str.chars() {
             let interpolated_rgb = interpolate_rgb(
                 &theme.title_gradient_start,
@@ -397,12 +390,9 @@ fn draw_ascii_title(f: &mut Frame, area: Rect, theme: &Theme, current_mode: &Aut
         }
         text_lines.push(Line::from(spans));
     }
-
     let title_paragraph = Paragraph::new(text_lines).alignment(Alignment::Center);
-
     let centered_title_width = max_line_width;
     let title_x = area.x + (area.width.saturating_sub(centered_title_width)) / 2;
-
     let title_area = Rect {
         x: title_x,
         y: area.y + 1,
@@ -424,14 +414,11 @@ fn draw_auth_ui(
 ) {
     let size = f.area();
     let theme = get_theme(theme_name);
-
     f.render_widget(
         Block::default().style(Style::default().fg(rgb_to_color(&theme.text))),
         f.area(),
     );
-
     draw_ascii_title(f, size, &theme, current_mode);
-
     let ascii_art_str = match current_mode {
         AuthMode::Register => {
             r#"
@@ -466,28 +453,22 @@ fn draw_auth_ui(
     };
     let title_height = ascii_art_str.trim().lines().count() as u16;
     let margin_after_title: u16 = 2;
-
     let visible_inputs = if *current_mode == AuthMode::Register {
         3
     } else {
         2
     };
-
     let main_box_width = 35;
-
     let content_height = (visible_inputs as u16 * 3) + 3;
     let main_box_height = content_height + 2;
-
     let main_box_x = size.x + (size.width.saturating_sub(main_box_width)) / 2;
     let main_box_y = size.y + title_height + margin_after_title;
-
     let main_area = Rect::new(
         main_box_x,
         main_box_y,
         main_box_width.min(size.width),
         main_box_height.min(size.height.saturating_sub(main_box_y)),
     );
-
     f.render_widget(
         Block::default()
             .borders(Borders::ALL)
@@ -495,27 +476,22 @@ fn draw_auth_ui(
             .border_style(Style::default().fg(rgb_to_color(&theme.border))),
         main_area,
     );
-
     let inner = Rect {
         x: main_area.x + 1,
         y: main_area.y + 1,
         width: main_area.width.saturating_sub(2),
         height: main_area.height.saturating_sub(2),
     };
-
     let mut constraints = Vec::with_capacity(visible_inputs + 1);
     for _ in 0..visible_inputs {
         constraints.push(Constraint::Length(3));
     }
     constraints.push(Constraint::Length(3));
-
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints(constraints)
         .split(inner);
-
     let input_labels = ["Username", "Password", "Icon"];
-
     for (idx, label) in input_labels.iter().take(visible_inputs).enumerate() {
         let focus = *selected_field
             == match idx {

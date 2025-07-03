@@ -1,6 +1,5 @@
 use crate::app::AppState; // Import AppState for shared application data
 use crossterm::{
-    event::{self, Event, KeyCode, KeyEventKind},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -8,7 +7,6 @@ use ratatui::{backend::CrosstermBackend, Terminal};
 use std::{
     io::{self},
     sync::{Arc, Mutex}, // For shared mutable access to AppState
-    time::Duration,
 };
 
 pub mod auth_tui;
@@ -36,26 +34,15 @@ pub async fn run_tui(app_state: Arc<Mutex<AppState>>) -> io::Result<()> {
     loop {
         match current_page {
             TuiPage::Auth => {
-                let next_page = auth_tui::run_auth_page(&mut terminal, app_state.clone()).await?;
-                current_page = next_page;
+                current_page = auth_tui::run_auth_page(&mut terminal, app_state.clone()).await?;
             }
             TuiPage::Home => {
-                let next_page = home_tui::run_home_page(&mut terminal, app_state.clone()).await?;
-                current_page = next_page;
+                current_page = home_tui::run_home_page(&mut terminal, app_state.clone()).await?;
             }
             TuiPage::Chat => {
-                let next_page = chat_tui::run_chat_page(&mut terminal, app_state.clone()).await?;
-                current_page = next_page;
+                current_page = chat_tui::run_chat_page(&mut terminal, app_state.clone()).await?;
             }
             TuiPage::Exit => break, // Exit the loop if the page signals to exit
-        }
-
-        if event::poll(Duration::from_millis(100))? {
-            if let Event::Key(key) = event::read()? {
-                if key.kind == KeyEventKind::Press && key.code == KeyCode::Char('q') {
-                    current_page = TuiPage::Exit;
-                }
-            }
         }
     }
 
