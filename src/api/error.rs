@@ -8,6 +8,12 @@ pub enum AuthError {
     RequestFailed(reqwest::Error),
     ServerError(StatusCode),
 }
+// heeeeelp
+// im dying
+// aaaaaaah
+// aaaaaaaaaaaaaaaaaaaaaaaaaaah
+// aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaah
+// why compiling to windows is so shit
 
 impl fmt::Display for AuthError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

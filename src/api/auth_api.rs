@@ -5,7 +5,7 @@ use crate::api::models::TokenResponse;
 use reqwest::Client;
 use reqwest::StatusCode;
 
-const API_BASE_URL: &str = "https://back.reetui.hackclub.app";
+const API_BASE_URL: &str = "https://back.reetui.hackclub.app"; // yeah, thats the back of ReeTUI
 
 pub async fn register(
     client: &Client,

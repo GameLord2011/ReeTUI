@@ -86,7 +86,7 @@ ____/\\\\\\\\\____________________________________/\\\\\\\\\\\\\\\__/\\\________
   ░▒ ░ ▒░ ░ ░  ░ ░ ░  ░   ░    ░░▒░ ░ ░  ▒ ░
   ░░   ░    ░      ░    ░       ░░░ ░ ░  ▒ ░
    ░        ░  ░   ░  ░           ░      ░  
-"#,
+"#, // awsome ascii art, those are my favorites
     r#"
 ██████╗ ███████╗███████╗████████╗██╗   ██╗██╗
 ██╔══██╗██╔════╝██╔════╝╚══██╔══╝██║   ██║██║
@@ -94,7 +94,7 @@ ____/\\\\\\\\\____________________________________/\\\\\\\\\\\\\\\__/\\\________
 ██╔══██╗██╔══╝  ██╔══╝     ██║   ██║   ██║██║
 ██║  ██║███████╗███████╗   ██║   ╚██████╔╝██║
 ╚═╝  ╚═╝╚══════╝╚══════╝   ╚═╝    ╚═════╝ ╚═╝
-"#,
+"#, // this one is neat
     r#"
  ███████████                     ███████████ █████  █████ █████
 ░░███░░░░░███                   ░█░░░███░░░█░░███  ░░███ ░░███ 
@@ -104,15 +104,17 @@ ____/\\\\\\\\\____________________________________/\\\\\\\\\\\\\\\__/\\\________
  ░███    ░███ ░███░░░  ░███░░░      ░███     ░███   ░███  ░███ 
  █████   █████░░██████ ░░██████     █████    ░░████████   █████
 ░░░░░   ░░░░░  ░░░░░░   ░░░░░░     ░░░░░      ░░░░░░░░   ░░░░░ 
-"#,
+"#, // this one should be the standard lol
 ];
-const FRAME_DURATION_MS: u64 = 700; // ms
+const FRAME_DURATION_MS: u64 = 600; // ms // lemme make it faster
 
 pub async fn run_home_page<B: Backend>(
     terminal: &mut Terminal<B>,
     app_state: Arc<Mutex<AppState>>,
 ) -> io::Result<TuiPage> {
-    let current_theme = get_theme(ThemeName::CatppuccinMocha);
+    let current_theme = get_theme(ThemeName::CatppuccinMocha); // best theme, gonna make it
+                                                               // editable in settings that i still
+                                                               // never implemented it
 
     loop {
         terminal.draw(|f| {

@@ -9,12 +9,13 @@ use tokio::net::TcpStream;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::{tungstenite::protocol::Message, MaybeTlsStream, WebSocketStream};
 
-// this code is so good it makes me wanna cry
+// never gonna let u crash
 
 pub type WsWriter = SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>;
 pub type WsReader = SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>;
 
-const WS_URL: &str = "wss://isock.reetui.hackclub.app";
+const WS_URL: &str = "wss://isock.reetui.hackclub.app"; // isock bc i suck when trying to deploying
+                                                        // things
 
 pub async fn connect(token: &str) -> Result<(WsWriter, WsReader), Box<dyn std::error::Error>> {
     let (ws_stream, _) = connect_async(WS_URL).await?;
