@@ -1,7 +1,8 @@
 use crate::api::models::{BroadcastMessage, Channel};
+use crate::tui::themes::ThemeName;
 use std::collections::HashMap;
 use std::time::Duration;
-use std::time::Instant;
+use std::time::Instant; // Import ThemeName
 
 /// Enum to represent the type of pop-up to display.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -9,6 +10,9 @@ pub enum PopupType {
     Quit,
     Settings,
     CreateChannel, // New pop-up type for creating channels
+    SetTheme,      // New pop-up type for theme selection
+    Deconnection,  // NEW: Pop-up type for deconnection confirmation
+    Help,          // NEW: Pop-up type for help/commands
     None,          // No pop-up active
 }
 
@@ -42,6 +46,8 @@ pub struct AppState {
     pub error_message: Option<String>, // New field for error messages
     pub error_display_until: Option<Instant>, // New field for error display duration
     pub message_scroll_offset: usize,  // New field for message scrolling
+    pub current_theme: ThemeName,      // New field for the current theme
+    pub selected_setting_index: usize, // New field for selected setting in settings popup
 }
 
 impl Default for AppState {
@@ -60,6 +66,8 @@ impl Default for AppState {
             error_message: None,             // No error initially
             error_display_until: None,       // No error display time initially
             message_scroll_offset: 0,        // Initialize scroll offset
+            current_theme: ThemeName::Default, // Default theme
+            selected_setting_index: 0,         // Default to the first setting
         }
     }
 }
@@ -88,6 +96,7 @@ impl AppState {
         self.error_message = None; // Clear error message
         self.error_display_until = None; // Clear error display time
         self.message_scroll_offset = 0; // Reset scroll offset
+        self.current_theme = ThemeName::Default; // Reset theme
     }
 
     pub fn set_current_channel(&mut self, channel: Channel) {

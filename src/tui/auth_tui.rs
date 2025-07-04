@@ -662,7 +662,7 @@ fn draw_auth_ui(
         help_text_area,
     );
 
-    let instructions_text = "Q: Quit |   : Navigate | Enter: Submit | 1-9: Themes";
+    let instructions_text = "Q: Quit |   : Navigate | Enter: Submit";
     let instructions = Paragraph::new(Line::from(instructions_text))
         .style(Style::default().fg(rgb_to_color(&theme.instructions_text)))
         .alignment(Alignment::Center);
