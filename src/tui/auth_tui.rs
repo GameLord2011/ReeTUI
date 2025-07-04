@@ -21,13 +21,15 @@ use std::{
 use tokio::time::sleep;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-enum AuthMode {
+enum AuthMode { // choose your fighter
+
     Register,
     Login,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-enum SelectedField {
+enum SelectedField { // where's the focus?
+
     Username,
     Password,
     Icon,

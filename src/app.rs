@@ -121,9 +121,7 @@ impl AppState {
         self.messages.get(channel_id)
     }
 
-    pub fn set_channels(&mut self, channels: Vec<Channel>) {
-        self.channels = channels;
-    }
+    
 
     pub fn add_or_update_channel(&mut self, new_channel: Channel) {
         if let Some(pos) = self.channels.iter().position(|c| c.id == new_channel.id) {

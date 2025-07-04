@@ -25,16 +25,15 @@ use std::{
 use tokio_tungstenite::tungstenite;
 
 fn get_color_for_user(username: &str) -> Color {
-    // A palette of vibrant, gradient-like colors
     let colors = [
-        Color::Rgb(255, 0, 255),   // Magenta
-        Color::Rgb(139, 0, 255),   // Dark Violet
-        Color::Rgb(0, 191, 255),   // Deep Sky Blue
-        Color::Rgb(0, 255, 127),   // Spring Green
-        Color::Rgb(255, 215, 0),   // Gold
-        Color::Rgb(255, 105, 180), // Hot Pink
-        Color::Rgb(255, 69, 0),    // Orange Red
-        Color::Rgb(50, 205, 50),   // Lime Green
+        Color::Rgb(255, 0, 255),
+        Color::Rgb(139, 0, 255),
+        Color::Rgb(0, 191, 255),
+        Color::Rgb(0, 255, 127),
+        Color::Rgb(255, 215, 0),
+        Color::Rgb(255, 105, 180),
+        Color::Rgb(255, 69, 0),
+        Color::Rgb(50, 205, 50),
     ];
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     username.hash(&mut hasher);
@@ -51,12 +50,12 @@ struct CreateChannelForm {
     selected_icon_index: usize,
 }
 
-#[derive(PartialEq, Default, Clone, Copy)] // Added Clone, Copy for easy copying in state transitions
+#[derive(PartialEq, Default, Clone, Copy)]
 enum CreateChannelInput {
     #[default]
     Name,
     Icon,
-    CreateButton, // New: Focusable create button
+    CreateButton, // a button to rule them all
 }
 
 impl CreateChannelForm {
@@ -789,11 +788,32 @@ fn draw_chat_ui<B: Backend>(
             );
 
         let area = match state.popup_state.popup_type {
-            PopupType::Quit | PopupType::Deconnection => centered_rect(60, 20, size),
-            PopupType::Settings => centered_rect(50, 40, size),
-            PopupType::CreateChannel => centered_rect(50, 50, size), // Adjusted size for create channel
-            PopupType::SetTheme => centered_rect(60, 50, size),
-            PopupType::Help => centered_rect(70, 70, size), // NEW: Area for Help popup
+            PopupType::Quit | PopupType::Deconnection => {
+                let width = (size.width as f32 * 0.60) as u16;
+                let height = (size.height as f32 * 0.20) as u16;
+                centered_rect(width, height, size)
+            }
+            PopupType::Settings => {
+                let width = (size.width as f32 * 0.50) as u16;
+                let height = (size.height as f32 * 0.40) as u16;
+                centered_rect(width, height, size)
+            }
+            PopupType::CreateChannel => {
+                let required_width = (ICONS.len() * 3) as u16 + 2 + 2; // Icon selector width + margins + borders
+                let required_height = 14; // 3 (name) + 3 (icon) + 1 (spacer) + 3 (button) + 2 (form_layout margins) + 2 (popup_block borders)
+                centered_rect(required_width, required_height, size)
+            }
+            PopupType::SetTheme => {
+                let required_width = (ICONS.len() * 3) as u16 + 2 + 2; // Icon selector width + margins + borders
+                let num_themes = theme_settings_form.themes.len() as u16;
+                let required_height = num_themes + 6; // Title (1) + List (num_themes + 2 for padding) + Hint (2) + margins (1)
+                centered_rect(required_width, required_height, size)
+            }
+            PopupType::Help => {
+                let width = (size.width as f32 * 0.70) as u16;
+                let height = (size.height as f32 * 0.70) as u16;
+                centered_rect(width, height, size)
+            }
             PopupType::None => Rect::default(),
         };
 
@@ -954,7 +974,6 @@ fn draw_set_theme_popup(
             let style = if is_selected {
                 Style::default()
                     .fg(rgb_to_color(&current_theme.button_text_active))
-                    .bg(rgb_to_color(&current_theme.button_bg_active))
                     .add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(rgb_to_color(&current_theme.text))
@@ -965,34 +984,65 @@ fn draw_set_theme_popup(
 
     let inner_area = popup_block.inner(area);
 
-    let theme_list_block = Block::default()
-        .border_type(BorderType::Rounded)
-        .title("Select Theme")
-        .style(
-            Style::default()
-                .fg(rgb_to_color(&current_theme.popup_border))
-                .bg(rgb_to_color(&current_theme.background)),
-        )
-        .padding(ratatui::widgets::Padding::new(1, 1, 1, 1));
+    // Calculate dynamic height for the list
+    let num_themes = theme_settings_form.themes.len() as u16;
+    let required_list_height = num_themes + 2; // 2 for top/bottom padding of the list block
 
-    let list_area_height = inner_area.height;
-    let list_area = Layout::default()
+    // Define overall layout for the popup content
+    let content_layout = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(list_area_height - 2), Constraint::Min(0)])
-        .split(inner_area)[0];
+        .constraints([
+            Constraint::Length(1),                    // Title
+            Constraint::Length(required_list_height), // Theme list
+            Constraint::Min(0),                       // Spacer
+            Constraint::Length(2),                    // Hint (including empty line)
+        ])
+        .margin(1) // Margin inside the popup_block.inner(area)
+        .split(inner_area);
 
-    let theme_list = List::new(theme_items) // Define theme_list here
+    // Render Title
+    let title_paragraph = Paragraph::new(Text::styled(
+        "Select Theme",
+        Style::default()
+            .fg(rgb_to_color(&current_theme.accent))
+            .add_modifier(Modifier::BOLD),
+    ))
+    .alignment(Alignment::Center);
+    f.render_widget(title_paragraph, content_layout[0]);
+
+    // Render Theme List
+    let theme_list_width = (ICONS.len() * 3) as u16; // Match width of icon selector
+    let list_area_h = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Min(0),
+            Constraint::Length(theme_list_width),
+            Constraint::Min(0),
+        ])
+        .split(content_layout[1]); // Render in the theme list area
+
+    let theme_list_block = Block::default().border_type(BorderType::Rounded).style(
+        Style::default()
+            .fg(rgb_to_color(&current_theme.popup_border))
+            .bg(rgb_to_color(&current_theme.background)),
+    );
+
+    let theme_list = List::new(theme_items)
         .block(theme_list_block)
         .highlight_style(
             Style::default()
                 .add_modifier(Modifier::REVERSED)
-                .fg(rgb_to_color(&current_theme.button_text_active))
-                .bg(rgb_to_color(&current_theme.button_bg_active)),
+                .fg(rgb_to_color(&current_theme.button_text_active)),
         )
         .highlight_symbol(">> ");
 
-    f.render_stateful_widget(theme_list, list_area, &mut theme_settings_form.list_state);
+    f.render_stateful_widget(
+        theme_list,
+        list_area_h[1],
+        &mut theme_settings_form.list_state,
+    );
 
+    // Render Hint
     let hint_paragraph = Paragraph::new(vec![
         Line::from(""),
         Line::from(Line::styled(
@@ -1001,13 +1051,7 @@ fn draw_set_theme_popup(
         )),
     ])
     .alignment(Alignment::Center);
-
-    let hint_area = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Length(list_area.height), Constraint::Min(0)])
-        .split(inner_area)[1];
-
-    f.render_widget(hint_paragraph, hint_area);
+    f.render_widget(hint_paragraph, content_layout[3]);
 }
 
 fn draw_settings_popup(f: &mut Frame, state: &mut AppState, area: Rect, popup_block: &Block) {
@@ -1130,7 +1174,6 @@ fn draw_create_channel_popup(
     f.render_widget(name_paragraph, name_area_h[1]);
 
     // Icon Input/Selector
-    
 
     let icon_block = Block::default()
         .borders(Borders::ALL)
@@ -1153,38 +1196,47 @@ fn draw_create_channel_popup(
         ])
         .split(form_layout[1]);
 
-    let icon_spans: Vec<Span> = ICONS
-        .iter()
-        .enumerate()
-        .map(|(i, &icon)| {
-            let is_selected = i == create_channel_form.selected_icon_index;
-            let style = if is_selected {
+    let len = ICONS.len();
+    let center = create_channel_form.selected_icon_index;
+    let display_range = 3; // Number of icons to show on each side of the center
+
+    let mut spans = Vec::with_capacity(display_range * 2 + 1);
+
+    for i in
+        (center as isize - display_range as isize)..(center as isize + display_range as isize + 1)
+    {
+        let actual_index = (i % len as isize + len as isize) % len as isize;
+        let icon_char = ICONS[actual_index as usize];
+        if actual_index == center as isize {
+            spans.push(Span::styled(
+                icon_char,
                 Style::default()
                     .fg(rgb_to_color(&current_theme.accent))
                     .add_modifier(Modifier::BOLD)
-                    .add_modifier(Modifier::UNDERLINED)
-            } else {
-                Style::default().fg(rgb_to_color(&current_theme.dim))
-            };
-            Span::styled(format!(" {} ", icon), style)
-        })
-        .collect();
+                    .add_modifier(Modifier::UNDERLINED),
+            ));
+        } else {
+            spans.push(Span::styled(
+                icon_char,
+                Style::default().fg(rgb_to_color(&current_theme.dim)),
+            ));
+        }
+        if i != center as isize + display_range as isize {
+            spans.push(Span::raw("   "));
+        }
+    }
 
-    let icon_paragraph = Paragraph::new(Line::from(icon_spans))
+    let icon_paragraph = Paragraph::new(Line::from(spans))
         .alignment(Alignment::Center)
         .block(icon_block);
-    f.render_widget(icon_paragraph, icon_selector_area_h[1]); // Render within the allocated area
+    f.render_widget(icon_paragraph, icon_selector_area_h[1]);
 
     // Create Button
     let create_button_style =
         if create_channel_form.input_focused == CreateChannelInput::CreateButton {
-            Style::default()
-                .fg(rgb_to_color(&current_theme.button_text_active))
-                .bg(rgb_to_color(&current_theme.button_bg_active))
+            Style::default().fg(rgb_to_color(&current_theme.button_text_active))
         } else {
-            Style::default()
-                .fg(rgb_to_color(&current_theme.button))
-                .bg(rgb_to_color(&current_theme.button_focus))
+            Style::default().fg(rgb_to_color(&current_theme.button))
         };
     let create_button_paragraph =
         Paragraph::new(Text::styled("  Create Channel  ", create_button_style))
@@ -1208,29 +1260,15 @@ fn draw_create_channel_popup(
     f.render_widget(create_button_paragraph, button_area_h[1]);
 
     // Cursor positioning
-                if create_channel_form.input_focused == CreateChannelInput::Name {
+    if create_channel_form.input_focused == CreateChannelInput::Name {
         let cursor_x = name_area_h[1].x + 1 + create_channel_form.name.len() as u16;
         let cursor_y = name_area_h[1].y + 1;
         f.set_cursor_position((cursor_x, cursor_y));
     }
 }
 
-fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
-    let popup_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage((100 - percent_y) / 2),
-            Constraint::Percentage(percent_y),
-            Constraint::Percentage((100 - percent_y) / 2),
-        ])
-        .split(r);
-
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage((100 - percent_x) / 2),
-            Constraint::Percentage(percent_x),
-            Constraint::Percentage((100 - percent_x) / 2),
-        ])
-        .split(popup_layout[1])[1]
+fn centered_rect(width: u16, height: u16, r: Rect) -> Rect {
+    let x = (r.width.saturating_sub(width)) / 2;
+    let y = (r.height.saturating_sub(height)) / 2;
+    Rect::new(x, y, width, height)
 }

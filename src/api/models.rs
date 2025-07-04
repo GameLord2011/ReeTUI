@@ -37,8 +37,6 @@ pub struct BroadcastMessage {
     pub content: String,
     pub timestamp: i64,
     pub channel_id: String,
-    pub channel_name: String,
-    pub channel_icon: String,
 }
 
 // for receiving freaking channel update
