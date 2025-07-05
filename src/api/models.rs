@@ -4,14 +4,14 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize)]
 pub struct AuthRequest<'a> {
     pub username: &'a str,
-    pub password_hash: &'a str,
+    pub password: &'a str,
 }
 
 // for register reqwest
 #[derive(Serialize)]
 pub struct RegisterRequest<'a> {
     pub username: &'a str,
-    pub password_hash: &'a str,
+    pub password: &'a str,
     pub icon: &'a str,
 }
 

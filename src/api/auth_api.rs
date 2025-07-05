@@ -10,13 +10,13 @@ const API_BASE_URL: &str = "https://back.reetui.hackclub.app"; // yeah, thats th
 pub async fn register(
     client: &Client,
     username: &str,
-    password_hash: &str,
+    password: &str,
     icon: &str,
 ) -> Result<TokenResponse, AuthError> {
     let endpoint = format!("{}/auth/register", API_BASE_URL);
     let payload = RegisterRequest {
         username,
-        password_hash,
+        password,
         icon,
     };
     let response = client.post(&endpoint).json(&payload).send().await?;
@@ -36,13 +36,10 @@ pub async fn register(
 pub async fn login(
     client: &Client,
     username: &str,
-    password_hash: &str,
+    password: &str,
 ) -> Result<TokenResponse, AuthError> {
     let endpoint = format!("{}/auth/login", API_BASE_URL);
-    let payload = AuthRequest {
-        username,
-        password_hash,
-    };
+    let payload = AuthRequest { username, password };
     let response = client.post(&endpoint).json(&payload).send().await?;
     let status = response.status();
 

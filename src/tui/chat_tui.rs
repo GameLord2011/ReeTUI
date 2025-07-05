@@ -286,12 +286,10 @@ pub async fn run_chat_page<B: Backend>(
                                                         create_channel_form.name.clone();
                                                     let channel_icon =
                                                         create_channel_form.get_selected_icon();
-                                                    let channel_id =
-                                                        uuid::Uuid::new_v4().to_string();
 
                                                     let command = format!(
-                                                        "/create_channel {} {} {}",
-                                                        channel_id, channel_name, channel_icon
+                                                        "/approve_channel {} {}",
+                                                        channel_name, channel_icon
                                                     );
                                                     drop(state);
                                                     if let Err(e) = websocket::send_message(
