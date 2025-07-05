@@ -59,6 +59,10 @@ pub fn parse_server_message(msg_text: &str) -> ServerMessage {
         return ServerMessage::ChannelDelete(channel_id.to_string());
     }
 
+    if let Ok(channel_broadcast) = serde_json::from_str(msg_text) {
+        return ServerMessage::ChannelUpdate(channel_broadcast);
+    }
+
     if let Ok(chat_msg) = serde_json::from_str(msg_text) {
         return ServerMessage::ChatMessage(chat_msg);
     }
