@@ -1,6 +1,7 @@
 use crate::api::models::{BroadcastMessage, Channel};
 use crate::tui::themes::ThemeName;
-use std::collections::HashMap;
+use ratatui::text::Line;
+use std::collections::{HashMap, VecDeque};
 use std::time::Duration;
 use std::time::Instant; // Import ThemeName
 
@@ -39,7 +40,9 @@ pub struct AppState {
     pub user_icon: Option<String>,
     pub current_channel: Option<Channel>,
     pub channels: Vec<Channel>,
-    pub messages: HashMap<String, Vec<BroadcastMessage>>,
+    pub messages: HashMap<String, VecDeque<BroadcastMessage>>,
+    pub rendered_messages: HashMap<String, Vec<Line<'static>>>,
+    pub channel_history_state: HashMap<String, (usize, bool)>, // (offset, has_more_history)
     pub animation_frame_index: usize,
     pub last_frame_time: Instant,
     pub popup_state: PopupState,       // New field for pop-up management
@@ -59,15 +62,16 @@ impl Default for AppState {
             current_channel: None,
             channels: Vec::new(),
             messages: HashMap::new(),
-            // Default values for animation fields
+            rendered_messages: HashMap::new(),
+            channel_history_state: HashMap::new(),
             animation_frame_index: 0,
-            last_frame_time: Instant::now(), // Initialize with the current time
-            popup_state: PopupState::default(), // Initialize pop-up state
-            error_message: None,             // No error initially
-            error_display_until: None,       // No error display time initially
-            message_scroll_offset: 0,        // Initialize scroll offset
-            current_theme: ThemeName::Default, // Default theme
-            selected_setting_index: 0,       // Default to the first setting
+            last_frame_time: Instant::now(),
+            popup_state: PopupState::default(),
+            error_message: None,
+            error_display_until: None,
+            message_scroll_offset: 0,
+            current_theme: ThemeName::Default,
+            selected_setting_index: 0,
         }
     }
 }
@@ -90,29 +94,53 @@ impl AppState {
         self.current_channel = None;
         self.channels.clear();
         self.messages.clear();
+        self.rendered_messages.clear();
+        self.channel_history_state.clear();
         self.animation_frame_index = 0;
         self.last_frame_time = Instant::now();
-        self.popup_state = PopupState::default(); // Reset pop-up state on clear
-        self.error_message = None; // Clear error message
-        self.error_display_until = None; // Clear error display time
-        self.message_scroll_offset = 0; // Reset scroll offset
-        self.current_theme = ThemeName::Default; // Reset theme
+        self.popup_state = PopupState::default();
+        self.error_message = None;
+        self.error_display_until = None;
+        self.message_scroll_offset = 0;
+        self.current_theme = ThemeName::Default;
     }
 
     pub fn set_current_channel(&mut self, channel: Channel) {
-        self.current_channel = Some(channel.clone());
-        self.messages.entry(channel.id.clone()).or_default();
-        self.message_scroll_offset = 0; // Reset scroll on channel change
+        let channel_id = channel.id.clone();
+        self.current_channel = Some(channel);
+        self.messages.entry(channel_id.clone()).or_default();
+        self.rendered_messages.entry(channel_id.clone()).or_default();
+        self.channel_history_state
+            .entry(channel_id)
+            .or_insert((0, true));
+        self.message_scroll_offset = 0;
     }
 
     pub fn add_message(&mut self, message: BroadcastMessage) {
         let channel_messages = self.messages.entry(message.channel_id.clone()).or_default();
-        channel_messages.push(message);
-        // Auto-scroll to the bottom when a new message arrives
+        channel_messages.push_back(message);
         self.message_scroll_offset = 0;
     }
 
-    pub fn get_messages_for_channel(&self, channel_id: &str) -> Option<&Vec<BroadcastMessage>> {
+    pub fn prepend_history(&mut self, channel_id: &str, history: Vec<BroadcastMessage>) {
+        if history.is_empty() {
+            if let Some(state) = self.channel_history_state.get_mut(channel_id) {
+                state.1 = false; // No more history
+            }
+            return;
+        }
+
+        let channel_messages = self.messages.entry(channel_id.to_string()).or_default();
+        for msg in history.into_iter().rev() {
+            channel_messages.push_front(msg);
+        }
+
+        if let Some(state) = self.channel_history_state.get_mut(channel_id) {
+            state.0 += 50; // Increment offset
+        }
+    }
+
+    pub fn get_messages_for_channel(&self, channel_id: &str) -> Option<&VecDeque<BroadcastMessage>> {
         self.messages.get(channel_id)
     }
 
@@ -133,15 +161,15 @@ impl AppState {
             }
         }
         self.messages.remove(channel_id);
+        self.rendered_messages.remove(channel_id);
+        self.channel_history_state.remove(channel_id);
     }
 
-    /// Sets an error message to be displayed for a short duration.
     pub fn set_error_message(&mut self, message: String, duration_ms: u64) {
         self.error_message = Some(message);
         self.error_display_until = Some(Instant::now() + Duration::from_millis(duration_ms));
     }
 
-    /// Clears the error message if its display duration has passed.
     pub fn clear_expired_error(&mut self) {
         if let Some(display_until) = self.error_display_until {
             if Instant::now() >= display_until {
@@ -151,12 +179,10 @@ impl AppState {
         }
     }
 
-    /// Scrolls messages up by one line.
     pub fn scroll_messages_up(&mut self) {
         self.message_scroll_offset = self.message_scroll_offset.saturating_add(1);
     }
 
-    /// Scrolls messages down by one line.
     pub fn scroll_messages_down(&mut self) {
         self.message_scroll_offset = self.message_scroll_offset.saturating_sub(1);
     }

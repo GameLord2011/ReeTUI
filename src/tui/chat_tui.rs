@@ -1,7 +1,7 @@
-use crate::api::models::Channel;
+use crate::api::models::{BroadcastMessage, Channel};
 use crate::api::websocket::{self, ServerMessage};
 use crate::app::{AppState, PopupType};
-use crate::tui::themes::{get_theme, rgb_to_color, ThemeName};
+use crate::tui::themes::{get_theme, rgb_to_color, Theme, ThemeName};
 use crate::tui::TuiPage;
 use chrono::{TimeZone, Utc};
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
@@ -17,6 +17,7 @@ use ratatui::{
     Frame, Terminal,
 };
 use std::{
+    collections::VecDeque,
     hash::{Hash, Hasher},
     io,
     sync::{Arc, Mutex},
@@ -208,7 +209,7 @@ pub async fn run_chat_page<B: Backend>(
     if command_tx
         .send(WsCommand::Message {
             channel_id: "home".to_string(),
-            content: "/get_history home".to_string(),
+            content: "/get_history home 0".to_string(),
         })
         .is_err()
     {
@@ -218,10 +219,18 @@ pub async fn run_chat_page<B: Backend>(
             .set_error_message("Failed to send command".to_string(), 3000);
     }
 
+    let mut last_rendered_width: u16 = 0;
+
     loop {
         app_state.lock().unwrap().clear_expired_error();
 
         terminal.draw(|f| {
+            let current_width = f.area().width;
+            if last_rendered_width != current_width {
+                app_state.lock().unwrap().rendered_messages.clear();
+                last_rendered_width = current_width;
+            }
+
             draw_chat_ui::<B>(
                 f,
                 &mut app_state.lock().unwrap(),
@@ -233,7 +242,10 @@ pub async fn run_chat_page<B: Backend>(
         })?;
 
         if event::poll(Duration::from_millis(50))? {
-            if let Event::Key(key) = event::read()? {
+            let event = event::read()?;
+            if let Event::Resize(_, _) = event {
+                app_state.lock().unwrap().rendered_messages.clear();
+            } else if let Event::Key(key) = event {
                 if key.kind == KeyEventKind::Press {
                     let mut state = app_state.lock().unwrap();
                     if state.popup_state.show {
@@ -460,7 +472,7 @@ pub async fn run_chat_page<B: Backend>(
                                         if command_tx
                                             .send(WsCommand::Message {
                                                 channel_id: channel_id.clone(),
-                                                content: format!("/get_history {}", channel_id),
+                                                content: format!("/get_history {} 0", channel_id),
                                             })
                                             .is_err()
                                         {
@@ -474,6 +486,21 @@ pub async fn run_chat_page<B: Backend>(
                             }
                             KeyCode::Up => {
                                 if key.modifiers.contains(KeyModifiers::CONTROL) {
+                                    let channel_id = state.current_channel.as_ref().unwrap().id.clone();
+                                    let rendered_count = state.rendered_messages.get(&channel_id).map_or(0, |v| v.len());
+
+                                    if state.message_scroll_offset >= rendered_count.saturating_sub(5) {
+                                        if let Some((offset, has_more)) = state.channel_history_state.get(&channel_id) {
+                                            if *has_more {
+                                                if command_tx.send(WsCommand::Message {
+                                                    channel_id: channel_id.clone(),
+                                                    content: format!("/get_history {} {}", channel_id, offset)
+                                                }).is_err() {
+                                                    state.set_error_message("Failed to request history".to_string(), 3000);
+                                                }
+                                            }
+                                        }
+                                    }
                                     state.scroll_messages_up();
                                 } else {
                                     let i = match channel_list_state.selected() {
@@ -500,7 +527,7 @@ pub async fn run_chat_page<B: Backend>(
                                                 .send(WsCommand::Message {
                                                     channel_id: channel_id.clone(),
                                                     content: format!(
-                                                        "/get_history {}",
+                                                        "/get_history {} 0",
                                                         channel_id
                                                     ),
                                                 })
@@ -543,7 +570,7 @@ pub async fn run_chat_page<B: Backend>(
                                                 .send(WsCommand::Message {
                                                     channel_id: channel_id.clone(),
                                                     content: format!(
-                                                        "/get_history {}",
+                                                        "/get_history {} 0",
                                                         channel_id
                                                     ),
                                                 })
@@ -599,6 +626,11 @@ pub async fn run_chat_page<B: Backend>(
                     match server_message {
                         ServerMessage::ChatMessage(chat_msg) => {
                             state.add_message(chat_msg);
+                        }
+                        ServerMessage::History(history) => {
+                            if !history.is_empty() {
+                                state.prepend_history(&history[0].channel_id, history.clone());
+                            }
                         }
                         ServerMessage::ChannelUpdate(channel_broadcast) => {
                             let channel = Channel {
@@ -719,127 +751,51 @@ fn draw_chat_ui<B: Backend>(
     let inner_messages_area = messages_block.inner(chat_chunks[0]);
     f.render_widget(messages_block, chat_chunks[0]);
 
-    let (formatted_lines, new_scroll_offset) = {
-        let mut formatted_lines: Vec<Line> = Vec::new();
-        let mut new_scroll_offset = state.message_scroll_offset;
+    if let Some(current_channel) = &state.current_channel {
+        let channel_id = &current_channel.id;
+        if state.rendered_messages.get(channel_id).is_none()
+            || state.rendered_messages.get(channel_id).unwrap().len()
+                != state.messages.get(channel_id).unwrap().len()
+        {
+            let messages = state.get_messages_for_channel(channel_id).unwrap();
+            let mut new_rendered_messages = VecDeque::new();
+            let mut last_user: Option<String> = None;
 
-        if let Some(current_channel) = &state.current_channel {
-            if let Some(messages) = state.get_messages_for_channel(&current_channel.id) {
-                let mut last_user: Option<String> = None;
-
-                for msg in messages.iter() {
-                    let timestamp_str = Utc
-                        .timestamp_opt(msg.timestamp, 0)
-                        .unwrap()
-                        .format("%H:%M")
-                        .to_string();
-
-                    let user_color = get_color_for_user(&msg.user);
-
-                    if last_user.as_ref() == Some(&msg.user) {
-                        for line in
-                            textwrap::wrap(&msg.content, inner_messages_area.width as usize - 2)
-                        {
-                            formatted_lines.push(Line::from(vec![
-                                Span::styled(
-                                    "│ ",
-                                    Style::default().fg(rgb_to_color(&current_theme.dim)),
-                                ),
-                                Span::raw(line.to_string()).fg(rgb_to_color(&current_theme.text)),
-                            ]));
-                        }
-                    } else {
-                        let header_spans = vec![
-                            Span::styled("╭ ", Style::default().fg(user_color)),
-                            Span::styled(
-                                format!("{} ", msg.icon),
-                                Style::default().fg(rgb_to_color(&current_theme.text)),
-                            ),
-                            Span::styled(
-                                &msg.user,
-                                Style::default().fg(user_color).add_modifier(Modifier::BOLD),
-                            ),
-                        ];
-
-                        let header_width = header_spans.iter().map(|s| s.width()).sum::<usize>();
-                        let available_width = inner_messages_area.width as usize;
-                        let timestamp_width = timestamp_str.len();
-                        let mut header_line_spans = header_spans;
-
-                        if available_width > header_width + timestamp_width + 1 {
-                            let padding = available_width
-                                .saturating_sub(header_width)
-                                .saturating_sub(timestamp_width);
-                            header_line_spans.push(Span::raw(" ".repeat(padding)));
-                            header_line_spans.push(Span::styled(
-                                timestamp_str.clone(),
-                                Style::default().fg(rgb_to_color(&current_theme.dim)),
-                            ));
-                        } else {
-                            header_line_spans.push(Span::raw(" "));
-                            header_line_spans.push(Span::styled(
-                                timestamp_str.clone(),
-                                Style::default().fg(rgb_to_color(&current_theme.dim)),
-                            ));
-                        }
-
-                        formatted_lines.push(Line::from(header_line_spans));
-
-                        for line in
-                            textwrap::wrap(&msg.content, inner_messages_area.width as usize - 2)
-                        {
-                            formatted_lines.push(Line::from(vec![
-                                Span::styled(
-                                    "│ ",
-                                    Style::default().fg(rgb_to_color(&current_theme.dim)),
-                                ),
-                                Span::raw(line.to_string()).fg(rgb_to_color(&current_theme.text)),
-                            ]));
-                        }
-                    }
-                    last_user = Some(msg.user.clone());
-                }
-            } else {
-                formatted_lines.push(Line::from(Span::styled(
-                    "No messages in this channel yet.",
-                    Style::default().fg(rgb_to_color(&current_theme.dim)),
-                )));
+            for msg in messages.iter() {
+                format_message_lines(
+                    msg,
+                    &current_theme,
+                    inner_messages_area.width,
+                    &last_user,
+                    &mut new_rendered_messages,
+                );
+                last_user = Some(msg.user.clone());
             }
-        } else {
-            formatted_lines.push(Line::from(Span::styled(
-                "Select a channel to see messages.",
-                Style::default().fg(rgb_to_color(&current_theme.dim)),
-            )));
+            state
+                .rendered_messages
+                .insert(channel_id.clone(), new_rendered_messages.into());
         }
 
-        let message_count = formatted_lines.len();
-        if new_scroll_offset >= message_count {
-            new_scroll_offset = message_count.saturating_sub(1);
-        }
+        let rendered_lines = state.rendered_messages.get(channel_id).unwrap();
+        let messages_to_render = {
+            let message_count = rendered_lines.len();
+            let view_height = inner_messages_area.height as usize;
+            let scroll_offset = state.message_scroll_offset;
 
-        (formatted_lines, new_scroll_offset)
-    };
+            let start_index = message_count.saturating_sub(view_height + scroll_offset);
+            let end_index = message_count.saturating_sub(scroll_offset);
 
-    let messages_to_render = {
-        let message_count = formatted_lines.len();
-        let view_height = inner_messages_area.height as usize;
-        let scroll_offset = new_scroll_offset;
+            if message_count > view_height {
+                rendered_lines[start_index..end_index].to_vec()
+            } else {
+                rendered_lines.clone().into()
+            }
+        };
 
-        let start_index = message_count.saturating_sub(view_height + scroll_offset);
-        let end_index = message_count.saturating_sub(scroll_offset);
-
-        if message_count > view_height {
-            formatted_lines[start_index..end_index].to_vec()
-        } else {
-            formatted_lines
-        }
-    };
-
-    let messages_paragraph =
-        Paragraph::new(messages_to_render).wrap(ratatui::widgets::Wrap { trim: false });
-    f.render_widget(messages_paragraph, inner_messages_area);
-
-    state.message_scroll_offset = new_scroll_offset;
+        let messages_paragraph =
+            Paragraph::new(messages_to_render).wrap(ratatui::widgets::Wrap { trim: false });
+        f.render_widget(messages_paragraph, inner_messages_area);
+    }
 
     let input_block = Block::default()
         .borders(Borders::ALL)
@@ -972,6 +928,82 @@ fn draw_chat_ui<B: Backend>(
         let input_cursor_x = chat_chunks[1].x + 1 + input_text.len() as u16;
         let input_cursor_y = chat_chunks[1].y + 1;
         f.set_cursor_position((input_cursor_x, input_cursor_y));
+    }
+}
+
+fn format_message_lines(
+    msg: &BroadcastMessage,
+    theme: &Theme,
+    width: u16,
+    last_user: &Option<String>,
+    lines: &mut VecDeque<Line<'static>>,
+) {
+    let timestamp_str = Utc
+        .timestamp_opt(msg.timestamp, 0)
+        .unwrap()
+        .format("%H:%M")
+        .to_string();
+
+    let user_color = get_color_for_user(&msg.user);
+
+    if last_user.as_ref() == Some(&msg.user) {
+        for line in textwrap::wrap(&msg.content, width as usize - 2) {
+            lines.push_back(Line::from(vec![
+                Span::styled(
+                    "│ ".to_string(),
+                    Style::default().fg(rgb_to_color(&theme.dim)),
+                ),
+                Span::raw(line.to_string()).fg(rgb_to_color(&theme.text)),
+            ]));
+        }
+    } else {
+        let header_spans = vec![
+            Span::styled("╭ ".to_string(), Style::default().fg(user_color)),
+            Span::styled(
+                format!("{} ", msg.icon),
+                Style::default().fg(rgb_to_color(&theme.text)),
+            ),
+            Span::styled(
+                msg.user.clone(),
+                Style::default()
+                    .fg(user_color)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ];
+
+        let header_width = header_spans.iter().map(|s| s.width()).sum::<usize>();
+        let available_width = width as usize;
+        let timestamp_width = timestamp_str.len();
+        let mut header_line_spans = header_spans;
+
+        if available_width > header_width + timestamp_width + 1 {
+            let padding = available_width
+                .saturating_sub(header_width)
+                .saturating_sub(timestamp_width);
+            header_line_spans.push(Span::raw(" ".repeat(padding)));
+            header_line_spans.push(Span::styled(
+                timestamp_str.clone(),
+                Style::default().fg(rgb_to_color(&theme.dim)),
+            ));
+        } else {
+            header_line_spans.push(Span::raw(" "));
+            header_line_spans.push(Span::styled(
+                timestamp_str.clone(),
+                Style::default().fg(rgb_to_color(&theme.dim)),
+            ));
+        }
+
+        lines.push_back(Line::from(header_line_spans));
+
+        for line in textwrap::wrap(&msg.content, width as usize - 2) {
+            lines.push_back(Line::from(vec![
+                Span::styled(
+                    "│ ".to_string(),
+                    Style::default().fg(rgb_to_color(&theme.dim)),
+                ),
+                Span::raw(line.to_string()).fg(rgb_to_color(&theme.text)),
+            ]));
+        }
     }
 }
 

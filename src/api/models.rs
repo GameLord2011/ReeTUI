@@ -54,3 +54,8 @@ pub struct Channel {
     pub name: String,
     pub icon: String,
 }
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct HistoryResponse {
+    pub history: Vec<BroadcastMessage>,
+}

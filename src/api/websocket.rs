@@ -1,6 +1,4 @@
-use crate::api::models::BroadcastMessage;
-use crate::api::models::ChannelBroadcast;
-use crate::api::models::ChannelCommand;
+use crate::api::models::{BroadcastMessage, ChannelBroadcast, ChannelCommand, HistoryResponse};
 use futures_util::{
     stream::{SplitSink, SplitStream},
     SinkExt, StreamExt,
@@ -45,10 +43,15 @@ pub enum ServerMessage {
     ChatMessage(BroadcastMessage),
     ChannelUpdate(ChannelBroadcast),
     ChannelDelete(String),
+    History(Vec<BroadcastMessage>),
     Unknown(String),
 }
 
 pub fn parse_server_message(msg_text: &str) -> ServerMessage {
+    if let Ok(history_response) = serde_json::from_str::<HistoryResponse>(msg_text) {
+        return ServerMessage::History(history_response.history);
+    }
+
     if let Some(json_str) = msg_text.strip_prefix("/channel_update ") {
         if let Ok(channel) = serde_json::from_str(json_str) {
             return ServerMessage::ChannelUpdate(channel);

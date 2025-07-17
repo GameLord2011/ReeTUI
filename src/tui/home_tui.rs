@@ -1,14 +1,14 @@
 use crate::app::AppState;
-use crate::tui::themes::{get_theme, interpolate_rgb, rgb_to_color, Theme, ThemeName};
 use crate::tui::TuiPage;
+use crate::tui::themes::{Theme, ThemeName, get_theme, interpolate_rgb, rgb_to_color};
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::{
+    Frame, Terminal,
     backend::Backend,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Style, Stylize},
     text::{Line, Span},
     widgets::{Block, Paragraph},
-    Frame, Terminal,
 };
 use std::{
     io,
@@ -113,8 +113,8 @@ pub async fn run_home_page<B: Backend>(
     app_state: Arc<Mutex<AppState>>,
 ) -> io::Result<TuiPage> {
     let current_theme = get_theme(ThemeName::CatppuccinMocha); // best theme, gonna make it
-                                                               // editable in settings that i still
-                                                               // never implemented it
+    // editable in settings that i still
+    // never implemented it
 
     loop {
         terminal.draw(|f| {
@@ -122,8 +122,8 @@ pub async fn run_home_page<B: Backend>(
         })?;
 
         let mut state = app_state.lock().unwrap();
-        let mut wait_time = Duration::from_millis(0);
         let now = Instant::now();
+        let wait_time = Duration::from_millis(0);
         let elapsed_since_last_frame = now.duration_since(state.last_frame_time);
         let required_duration_per_frame = Duration::from_millis(FRAME_DURATION_MS);
 
@@ -131,9 +131,11 @@ pub async fn run_home_page<B: Backend>(
             state.animation_frame_index =
                 (state.animation_frame_index + 1) % ANIMATION_FRAMES.len();
             state.last_frame_time = now;
-            wait_time = Duration::from_millis(0);
         } else {
-            wait_time = required_duration_per_frame.saturating_sub(elapsed_since_last_frame);
+            tokio::time::sleep(
+                required_duration_per_frame.saturating_sub(elapsed_since_last_frame),
+            )
+            .await;
         }
 
         drop(state); // bye bye
