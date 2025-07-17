@@ -14,7 +14,8 @@ impl fmt::Display for AuthError {
         match self {
             AuthError::UsernameTaken => write!(f, "This username is already taken."),
             AuthError::Unauthorized => write!(f, "Invalid username or password."),
-            AuthError::RequestFailed(e) => write!(f, "Request failed: {}", e),
+            AuthError::RequestFailed(e) => write!(f, "Request failed: {}", e), // lol, i have to
+            // change it to E
             AuthError::ServerError(sc) => write!(f, "Server returned an error: {}", sc),
         }
     }

@@ -14,6 +14,8 @@ pub mod chat_tui;
 pub mod home_tui;
 pub mod themes;
 
+// SIMPLE
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum TuiPage {
     Auth,

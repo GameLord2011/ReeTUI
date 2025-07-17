@@ -7,6 +7,8 @@ use env_logger::{Builder, Target};
 use log::error;
 use std::sync::{Arc, Mutex};
 
+// im too lazy to remove those logs huh
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _ = rustls::crypto::ring::default_provider().install_default();
@@ -19,10 +21,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             builder.target(Target::Pipe(Box::new(file)));
         } else {
             eprintln!("Warning: Could not create log file at {}", log_file_path);
-            builder.target(Target::Stderr); 
+            builder.target(Target::Stderr);
         }
     } else {
-        builder.target(Target::Stderr); 
+        builder.target(Target::Stderr);
     }
 
     builder.init();
@@ -30,7 +32,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     log::debug!("ReeTUI application started.");
 
     let app_state = Arc::new(Mutex::new(AppState::new()));
-    
+
     if let Err(e) = tui::run_tui(app_state.clone()).await {
         error!("TUI application error: {:?}", e);
     }

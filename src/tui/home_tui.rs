@@ -17,6 +17,8 @@ use std::{
 };
 
 const ANIMATION_FRAMES: [&str; 9] = [
+    // a collection of reetui logo, bc idon't know what i should
+    // choose
     r#"
 ▄▄▄  ▄▄▄ .▄▄▄ .▄▄▄▄▄▄• ▄▌▪  
 ▀▄ █·▀▄.▀·▀▄.▀·•██  █▪██▌██ 

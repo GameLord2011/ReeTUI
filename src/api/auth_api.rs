@@ -14,7 +14,8 @@ pub async fn register(
     password: &str,
     icon: &str,
 ) -> Result<TokenResponse, AuthError> {
-    let endpoint = format!("{}/auth/register", API_BASE_URL);
+    let endpoint = format!("{}/auth/register", API_BASE_URL); // why tf clippy is telling me i have
+                                                              // to change it to 'API_BASE_URL'
     let payload = RegisterRequest {
         username,
         password,

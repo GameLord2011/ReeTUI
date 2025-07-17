@@ -3,22 +3,20 @@ use crate::tui::themes::ThemeName;
 use ratatui::text::Line;
 use std::collections::{HashMap, VecDeque};
 use std::time::Duration;
-use std::time::Instant; 
-
+use std::time::Instant;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PopupType {
-    Quit,
+    Quit, //QUITE
     Settings,
-    CreateChannel, 
-    SetTheme,      
-    Deconnection,  
-    Help,          
-    Mentions,      
-    Emojis,        
-    None,          
+    CreateChannel,
+    SetTheme,
+    Deconnection,
+    Help,
+    Mentions,
+    Emojis,
+    None,
 }
-
 
 #[derive(Debug, Clone, Copy)]
 pub struct PopupState {
@@ -44,20 +42,20 @@ pub struct AppState {
     pub channels: Vec<Channel>,
     pub messages: HashMap<String, VecDeque<BroadcastMessage>>,
     pub rendered_messages: HashMap<String, Vec<Line<'static>>>,
-    pub channel_history_state: HashMap<String, (usize, bool)>, 
+    pub channel_history_state: HashMap<String, (usize, bool)>,
     pub animation_frame_index: usize,
     pub last_frame_time: Instant,
-    pub popup_state: PopupState,       
-    pub error_message: Option<String>, 
-    pub error_display_until: Option<Instant>, 
-    pub message_scroll_offset: usize,  
-    pub current_theme: ThemeName,      
-    pub selected_setting_index: usize, 
-    pub active_users: Vec<String>,     
-    pub selected_mention_index: usize, 
-    pub selected_emoji_index: usize,   
-    pub mention_query: String,         
-    pub emoji_query: String,           
+    pub popup_state: PopupState,
+    pub error_message: Option<String>,
+    pub error_display_until: Option<Instant>,
+    pub message_scroll_offset: usize,
+    pub current_theme: ThemeName,
+    pub selected_setting_index: usize,
+    pub active_users: Vec<String>,
+    pub selected_mention_index: usize,
+    pub selected_emoji_index: usize,
+    pub mention_query: String,
+    pub emoji_query: String,
 }
 
 impl Default for AppState {
@@ -139,7 +137,7 @@ impl AppState {
     pub fn prepend_history(&mut self, channel_id: &str, history: Vec<BroadcastMessage>) {
         if history.is_empty() {
             if let Some(state) = self.channel_history_state.get_mut(channel_id) {
-                state.1 = false; 
+                state.1 = false;
             }
             return;
         }
@@ -150,7 +148,7 @@ impl AppState {
         }
 
         if let Some(state) = self.channel_history_state.get_mut(channel_id) {
-            state.0 += 50; 
+            state.0 += 50;
         }
     }
 
