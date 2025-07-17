@@ -7,13 +7,10 @@ use tokio::net::TcpStream;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::{tungstenite::protocol::Message, MaybeTlsStream, WebSocketStream};
 
-// never gonna let u crash
-
 pub type WsWriter = SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>;
 pub type WsReader = SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>;
 
-const WS_URL: &str = "wss://isock.reetui.hackclub.app"; // isock bc i suck when trying to deploying
-                                                        // things
+const WS_URL: &str = "wss:isock.reetui.hackclub.app";
 
 pub async fn connect(token: &str) -> Result<(WsWriter, WsReader), Box<dyn std::error::Error>> {
     let (ws_stream, _) = connect_async(WS_URL).await?;
@@ -44,6 +41,7 @@ pub enum ServerMessage {
     ChannelUpdate(ChannelBroadcast),
     ChannelDelete(String),
     History(Vec<BroadcastMessage>),
+    ActiveUsers(Vec<String>),
     Unknown(String),
 }
 
@@ -60,6 +58,10 @@ pub fn parse_server_message(msg_text: &str) -> ServerMessage {
 
     if let Some(channel_id) = msg_text.strip_prefix("/channel_delete ") {
         return ServerMessage::ChannelDelete(channel_id.to_string());
+    }
+
+    if let Ok(active_users) = serde_json::from_str::<Vec<String>>(msg_text) {
+        return ServerMessage::ActiveUsers(active_users);
     }
 
     if let Ok(channel_broadcast) = serde_json::from_str(msg_text) {

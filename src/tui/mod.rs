@@ -22,7 +22,7 @@ pub enum TuiPage {
     Exit,
 }
 pub async fn run_tui(app_state: Arc<Mutex<AppState>>) -> io::Result<()> {
-    enable_raw_mode()?; // prepare for some tui magic
+    enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen)?;
 

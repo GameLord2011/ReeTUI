@@ -5,6 +5,7 @@ use crate::tui::themes::{get_theme, rgb_to_color, Theme, ThemeName};
 use crate::tui::TuiPage;
 use chrono::{TimeZone, Utc};
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
+use emojis;
 use futures_util::{SinkExt, StreamExt};
 use ratatui::style::Stylize;
 use ratatui::widgets::Clear;
@@ -57,7 +58,7 @@ enum CreateChannelInput {
     #[default]
     Name,
     Icon,
-    CreateButton, // a button to rule them all
+    CreateButton,
 }
 
 impl CreateChannelForm {
@@ -73,7 +74,7 @@ impl CreateChannelForm {
         self.input_focused = match self.input_focused {
             CreateChannelInput::Name => CreateChannelInput::Icon,
             CreateChannelInput::Icon => CreateChannelInput::CreateButton,
-            CreateChannelInput::CreateButton => CreateChannelInput::Name, // Cycle back to Name
+            CreateChannelInput::CreateButton => CreateChannelInput::Name,
         };
     }
 
@@ -164,7 +165,6 @@ pub async fn run_chat_page<B: Backend>(
     let mut create_channel_form = CreateChannelForm::new();
     let mut theme_settings_form = ThemeSettingsForm::new(app_state.lock().unwrap().current_theme);
 
-    // Initialize WebSocket connection
     let (mut ws_writer, mut ws_reader) = {
         let state = app_state.lock().unwrap();
         let token = state
@@ -178,11 +178,13 @@ pub async fn run_chat_page<B: Backend>(
 
     let (command_tx, mut command_rx) = mpsc::unbounded_channel::<WsCommand>();
 
-    // WebSocket writer task
     tokio::spawn(async move {
         while let Some(command) = command_rx.recv().await {
             match command {
-                WsCommand::Message { channel_id, content } => {
+                WsCommand::Message {
+                    channel_id,
+                    content,
+                } => {
                     if websocket::send_message(&mut ws_writer, &channel_id, &content)
                         .await
                         .is_err()
@@ -205,7 +207,6 @@ pub async fn run_chat_page<B: Backend>(
         }
     });
 
-    // Request initial history for "home" channel
     if command_tx
         .send(WsCommand::Message {
             channel_id: "home".to_string(),
@@ -241,6 +242,13 @@ pub async fn run_chat_page<B: Backend>(
             );
         })?;
 
+        let current_popup_type = app_state.lock().unwrap().popup_state.popup_type;
+        if app_state.lock().unwrap().popup_state.show && current_popup_type != PopupType::Emojis {
+            terminal.hide_cursor()?;
+        } else {
+            terminal.show_cursor()?;
+        }
+
         if event::poll(Duration::from_millis(50))? {
             let event = event::read()?;
             if let Event::Resize(_, _) = event {
@@ -268,7 +276,6 @@ pub async fn run_chat_page<B: Backend>(
                                 KeyCode::Down => {
                                     state.selected_setting_index =
                                         (state.selected_setting_index + 1).min(2);
-                                    // 0: Themes, 1: Deconnection, 2: Help
                                 }
                                 KeyCode::Enter => match state.selected_setting_index {
                                     0 => {
@@ -287,111 +294,93 @@ pub async fn run_chat_page<B: Backend>(
                                 KeyCode::Esc => {
                                     state.popup_state.show = false;
                                     state.popup_state.popup_type = PopupType::None;
-                                    state.selected_setting_index = 0; // Reset selected setting
+                                    state.selected_setting_index = 0;
                                 }
                                 _ => {}
                             },
-                            PopupType::CreateChannel => {
-                                match key.code {
-                                    KeyCode::Esc => {
-                                        state.popup_state.show = false;
-                                        state.popup_state.popup_type = PopupType::None;
-                                        create_channel_form = CreateChannelForm::new();
-                                    }
-                                    KeyCode::Tab => {
-                                        create_channel_form.next_input();
-                                    }
-                                    KeyCode::Up => {
-                                        // Allow Up/Down to navigate fields
-                                        create_channel_form.previous_input();
-                                    }
-                                    KeyCode::Down => {
-                                        // Allow Up/Down to navigate fields
-                                        create_channel_form.next_input();
-                                    }
-                                    KeyCode::Backspace => match create_channel_form.input_focused {
-                                        CreateChannelInput::Name => {
-                                            create_channel_form.name.pop();
-                                        }
-                                        _ => {} // Backspace does nothing for Icon or Button
-                                    },
-                                    KeyCode::Char(c) => match create_channel_form.input_focused {
-                                        CreateChannelInput::Name => {
-                                            create_channel_form.name.push(c);
-                                        }
-                                        _ => {} // Chars do nothing for Icon or Button
-                                    },
-                                    KeyCode::Left => {
-                                        if create_channel_form.input_focused
-                                            == CreateChannelInput::Icon
-                                        {
-                                            create_channel_form.previous_icon();
-                                        }
-                                    }
-                                    KeyCode::Right => {
-                                        if create_channel_form.input_focused
-                                            == CreateChannelInput::Icon
-                                        {
-                                            create_channel_form.next_icon();
-                                        }
-                                    }
-                                    KeyCode::Enter => {
-                                        match create_channel_form.input_focused {
-                                            CreateChannelInput::Name | CreateChannelInput::Icon => {
-                                                create_channel_form.next_input();
-                                                // Move to next field
-                                            }
-                                            CreateChannelInput::CreateButton => {
-                                                if !create_channel_form.name.is_empty() {
-                                                    let channel_name =
-                                                        create_channel_form.name.clone();
-                                                    let channel_icon =
-                                                        create_channel_form.get_selected_icon();
-
-                                                    let command = format!(
-                                                        "/approve_channel {} {}",
-                                                        channel_name, channel_icon
-                                                    );
-                                                    if command_tx
-                                                        .send(WsCommand::Message {
-                                                            channel_id: "home".to_string(),
-                                                            content: command,
-                                                        })
-                                                        .is_err()
-                                                    {
-                                                        state.set_error_message(
-                                                            format!(
-                                                                "Failed to create channel"
-                                                            ),
-                                                            3000,
-                                                        );
-                                                    } else {
-                                                        state.set_error_message(
-                                                            format!(
-                                                                "Channel '{}' created!",
-                                                                channel_name
-                                                            ),
-                                                            3000,
-                                                        );
-                                                        state.popup_state.show = false;
-                                                        state.popup_state.popup_type =
-                                                            PopupType::None;
-                                                        create_channel_form =
-                                                            CreateChannelForm::new();
-                                                    }
-                                                } else {
-                                                    state.set_error_message(
-                                                        "Channel name cannot be empty!"
-                                                            .to_string(),
-                                                        3000,
-                                                    );
-                                                }
-                                            }
-                                        }
+                            PopupType::CreateChannel => match key.code {
+                                KeyCode::Esc => {
+                                    state.popup_state.show = false;
+                                    state.popup_state.popup_type = PopupType::None;
+                                    create_channel_form = CreateChannelForm::new();
+                                }
+                                KeyCode::Tab => {
+                                    create_channel_form.next_input();
+                                }
+                                KeyCode::Up => {
+                                    create_channel_form.previous_input();
+                                }
+                                KeyCode::Down => {
+                                    create_channel_form.next_input();
+                                }
+                                KeyCode::Backspace => match create_channel_form.input_focused {
+                                    CreateChannelInput::Name => {
+                                        create_channel_form.name.pop();
                                     }
                                     _ => {}
+                                },
+                                KeyCode::Char(c) => match create_channel_form.input_focused {
+                                    CreateChannelInput::Name => {
+                                        create_channel_form.name.push(c);
+                                    }
+                                    _ => {}
+                                },
+                                KeyCode::Left => {
+                                    if create_channel_form.input_focused == CreateChannelInput::Icon
+                                    {
+                                        create_channel_form.previous_icon();
+                                    }
                                 }
-                            }
+                                KeyCode::Right => {
+                                    if create_channel_form.input_focused == CreateChannelInput::Icon
+                                    {
+                                        create_channel_form.next_icon();
+                                    }
+                                }
+                                KeyCode::Enter => match create_channel_form.input_focused {
+                                    CreateChannelInput::Name | CreateChannelInput::Icon => {
+                                        create_channel_form.next_input();
+                                    }
+                                    CreateChannelInput::CreateButton => {
+                                        if !create_channel_form.name.is_empty() {
+                                            let channel_name = create_channel_form.name.clone();
+                                            let channel_icon =
+                                                create_channel_form.get_selected_icon();
+
+                                            let command = format!(
+                                                "/approve_channel {} {}",
+                                                channel_name, channel_icon
+                                            );
+                                            if command_tx
+                                                .send(WsCommand::Message {
+                                                    channel_id: "home".to_string(),
+                                                    content: command,
+                                                })
+                                                .is_err()
+                                            {
+                                                state.set_error_message(
+                                                    format!("Failed to create channel"),
+                                                    3000,
+                                                );
+                                            } else {
+                                                state.set_error_message(
+                                                    format!("Channel '{}' created!", channel_name),
+                                                    3000,
+                                                );
+                                                state.popup_state.show = false;
+                                                state.popup_state.popup_type = PopupType::None;
+                                                create_channel_form = CreateChannelForm::new();
+                                            }
+                                        } else {
+                                            state.set_error_message(
+                                                "Channel name cannot be empty!".to_string(),
+                                                3000,
+                                            );
+                                        }
+                                    }
+                                },
+                                _ => {}
+                            },
                             PopupType::SetTheme => match key.code {
                                 KeyCode::Up => {
                                     theme_settings_form.previous_theme();
@@ -420,12 +409,199 @@ pub async fn run_chat_page<B: Backend>(
                                 }
                                 _ => {}
                             },
-                            PopupType::Help => {
-                                // NEW: Help popup keybindings
+                            PopupType::Help => match key.code {
+                                KeyCode::Esc => {
+                                    state.popup_state.show = false;
+                                    state.popup_state.popup_type = PopupType::None;
+                                }
+                                _ => {}
+                            },
+                            PopupType::Mentions => match key.code {
+                                KeyCode::Up => {
+                                    state.selected_mention_index =
+                                        state.selected_mention_index.saturating_sub(1);
+                                }
+                                KeyCode::Down => {
+                                    state.selected_mention_index = (state.selected_mention_index
+                                        + 1)
+                                    .min(state.active_users.len().saturating_sub(1));
+                                }
+                                KeyCode::Enter => {
+                                    if let Some(user) =
+                                        state.active_users.get(state.selected_mention_index)
+                                    {
+                                        let query_start =
+                                            input_text.rfind('@').unwrap_or(input_text.len());
+                                        input_text
+                                            .replace_range(query_start.., &format!("@{}: ", user));
+
+                                        if let Some(current_channel) = &state.current_channel {
+                                            let channel_id = current_channel.id.clone();
+                                            let notification_content =
+                                                format!("/notify {} {}", user, channel_id);
+                                            if command_tx
+                                                .send(WsCommand::Message {
+                                                    channel_id: "home".to_string(),
+                                                    content: notification_content,
+                                                })
+                                                .is_err()
+                                            {
+                                                state.set_error_message(
+                                                    "Failed to send mention notification"
+                                                        .to_string(),
+                                                    3000,
+                                                );
+                                            }
+                                        }
+                                    }
+                                    state.popup_state.show = false;
+                                    state.popup_state.popup_type = PopupType::None;
+                                    state.selected_mention_index = 0;
+                                    state.mention_query.clear();
+                                }
+                                KeyCode::Esc => {
+                                    state.popup_state.show = false;
+                                    state.popup_state.popup_type = PopupType::None;
+                                    state.selected_mention_index = 0;
+                                    state.mention_query.clear();
+                                }
+                                KeyCode::Backspace => {
+                                    state.mention_query.pop();
+                                    if state.mention_query.is_empty() {
+                                        let _ = input_text.pop();
+                                        state.popup_state.show = false;
+                                        state.popup_state.popup_type = PopupType::None;
+                                    }
+                                }
+                                KeyCode::Char(c) => {
+                                    state.mention_query.push(c);
+                                }
+                                _ => {}
+                            },
+                            PopupType::Emojis => {
+                                let filtered_emojis: Vec<_> = emojis::iter()
+                                    .filter(|emoji| {
+                                        emoji
+                                            .name()
+                                            .to_lowercase()
+                                            .contains(&state.emoji_query.to_lowercase())
+                                    })
+                                    .collect();
+                                let num_filtered_emojis = filtered_emojis.len();
+
+                                if num_filtered_emojis == 0 && !state.emoji_query.is_empty() {
+                                    state.popup_state.show = false;
+                                    state.popup_state.popup_type = PopupType::None;
+                                    state.emoji_query.clear();
+                                    continue;
+                                }
+
                                 match key.code {
+                                    KeyCode::Up => {
+                                        if num_filtered_emojis > 0 {
+                                            state.selected_emoji_index =
+                                                (state.selected_emoji_index + num_filtered_emojis
+                                                    - 1)
+                                                    % num_filtered_emojis;
+                                        } else {
+                                            state.selected_emoji_index = 0;
+                                        }
+                                    }
+                                    KeyCode::Down => {
+                                        if num_filtered_emojis > 0 {
+                                            state.selected_emoji_index =
+                                                (state.selected_emoji_index + 1)
+                                                    % num_filtered_emojis;
+                                        } else {
+                                            state.selected_emoji_index = 0;
+                                        }
+                                    }
+                                    KeyCode::Enter => {
+                                        if let Some(emoji) =
+                                            filtered_emojis.get(state.selected_emoji_index)
+                                        {
+                                            if let Some(query_start) = input_text.rfind(':') {
+                                                input_text
+                                                    .replace_range(query_start.., emoji.as_str());
+                                            } else {
+                                                input_text.push_str(emoji.as_str());
+                                            }
+                                        }
+                                        state.popup_state.show = false;
+                                        state.popup_state.popup_type = PopupType::None;
+                                        state.selected_emoji_index = 0;
+                                        state.emoji_query.clear();
+                                    }
                                     KeyCode::Esc => {
                                         state.popup_state.show = false;
                                         state.popup_state.popup_type = PopupType::None;
+                                        state.selected_emoji_index = 0;
+                                        state.emoji_query.clear();
+                                    }
+                                    KeyCode::Backspace => {
+                                        input_text.pop();
+                                        state.emoji_query.pop();
+                                        if state.emoji_query.is_empty() {
+                                            if let Some(last_char) = input_text.chars().last() {
+                                                if last_char == ':' {
+                                                    input_text.pop();
+                                                    state.popup_state.show = false;
+                                                    state.popup_state.popup_type = PopupType::None;
+                                                }
+                                            }
+                                        }
+
+                                        if num_filtered_emojis > 0 {
+                                            state.selected_emoji_index = state
+                                                .selected_emoji_index
+                                                .min(num_filtered_emojis.saturating_sub(1));
+                                        } else {
+                                            state.selected_emoji_index = 0;
+                                        }
+                                    }
+                                    KeyCode::Char(c) => {
+                                        input_text.push(c);
+
+                                        if let Some(last_colon_idx) = input_text.rfind(':') {
+                                            state.emoji_query =
+                                                input_text[last_colon_idx + 1..].to_string();
+                                        } else {
+                                            state.emoji_query.clear();
+                                        }
+
+                                        if let Some(last_colon_idx) = input_text.rfind(':') {
+                                            let potential_shortcode_with_colons =
+                                                &input_text[last_colon_idx..];
+                                            if potential_shortcode_with_colons.ends_with(':')
+                                                && potential_shortcode_with_colons.len() > 1
+                                            {
+                                                let shortcode = &potential_shortcode_with_colons
+                                                    [1..potential_shortcode_with_colons.len() - 1];
+
+                                                if !shortcode.contains(' ') {
+                                                    if let Some(emoji) =
+                                                        emojis::get_by_shortcode(shortcode)
+                                                    {
+                                                        input_text.replace_range(
+                                                            last_colon_idx..,
+                                                            emoji.as_str(),
+                                                        );
+                                                        state.popup_state.show = false;
+                                                        state.popup_state.popup_type =
+                                                            PopupType::None;
+                                                        state.emoji_query.clear();
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        if num_filtered_emojis > 0 {
+                                            state.selected_emoji_index = state
+                                                .selected_emoji_index
+                                                .min(num_filtered_emojis.saturating_sub(1));
+                                        } else {
+                                            state.selected_emoji_index = 0;
+                                        }
                                     }
                                     _ => {}
                                 }
@@ -433,11 +609,28 @@ pub async fn run_chat_page<B: Backend>(
                             _ => {}
                         }
                     } else {
-                        // Normal chat page key events
                         match key.code {
-                            KeyCode::Char(':') => {
+                            KeyCode::Char('@') => {
                                 state.popup_state.show = true;
-                                state.popup_state.popup_type = PopupType::Quit;
+                                state.popup_state.popup_type = PopupType::Mentions;
+                                if command_tx
+                                    .send(WsCommand::Message {
+                                        channel_id: "home".to_string(),
+                                        content: "/get_active_users".to_string(),
+                                    })
+                                    .is_err()
+                                {
+                                    state.set_error_message(
+                                        "Failed to request active users".to_string(),
+                                        3000,
+                                    );
+                                }
+                            }
+                            KeyCode::Char(':') => {
+                                input_text.push(':');
+                                state.popup_state.show = true;
+                                state.popup_state.popup_type = PopupType::Emojis;
+                                state.emoji_query.clear();
                             }
                             KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                                 state.popup_state.show = true;
@@ -486,17 +679,34 @@ pub async fn run_chat_page<B: Backend>(
                             }
                             KeyCode::Up => {
                                 if key.modifiers.contains(KeyModifiers::CONTROL) {
-                                    let channel_id = state.current_channel.as_ref().unwrap().id.clone();
-                                    let rendered_count = state.rendered_messages.get(&channel_id).map_or(0, |v| v.len());
+                                    let channel_id =
+                                        state.current_channel.as_ref().unwrap().id.clone();
+                                    let rendered_count = state
+                                        .rendered_messages
+                                        .get(&channel_id)
+                                        .map_or(0, |v| v.len());
 
-                                    if state.message_scroll_offset >= rendered_count.saturating_sub(5) {
-                                        if let Some((offset, has_more)) = state.channel_history_state.get(&channel_id) {
+                                    if state.message_scroll_offset
+                                        >= rendered_count.saturating_sub(5)
+                                    {
+                                        if let Some((offset, has_more)) =
+                                            state.channel_history_state.get(&channel_id)
+                                        {
                                             if *has_more {
-                                                if command_tx.send(WsCommand::Message {
-                                                    channel_id: channel_id.clone(),
-                                                    content: format!("/get_history {} {}", channel_id, offset)
-                                                }).is_err() {
-                                                    state.set_error_message("Failed to request history".to_string(), 3000);
+                                                if command_tx
+                                                    .send(WsCommand::Message {
+                                                        channel_id: channel_id.clone(),
+                                                        content: format!(
+                                                            "/get_history {} {}",
+                                                            channel_id, offset
+                                                        ),
+                                                    })
+                                                    .is_err()
+                                                {
+                                                    state.set_error_message(
+                                                        "Failed to request history".to_string(),
+                                                        3000,
+                                                    );
                                                 }
                                             }
                                         }
@@ -589,9 +799,12 @@ pub async fn run_chat_page<B: Backend>(
                                 if !input_text.is_empty() {
                                     if let Some(current_channel) = &state.current_channel {
                                         let channel_id = current_channel.id.clone();
-                                        let content = input_text.clone();
+                                        let content = replace_shortcodes_with_emojis(&input_text);
                                         if command_tx
-                                            .send(WsCommand::Message { channel_id, content })
+                                            .send(WsCommand::Message {
+                                                channel_id,
+                                                content,
+                                            })
                                             .is_err()
                                         {
                                             state.set_error_message(
@@ -607,7 +820,38 @@ pub async fn run_chat_page<B: Backend>(
                                 input_text.pop();
                             }
                             KeyCode::Char(c) => {
-                                input_text.push(c);
+                                if state.popup_state.popup_type == PopupType::Mentions {
+                                    state.mention_query.push(c);
+                                } else if state.popup_state.popup_type == PopupType::Emojis {
+                                    state.emoji_query.push(c);
+
+                                    if let Some(last_colon_idx) = input_text.rfind(':') {
+                                        let potential_shortcode_with_colons =
+                                            &input_text[last_colon_idx..];
+                                        if potential_shortcode_with_colons.ends_with(':')
+                                            && potential_shortcode_with_colons.len() > 1
+                                        {
+                                            let shortcode = &potential_shortcode_with_colons
+                                                [1..potential_shortcode_with_colons.len() - 1];
+
+                                            if !shortcode.contains(' ') {
+                                                if let Some(emoji) =
+                                                    emojis::get_by_shortcode(shortcode)
+                                                {
+                                                    input_text.replace_range(
+                                                        last_colon_idx..,
+                                                        emoji.as_str(),
+                                                    );
+                                                    state.popup_state.show = false;
+                                                    state.popup_state.popup_type = PopupType::None;
+                                                    state.emoji_query.clear();
+                                                }
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    input_text.push(c);
+                                }
                             }
                             _ => {}
                         }
@@ -642,6 +886,9 @@ pub async fn run_chat_page<B: Backend>(
                         }
                         ServerMessage::ChannelDelete(channel_id) => {
                             state.remove_channel(&channel_id);
+                        }
+                        ServerMessage::ActiveUsers(active_users) => {
+                            state.active_users = active_users;
                         }
                         ServerMessage::Unknown(unknown_msg) => {
                             state.set_error_message(
@@ -817,6 +1064,12 @@ fn draw_chat_ui<B: Backend>(
     let input_paragraph = Paragraph::new(Text::from(input_text.to_string()))
         .block(input_block)
         .style(Style::default().fg(rgb_to_color(&current_theme.input_text_active)));
+
+    if !state.popup_state.show || state.popup_state.popup_type == PopupType::Emojis {
+        let input_cursor_x = chat_chunks[1].x + 1 + input_text.len() as u16;
+        let input_cursor_y = chat_chunks[1].y + 1;
+        f.set_cursor_position((input_cursor_x, input_cursor_y));
+    }
     f.render_widget(input_paragraph, input_area);
 
     if state.popup_state.show {
@@ -826,8 +1079,10 @@ fn draw_chat_ui<B: Backend>(
             PopupType::CreateChannel => "Create Channel",
             PopupType::SetTheme => "Select Theme",
             PopupType::Deconnection => "Deconnection",
-            PopupType::Help => "Help - Commands", // NEW: Help popup title
-            PopupType::None => "",                // Should not be displayed
+            PopupType::Help => "Help - Commands",
+            PopupType::None => "",
+            PopupType::Mentions => "Mentions",
+            PopupType::Emojis => "Emojis",
         };
 
         let popup_block = Block::default()
@@ -852,14 +1107,14 @@ fn draw_chat_ui<B: Backend>(
                 centered_rect(width, height, size)
             }
             PopupType::CreateChannel => {
-                let required_width = (ICONS.len() * 3) as u16 + 2 + 2; // Icon selector width + margins + borders
-                let required_height = 14; // 3 (name) + 3 (icon) + 1 (spacer) + 3 (button) + 2 (form_layout margins) + 2 (popup_block borders)
+                let required_width = (ICONS.len() * 3) as u16 + 2 + 2;
+                let required_height = 14;
                 centered_rect(required_width, required_height, size)
             }
             PopupType::SetTheme => {
-                let required_width = (ICONS.len() * 3) as u16 + 2 + 2; // Icon selector width + margins + borders
+                let required_width = (ICONS.len() * 3) as u16 + 2 + 2;
                 let num_themes = theme_settings_form.themes.len() as u16;
-                let required_height = num_themes + 6; // Title (1) + List (num_themes + 2 for padding) + Hint (2) + margins (1)
+                let required_height = num_themes + 6;
                 centered_rect(required_width, required_height, size)
             }
             PopupType::Help => {
@@ -867,7 +1122,39 @@ fn draw_chat_ui<B: Backend>(
                 let height = (size.height as f32 * 0.70) as u16;
                 centered_rect(width, height, size)
             }
-            PopupType::None => Rect::default(),
+            PopupType::Mentions => {
+                let width = (size.width as f32 * 0.30) as u16;
+                let height = (size.height as f32 * 0.50) as u16;
+                let input_area_y = chat_chunks[1].y + chat_chunks[1].height - input_height;
+                Rect::new(
+                    chat_chunks[1].x,
+                    input_area_y.saturating_sub(height + 1),
+                    width,
+                    height,
+                )
+            }
+            PopupType::Emojis => {
+                let width = (size.width as f32 * 0.40) as u16;
+                let filtered_emojis_count = emojis::iter()
+                    .filter(|emoji| {
+                        emoji
+                            .name()
+                            .to_lowercase()
+                            .contains(&state.emoji_query.to_lowercase())
+                    })
+                    .count();
+                let dynamic_height = (filtered_emojis_count as u16).min(7) + 2;
+                let height = dynamic_height.max(3);
+
+                let input_area_y = chat_chunks[1].y + chat_chunks[1].height - input_height;
+                Rect::new(
+                    chat_chunks[1].x,
+                    input_area_y.saturating_sub(height + 1),
+                    width,
+                    height,
+                )
+            }
+            _ => Rect::default(),
         };
 
         f.render_widget(Clear, area);
@@ -891,6 +1178,12 @@ fn draw_chat_ui<B: Backend>(
             }
             PopupType::Help => {
                 draw_help_popup(f, state, area, &popup_block);
+            }
+            PopupType::Mentions => {
+                draw_mentions_popup(f, state, area, &popup_block);
+            }
+            PopupType::Emojis => {
+                draw_emojis_popup(f, state, area, &popup_block);
             }
             _ => { /* No specific rendering for other popup types yet */ }
         }
@@ -947,7 +1240,30 @@ fn format_message_lines(
     let user_color = get_color_for_user(&msg.user);
 
     if last_user.as_ref() == Some(&msg.user) {
-        for line in textwrap::wrap(&msg.content, width as usize - 2) {
+        let mut processed_content = String::new();
+        let mut current_text = msg.content.as_str();
+        while let Some(start_index) = current_text.find(":") {
+            if let Some(end_index) = current_text[start_index + 1..].find(":") {
+                let shortcode_start = start_index + 1;
+                let shortcode_end = start_index + 1 + end_index;
+                let shortcode = &current_text[shortcode_start..shortcode_end];
+
+                if let Some(emoji) = emojis::get_by_shortcode(shortcode) {
+                    processed_content.push_str(&current_text[..start_index]);
+                    processed_content.push_str(emoji.as_str());
+                    current_text = &current_text[shortcode_end + 1..];
+                } else {
+                    processed_content.push_str(&current_text[..shortcode_end + 1]);
+                    current_text = &current_text[shortcode_end + 1..];
+                }
+            } else {
+                processed_content.push_str(current_text);
+                current_text = "";
+            }
+        }
+        processed_content.push_str(current_text);
+
+        for line in textwrap::wrap(&processed_content, width as usize - 2) {
             lines.push_back(Line::from(vec![
                 Span::styled(
                     "│ ".to_string(),
@@ -965,9 +1281,7 @@ fn format_message_lines(
             ),
             Span::styled(
                 msg.user.clone(),
-                Style::default()
-                    .fg(user_color)
-                    .add_modifier(Modifier::BOLD),
+                Style::default().fg(user_color).add_modifier(Modifier::BOLD),
             ),
         ];
 
@@ -995,7 +1309,30 @@ fn format_message_lines(
 
         lines.push_back(Line::from(header_line_spans));
 
-        for line in textwrap::wrap(&msg.content, width as usize - 2) {
+        let mut processed_content = String::new();
+        let mut current_text = msg.content.as_str();
+        while let Some(start_index) = current_text.find(":") {
+            if let Some(end_index) = current_text[start_index + 1..].find(":") {
+                let shortcode_start = start_index + 1;
+                let shortcode_end = start_index + 1 + end_index;
+                let shortcode = &current_text[shortcode_start..shortcode_end];
+
+                if let Some(emoji) = emojis::get_by_shortcode(shortcode) {
+                    processed_content.push_str(&current_text[..start_index]);
+                    processed_content.push_str(emoji.as_str());
+                    current_text = &current_text[shortcode_end + 1..];
+                } else {
+                    processed_content.push_str(&current_text[..shortcode_end + 1]);
+                    current_text = &current_text[shortcode_end + 1..];
+                }
+            } else {
+                processed_content.push_str(current_text);
+                current_text = "";
+            }
+        }
+        processed_content.push_str(current_text);
+
+        for line in textwrap::wrap(&processed_content, width as usize - 2) {
             lines.push_back(Line::from(vec![
                 Span::styled(
                     "│ ".to_string(),
@@ -1045,7 +1382,7 @@ fn draw_help_popup(f: &mut Frame, state: &mut AppState, area: Rect, popup_block:
 
     let commands_paragraph = Paragraph::new(formatted_commands)
         .alignment(Alignment::Left)
-        .block(Block::default().padding(ratatui::widgets::Padding::new(2, 2, 2, 2))); // Add padding inside popup
+        .block(Block::default().padding(ratatui::widgets::Padding::new(2, 2, 2, 2)));
 
     f.render_widget(commands_paragraph, popup_block.inner(area));
 }
@@ -1113,23 +1450,20 @@ fn draw_set_theme_popup(
 
     let inner_area = popup_block.inner(area);
 
-    // Calculate dynamic height for the list
     let num_themes = theme_settings_form.themes.len() as u16;
-    let required_list_height = num_themes + 2; // 2 for top/bottom padding of the list block
+    let required_list_height = num_themes + 2;
 
-    // Define overall layout for the popup content
     let content_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1),                    // Title
-            Constraint::Length(required_list_height), // Theme list
-            Constraint::Min(0),                       // Spacer
-            Constraint::Length(2),                    // Hint (including empty line)
+            Constraint::Length(1),
+            Constraint::Length(required_list_height),
+            Constraint::Min(0),
+            Constraint::Length(2),
         ])
-        .margin(1) // Margin inside the popup_block.inner(area)
+        .margin(1)
         .split(inner_area);
 
-    // Render Title
     let title_paragraph = Paragraph::new(Text::styled(
         "Select Theme",
         Style::default()
@@ -1139,8 +1473,7 @@ fn draw_set_theme_popup(
     .alignment(Alignment::Center);
     f.render_widget(title_paragraph, content_layout[0]);
 
-    // Render Theme List
-    let theme_list_width = (ICONS.len() * 3) as u16; // Match width of icon selector
+    let theme_list_width = (ICONS.len() * 3) as u16;
     let list_area_h = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
@@ -1148,7 +1481,7 @@ fn draw_set_theme_popup(
             Constraint::Length(theme_list_width),
             Constraint::Min(0),
         ])
-        .split(content_layout[1]); // Render in the theme list area
+        .split(content_layout[1]);
 
     let theme_list_block = Block::default().border_type(BorderType::Rounded).style(
         Style::default()
@@ -1161,7 +1494,8 @@ fn draw_set_theme_popup(
         .highlight_style(
             Style::default()
                 .add_modifier(Modifier::REVERSED)
-                .fg(rgb_to_color(&current_theme.button_text_active)),
+                .fg(rgb_to_color(&current_theme.button_text_active))
+                .bg(rgb_to_color(&current_theme.button_bg_active)),
         )
         .highlight_symbol(">> ");
 
@@ -1171,7 +1505,6 @@ fn draw_set_theme_popup(
         &mut theme_settings_form.list_state,
     );
 
-    // Render Hint
     let hint_paragraph = Paragraph::new(vec![
         Line::from(""),
         Line::from(Line::styled(
@@ -1190,9 +1523,9 @@ fn draw_settings_popup(f: &mut Frame, state: &mut AppState, area: Rect, popup_bl
     let settings_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1), // Title
-            Constraint::Min(0),    // Options
-            Constraint::Length(1), // Hint
+            Constraint::Length(1),
+            Constraint::Min(0),
+            Constraint::Length(1),
         ])
         .margin(1)
         .split(inner_area);
@@ -1259,18 +1592,17 @@ fn draw_create_channel_popup(
     let form_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3), // For Name input
-            Constraint::Length(3), // For Icon input/selector
-            Constraint::Length(1), // Spacer for button
-            Constraint::Length(3), // For Create button
-            Constraint::Min(0),    // Spacer
+            Constraint::Length(3),
+            Constraint::Length(3),
+            Constraint::Length(1),
+            Constraint::Length(3),
+            Constraint::Min(0),
         ])
         .margin(1)
         .split(inner_area);
 
-    let icons_row_width = (ICONS.len() * 3) as u16; // 2 chars + 1 space per icon
+    let icons_row_width = (ICONS.len() * 3) as u16;
 
-    // Name Input
     let name_area_h = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
@@ -1302,8 +1634,6 @@ fn draw_create_channel_popup(
         .block(name_block);
     f.render_widget(name_paragraph, name_area_h[1]);
 
-    // Icon Input/Selector
-
     let icon_block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
@@ -1327,7 +1657,7 @@ fn draw_create_channel_popup(
 
     let len = ICONS.len();
     let center = create_channel_form.selected_icon_index;
-    let display_range = 3; // Number of icons to show on each side of the center
+    let display_range = 3;
 
     let mut spans = Vec::with_capacity(display_range * 2 + 1);
 
@@ -1360,7 +1690,6 @@ fn draw_create_channel_popup(
         .block(icon_block);
     f.render_widget(icon_paragraph, icon_selector_area_h[1]);
 
-    // Create Button
     let create_button_style =
         if create_channel_form.input_focused == CreateChannelInput::CreateButton {
             Style::default().fg(rgb_to_color(&current_theme.button_text_active))
@@ -1375,20 +1704,19 @@ fn draw_create_channel_popup(
                     .borders(Borders::ALL)
                     .border_type(BorderType::Rounded)
                     .style(create_button_style),
-            ); // Apply border style based on focus
+            );
 
     let button_area_h = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
             Constraint::Min(0),
-            Constraint::Length(20), // Width of the button
+            Constraint::Length(20),
             Constraint::Min(0),
         ])
-        .split(form_layout[3]); // Place in the button row
+        .split(form_layout[3]);
 
     f.render_widget(create_button_paragraph, button_area_h[1]);
 
-    // Cursor positioning
     if create_channel_form.input_focused == CreateChannelInput::Name {
         let cursor_x = name_area_h[1].x + 1 + create_channel_form.name.len() as u16;
         let cursor_y = name_area_h[1].y + 1;
@@ -1400,4 +1728,124 @@ fn centered_rect(width: u16, height: u16, r: Rect) -> Rect {
     let x = (r.width.saturating_sub(width)) / 2;
     let y = (r.height.saturating_sub(height)) / 2;
     Rect::new(x, y, width, height)
+}
+
+fn draw_mentions_popup(f: &mut Frame, state: &mut AppState, area: Rect, popup_block: &Block) {
+    let current_theme = get_theme(state.current_theme);
+    let inner_area = popup_block.inner(area);
+
+    let filtered_users: Vec<String> = state
+        .active_users
+        .iter()
+        .filter(|user| {
+            user.to_lowercase()
+                .contains(&state.mention_query.to_lowercase())
+        })
+        .cloned()
+        .collect();
+
+    let users: Vec<ListItem> = filtered_users
+        .iter()
+        .enumerate()
+        .map(|(i, user)| {
+            let is_selected = i == state.selected_mention_index;
+            let style = if is_selected {
+                Style::default()
+                    .fg(rgb_to_color(&current_theme.button_text_active))
+                    .bg(rgb_to_color(&current_theme.button_bg_active))
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(rgb_to_color(&current_theme.text))
+            };
+            ListItem::new(user.clone()).style(style)
+        })
+        .collect();
+
+    let users_list = List::new(users)
+        .block(Block::default())
+        .highlight_style(
+            Style::default()
+                .add_modifier(Modifier::REVERSED)
+                .fg(rgb_to_color(&current_theme.button_text_active))
+                .bg(rgb_to_color(&current_theme.button_bg_active)),
+        )
+        .highlight_symbol(">> ");
+
+    let mut list_state = ListState::default();
+    list_state.select(Some(state.selected_mention_index));
+    f.render_stateful_widget(users_list, inner_area, &mut list_state);
+}
+
+fn draw_emojis_popup(f: &mut Frame, state: &mut AppState, area: Rect, popup_block: &Block) {
+    let current_theme = get_theme(state.current_theme);
+    let inner_area = popup_block.inner(area);
+
+    let filtered_emojis: Vec<_> = emojis::iter()
+        .filter(|emoji| {
+            emoji
+                .name()
+                .to_lowercase()
+                .contains(&state.emoji_query.to_lowercase())
+        })
+        .collect();
+
+    let emoji_list: Vec<ListItem> = filtered_emojis
+        .iter()
+        .enumerate()
+        .map(|(i, emoji)| {
+            let is_selected = i == state.selected_emoji_index;
+            let style = if is_selected {
+                Style::default()
+                    .fg(rgb_to_color(&current_theme.button_text_active))
+                    .bg(rgb_to_color(&current_theme.button_bg_active))
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(rgb_to_color(&current_theme.text))
+            };
+            ListItem::new(format!("{} :{}", emoji.as_str(), emoji.name())).style(style)
+        })
+        .collect();
+
+    let emojis_list = List::new(emoji_list)
+        .block(Block::default())
+        .highlight_style(
+            Style::default()
+                .add_modifier(Modifier::REVERSED)
+                .fg(rgb_to_color(&current_theme.button_text_active))
+                .bg(rgb_to_color(&current_theme.button_bg_active)),
+        )
+        .highlight_symbol(">> ");
+
+    let mut list_state = ListState::default();
+    list_state.select(Some(state.selected_emoji_index));
+    f.render_stateful_widget(emojis_list, inner_area, &mut list_state);
+}
+
+fn replace_shortcodes_with_emojis(text: &str) -> String {
+    let mut result = String::with_capacity(text.len());
+    let mut current_pos = 0;
+
+    while let Some(colon_start_idx) = text[current_pos..].find(':') {
+        let absolute_colon_start_idx = current_pos + colon_start_idx;
+        result.push_str(&text[current_pos..absolute_colon_start_idx]);
+
+        let potential_shortcode_start = absolute_colon_start_idx + 1;
+        if let Some(colon_end_idx) = text[potential_shortcode_start..].find(':') {
+            let absolute_colon_end_idx = potential_shortcode_start + colon_end_idx;
+            let shortcode_name = &text[potential_shortcode_start..absolute_colon_end_idx];
+
+            if !shortcode_name.contains(' ') {
+                if let Some(emoji) = emojis::get_by_shortcode(shortcode_name) {
+                    result.push_str(emoji.as_str());
+                    current_pos = absolute_colon_end_idx + 1;
+                    continue;
+                }
+            }
+        }
+
+        result.push(':');
+        current_pos = absolute_colon_start_idx + 1;
+    }
+    result.push_str(&text[current_pos..]);
+    result
 }

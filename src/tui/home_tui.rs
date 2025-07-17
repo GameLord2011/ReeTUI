@@ -1,14 +1,14 @@
 use crate::app::AppState;
+use crate::tui::themes::{get_theme, interpolate_rgb, rgb_to_color, Theme, ThemeName};
 use crate::tui::TuiPage;
-use crate::tui::themes::{Theme, ThemeName, get_theme, interpolate_rgb, rgb_to_color};
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::{
-    Frame, Terminal,
     backend::Backend,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Style, Stylize},
     text::{Line, Span},
     widgets::{Block, Paragraph},
+    Frame, Terminal,
 };
 use std::{
     io,
@@ -48,14 +48,14 @@ const ANIMATION_FRAMES: [&str; 9] = [
 "#,
     r#"
 ____/\\\\\\\\\____________________________________/\\\\\\\\\\\\\\\__/\\\________/\\\__/\\\\\\\\\\\_        
- __/\\\///////\\\_________________________________\///////\\\/////__\/\\\_______\/\\\_\/////\\\///__       
+ __/\\\
   _\/\\\_____\/\\\_______________________________________\/\\\_______\/\\\_______\/\\\_____\/\\\_____      
    _\/\\\\\\\\\\\/________/\\\\\\\\______/\\\\\\\\________\/\\\_______\/\\\_______\/\\\_____\/\\\_____     
-    _\/\\\//////\\\______/\\\/////\\\___/\\\/////\\\_______\/\\\_______\/\\\_______\/\\\_____\/\\\_____    
-     _\/\\\____\//\\\____/\\\\\\\\\\\___/\\\\\\\\\\\________\/\\\_______\/\\\_______\/\\\_____\/\\\_____   
-      _\/\\\_____\//\\\__\//\\///////___\//\\///////_________\/\\\_______\//\\\______/\\\______\/\\\_____  
-       _\/\\\______\//\\\__\//\\\\\\\\\\__\//\\\\\\\\\\_______\/\\\________\///\\\\\\\\\/____/\\\\\\\\\\\_ 
-        _\///________\///____\//////////____\//////////________\///___________\/////////_____\///////////__
+    _\/\\\
+     _\/\\\____\
+      _\/\\\_____\
+       _\/\\\______\
+        _\
 "#,
     r#"
    ▄████████    ▄████████    ▄████████     ███     ███    █▄   ▄█ 
@@ -72,7 +72,7 @@ ____/\\\\\\\\\____________________________________/\\\\\\\\\\\\\\\__/\\\________
  _____        _______ _    _ _____ 
 |  __ \      |__   __| |  | |_   _|
 | |__) |___  ___| |  | |  | | | |  
-|  _  // _ \/ _ \ |  | |  | | | |  
+|  _  
 | | \ \  __/  __/ |  | |__| |_| |_ 
 |_|  \_\___|\___|_|   \____/|_____|
 "#,
@@ -86,7 +86,7 @@ ____/\\\\\\\\\____________________________________/\\\\\\\\\\\\\\\__/\\\________
   ░▒ ░ ▒░ ░ ░  ░ ░ ░  ░   ░    ░░▒░ ░ ░  ▒ ░
   ░░   ░    ░      ░    ░       ░░░ ░ ░  ▒ ░
    ░        ░  ░   ░  ░           ░      ░  
-"#, // awsome ascii art, those are my favorites
+"#,
     r#"
 ██████╗ ███████╗███████╗████████╗██╗   ██╗██╗
 ██╔══██╗██╔════╝██╔════╝╚══██╔══╝██║   ██║██║
@@ -94,7 +94,7 @@ ____/\\\\\\\\\____________________________________/\\\\\\\\\\\\\\\__/\\\________
 ██╔══██╗██╔══╝  ██╔══╝     ██║   ██║   ██║██║
 ██║  ██║███████╗███████╗   ██║   ╚██████╔╝██║
 ╚═╝  ╚═╝╚══════╝╚══════╝   ╚═╝    ╚═════╝ ╚═╝
-"#, // this one is neat
+"#,
     r#"
  ███████████                     ███████████ █████  █████ █████
 ░░███░░░░░███                   ░█░░░███░░░█░░███  ░░███ ░░███ 
@@ -104,17 +104,15 @@ ____/\\\\\\\\\____________________________________/\\\\\\\\\\\\\\\__/\\\________
  ░███    ░███ ░███░░░  ░███░░░      ░███     ░███   ░███  ░███ 
  █████   █████░░██████ ░░██████     █████    ░░████████   █████
 ░░░░░   ░░░░░  ░░░░░░   ░░░░░░     ░░░░░      ░░░░░░░░   ░░░░░ 
-"#, // this one should be the standard lol
+"#,
 ];
-const FRAME_DURATION_MS: u64 = 600; // ms // lemme make it faster
+const FRAME_DURATION_MS: u64 = 600;
 
 pub async fn run_home_page<B: Backend>(
     terminal: &mut Terminal<B>,
     app_state: Arc<Mutex<AppState>>,
 ) -> io::Result<TuiPage> {
-    let current_theme = get_theme(ThemeName::CatppuccinMocha); // best theme, gonna make it
-    // editable in settings that i still
-    // never implemented it
+    let current_theme = get_theme(ThemeName::CatppuccinMocha);
 
     loop {
         terminal.draw(|f| {
@@ -138,7 +136,7 @@ pub async fn run_home_page<B: Backend>(
             .await;
         }
 
-        drop(state); // bye bye
+        drop(state);
 
         if event::poll(wait_time)? {
             if let Event::Key(key) = event::read()? {
@@ -174,7 +172,7 @@ fn draw_home_ui<B: Backend>(f: &mut Frame, app_state: Arc<Mutex<AppState>>, them
 
     let current_frame_index = app_state.lock().unwrap().animation_frame_index;
     let current_frame_str = ANIMATION_FRAMES[current_frame_index];
-    let lines: Vec<&str> = current_frame_str.lines().collect(); // No filter here
+    let lines: Vec<&str> = current_frame_str.lines().collect();
 
     let num_logo_lines = lines.len();
     let max_logo_line_width = lines.iter().map(|line| line.len()).max().unwrap_or(0) as u16;
@@ -224,9 +222,8 @@ fn draw_home_ui<B: Backend>(f: &mut Frame, app_state: Arc<Mutex<AppState>>, them
     let instructions = Paragraph::new(Line::from(instructions_text))
         .style(Style::default().fg(rgb_to_color(&theme.instructions_text)))
         .alignment(Alignment::Center);
-    f.render_widget(instructions, chunks[2]); // Render in chunks[2]
+    f.render_widget(instructions, chunks[2]);
 
-    // Gemini Notice (in chunks[3])
     let gemini_notice = Paragraph::new(Line::from(
         "This app may contain some code generated by Gemini. (i'm a little teapot, short and stout)",
     ))

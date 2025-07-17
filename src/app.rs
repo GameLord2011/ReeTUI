@@ -3,21 +3,23 @@ use crate::tui::themes::ThemeName;
 use ratatui::text::Line;
 use std::collections::{HashMap, VecDeque};
 use std::time::Duration;
-use std::time::Instant; // Import ThemeName
+use std::time::Instant; 
 
-/// Enum to represent the type of pop-up to display.
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PopupType {
     Quit,
     Settings,
-    CreateChannel, // New pop-up type for creating channels
-    SetTheme,      // New pop-up type for theme selection
-    Deconnection,  // NEW: Pop-up type for deconnection confirmation
-    Help,          // NEW: Pop-up type for help/commands
-    None,          // No pop-up active
+    CreateChannel, 
+    SetTheme,      
+    Deconnection,  
+    Help,          
+    Mentions,      
+    Emojis,        
+    None,          
 }
 
-/// Struct to manage the state of a pop-up.
+
 #[derive(Debug, Clone, Copy)]
 pub struct PopupState {
     pub show: bool,
@@ -42,15 +44,20 @@ pub struct AppState {
     pub channels: Vec<Channel>,
     pub messages: HashMap<String, VecDeque<BroadcastMessage>>,
     pub rendered_messages: HashMap<String, Vec<Line<'static>>>,
-    pub channel_history_state: HashMap<String, (usize, bool)>, // (offset, has_more_history)
+    pub channel_history_state: HashMap<String, (usize, bool)>, 
     pub animation_frame_index: usize,
     pub last_frame_time: Instant,
-    pub popup_state: PopupState,       // New field for pop-up management
-    pub error_message: Option<String>, // New field for error messages
-    pub error_display_until: Option<Instant>, // New field for error display duration
-    pub message_scroll_offset: usize,  // New field for message scrolling
-    pub current_theme: ThemeName,      // New field for the current theme
-    pub selected_setting_index: usize, // New field for selected setting in settings popup
+    pub popup_state: PopupState,       
+    pub error_message: Option<String>, 
+    pub error_display_until: Option<Instant>, 
+    pub message_scroll_offset: usize,  
+    pub current_theme: ThemeName,      
+    pub selected_setting_index: usize, 
+    pub active_users: Vec<String>,     
+    pub selected_mention_index: usize, 
+    pub selected_emoji_index: usize,   
+    pub mention_query: String,         
+    pub emoji_query: String,           
 }
 
 impl Default for AppState {
@@ -72,6 +79,11 @@ impl Default for AppState {
             message_scroll_offset: 0,
             current_theme: ThemeName::Default,
             selected_setting_index: 0,
+            active_users: Vec::new(),
+            selected_mention_index: 0,
+            selected_emoji_index: 0,
+            mention_query: String::new(),
+            emoji_query: String::new(),
         }
     }
 }
@@ -109,7 +121,9 @@ impl AppState {
         let channel_id = channel.id.clone();
         self.current_channel = Some(channel);
         self.messages.entry(channel_id.clone()).or_default();
-        self.rendered_messages.entry(channel_id.clone()).or_default();
+        self.rendered_messages
+            .entry(channel_id.clone())
+            .or_default();
         self.channel_history_state
             .entry(channel_id)
             .or_insert((0, true));
@@ -125,7 +139,7 @@ impl AppState {
     pub fn prepend_history(&mut self, channel_id: &str, history: Vec<BroadcastMessage>) {
         if history.is_empty() {
             if let Some(state) = self.channel_history_state.get_mut(channel_id) {
-                state.1 = false; // No more history
+                state.1 = false; 
             }
             return;
         }
@@ -136,11 +150,14 @@ impl AppState {
         }
 
         if let Some(state) = self.channel_history_state.get_mut(channel_id) {
-            state.0 += 50; // Increment offset
+            state.0 += 50; 
         }
     }
 
-    pub fn get_messages_for_channel(&self, channel_id: &str) -> Option<&VecDeque<BroadcastMessage>> {
+    pub fn get_messages_for_channel(
+        &self,
+        channel_id: &str,
+    ) -> Option<&VecDeque<BroadcastMessage>> {
         self.messages.get(channel_id)
     }
 

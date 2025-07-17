@@ -1,16 +1,16 @@
 use crate::api::auth_api;
 use crate::app::AppState;
-use crate::tui::TuiPage;
 use crate::tui::themes::interpolate_rgb;
-use crate::tui::themes::{Theme, ThemeName, get_theme, rgb_to_color};
+use crate::tui::themes::{get_theme, rgb_to_color, Theme, ThemeName};
+use crate::tui::TuiPage;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::{
-    Frame, Terminal,
     backend::Backend,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Clear, Paragraph},
+    Frame, Terminal,
 };
 use sha2::{Digest, Sha256};
 use std::{
@@ -22,14 +22,12 @@ use tokio::time::sleep;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 enum AuthMode {
-    // choose your fighter
     Register,
     Login,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 enum SelectedField {
-    // where's the focus?
     Username,
     Password,
     Icon,
@@ -71,7 +69,32 @@ pub async fn run_auth_page<B: Backend>(
                 &msg_to_draw,
                 current_theme,
             );
+
+            match selected_field {
+                SelectedField::Username => {
+                    let cursor_x = f.area().x
+                        + (f.area().width.saturating_sub(35)) / 2
+                        + 1
+                        + username_input.len() as u16;
+                    let cursor_y = f.area().y + 1 + 1 + 1 + 1;
+                    f.set_cursor_position((cursor_x, cursor_y));
+                }
+                SelectedField::Password => {
+                    let cursor_x = f.area().x
+                        + (f.area().width.saturating_sub(35)) / 2
+                        + 1
+                        + password_input.len() as u16;
+                    let cursor_y = f.area().y + 1 + 1 + 1 + 1 + 3;
+                    f.set_cursor_position((cursor_x, cursor_y));
+                }
+                _ => {}
+            }
         })?;
+
+        match selected_field {
+            SelectedField::Username | SelectedField::Password => terminal.show_cursor()?,
+            _ => terminal.hide_cursor()?,
+        }
 
         if event::poll(Duration::from_millis(50))? {
             if let Event::Key(key) = event::read()? {
@@ -245,10 +268,14 @@ pub async fn run_auth_page<B: Backend>(
                                             );
                                         })?;
 
+                                        let hashed_password = format!(
+                                            "{:x}",
+                                            Sha256::digest(password_input.as_bytes())
+                                        );
                                         match auth_api::login(
                                             &client,
                                             &username_input,
-                                            &password_input,
+                                            &hashed_password,
                                         )
                                         .await
                                         {
@@ -400,7 +427,7 @@ fn draw_ascii_title(f: &mut Frame, area: Rect, theme: &Theme, current_mode: &Aut
     f.render_widget(title_paragraph, title_area);
 }
 
-#[warn(clippy::too_many_arguments)] // it doesn't work wtf
+#[warn(clippy::too_many_arguments)]
 fn draw_auth_ui(
     f: &mut Frame,
     username_input: &str,

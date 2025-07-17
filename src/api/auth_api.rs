@@ -2,10 +2,11 @@ use crate::api::error::AuthError;
 use crate::api::models::AuthRequest;
 use crate::api::models::RegisterRequest;
 use crate::api::models::TokenResponse;
+use log::error;
 use reqwest::Client;
 use reqwest::StatusCode;
 
-const API_BASE_URL: &str = "https://back.reetui.hackclub.app"; // yeah, thats the back of ReeTUI
+const API_BASE_URL: &str = "https:back.reetui.hackclub.app";
 
 pub async fn register(
     client: &Client,
@@ -44,7 +45,15 @@ pub async fn login(
     let status = response.status();
 
     if status.is_success() {
-        Ok(response.json::<TokenResponse>().await?)
+        let full_response_body = response.text().await?;
+        match serde_json::from_str::<TokenResponse>(&full_response_body) {
+            Ok(token_response) => Ok(token_response),
+            Err(e) => {
+                error!("Failed to parse TokenResponse: {:?}", e);
+                error!("Raw response body: {}", full_response_body);
+                Err(AuthError::ServerError(status))
+            }
+        }
     } else {
         if status == StatusCode::UNAUTHORIZED {
             Err(AuthError::Unauthorized)

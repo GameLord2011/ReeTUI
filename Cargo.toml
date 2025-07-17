@@ -19,3 +19,6 @@ rustls = { version = "0.23.28", features = ["ring"] }
 tokio-rustls = "0.26.2"
 uuid = {version = "1.17.0", features = ["v4"]}
 textwrap = "0.16.2"
+emojis = "0.7.0"
+log = "0.4"
+env_logger = "0.11"

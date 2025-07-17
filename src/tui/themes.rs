@@ -3,8 +3,7 @@ use ratatui::style::Color;
 #[derive(Clone, Debug)]
 pub struct Rgb(pub u8, pub u8, pub u8);
 
-pub fn interpolate_rgb(start: &Rgb, end: &Rgb, fraction: f32) -> Rgb { // making colors dance
-
+pub fn interpolate_rgb(start: &Rgb, end: &Rgb, fraction: f32) -> Rgb {
     let r = (start.0 as f32 + (end.0 as f32 - start.0 as f32) * fraction) as u8;
     let g = (start.1 as f32 + (end.1 as f32 - start.1 as f32) * fraction) as u8;
     let b = (start.2 as f32 + (end.2 as f32 - start.2 as f32) * fraction) as u8;
@@ -65,7 +64,7 @@ pub fn get_theme(theme_name: ThemeName) -> Theme {
             border: Rgb(88, 91, 112),
             border_focus: Rgb(250, 179, 135),
             button: Rgb(166, 227, 161),
-            
+
             text: Rgb(205, 214, 244),
             error: Rgb(243, 139, 168),
             dim: Rgb(108, 112, 134),
@@ -84,7 +83,7 @@ pub fn get_theme(theme_name: ThemeName) -> Theme {
             button_border_active: Rgb(148, 226, 213),
             button_border_inactive: Rgb(166, 227, 161),
             button_bg_active: Rgb(148, 226, 213),
-            
+
             help_text: Rgb(108, 112, 134),
             instructions_text: Rgb(108, 112, 134),
             popup_border: Rgb(243, 139, 168),
@@ -95,7 +94,7 @@ pub fn get_theme(theme_name: ThemeName) -> Theme {
             border: Rgb(98, 114, 164),
             border_focus: Rgb(255, 121, 198),
             button: Rgb(80, 250, 123),
-            
+
             text: Rgb(248, 248, 242),
             error: Rgb(255, 85, 85),
             dim: Rgb(68, 71, 90),
@@ -113,8 +112,8 @@ pub fn get_theme(theme_name: ThemeName) -> Theme {
             button_text_inactive: Rgb(248, 248, 242),
             button_border_active: Rgb(189, 147, 249),
             button_border_inactive: Rgb(80, 250, 123),
-            button_bg_active: Rgb(189, 147, 249), // Added for active button background
-            
+            button_bg_active: Rgb(189, 147, 249),
+
             help_text: Rgb(68, 71, 90),
             instructions_text: Rgb(68, 71, 90),
             popup_border: Rgb(255, 85, 85),
@@ -125,7 +124,7 @@ pub fn get_theme(theme_name: ThemeName) -> Theme {
             border: Rgb(88, 110, 117),
             border_focus: Rgb(108, 113, 196),
             button: Rgb(38, 139, 210),
-            
+
             text: Rgb(131, 148, 150),
             error: Rgb(220, 50, 47),
             dim: Rgb(7, 54, 66),
@@ -143,8 +142,8 @@ pub fn get_theme(theme_name: ThemeName) -> Theme {
             button_text_inactive: Rgb(131, 148, 150),
             button_border_active: Rgb(42, 161, 152),
             button_border_inactive: Rgb(38, 139, 210),
-            button_bg_active: Rgb(38, 139, 210), // Added for active button background
-            
+            button_bg_active: Rgb(38, 139, 210),
+
             help_text: Rgb(7, 54, 66),
             instructions_text: Rgb(7, 54, 66),
             popup_border: Rgb(220, 50, 47),
@@ -155,7 +154,7 @@ pub fn get_theme(theme_name: ThemeName) -> Theme {
             border: Rgb(146, 122, 97),
             border_focus: Rgb(250, 184, 100),
             button: Rgb(184, 187, 38),
-            
+
             text: Rgb(235, 219, 178),
             error: Rgb(251, 73, 52),
             dim: Rgb(102, 92, 84),
@@ -173,8 +172,8 @@ pub fn get_theme(theme_name: ThemeName) -> Theme {
             button_text_inactive: Rgb(235, 219, 178),
             button_border_active: Rgb(142, 192, 124),
             button_border_inactive: Rgb(184, 187, 38),
-            button_bg_active: Rgb(142, 192, 124), // Added for active button background
-            
+            button_bg_active: Rgb(142, 192, 124),
+
             help_text: Rgb(102, 92, 84),
             instructions_text: Rgb(102, 92, 84),
             popup_border: Rgb(251, 73, 52),
@@ -185,7 +184,7 @@ pub fn get_theme(theme_name: ThemeName) -> Theme {
             border: Rgb(67, 76, 94),
             border_focus: Rgb(136, 192, 208),
             button: Rgb(163, 190, 140),
-            
+
             text: Rgb(229, 233, 240),
             error: Rgb(191, 97, 106),
             dim: Rgb(76, 86, 106),
@@ -203,8 +202,8 @@ pub fn get_theme(theme_name: ThemeName) -> Theme {
             button_text_inactive: Rgb(229, 233, 240),
             button_border_active: Rgb(180, 142, 173),
             button_border_inactive: Rgb(163, 190, 140),
-            button_bg_active: Rgb(163, 190, 140), // Added for active button background
-            
+            button_bg_active: Rgb(163, 190, 140),
+
             help_text: Rgb(76, 86, 106),
             instructions_text: Rgb(76, 86, 106),
             popup_border: Rgb(191, 97, 106),
@@ -215,7 +214,7 @@ pub fn get_theme(theme_name: ThemeName) -> Theme {
             border: Rgb(52, 73, 94),
             border_focus: Rgb(46, 204, 113),
             button: Rgb(52, 152, 219),
-            
+
             text: Rgb(236, 240, 241),
             error: Rgb(231, 76, 60),
             dim: Rgb(44, 62, 80),
@@ -233,8 +232,8 @@ pub fn get_theme(theme_name: ThemeName) -> Theme {
             button_text_inactive: Rgb(236, 240, 241),
             button_border_active: Rgb(142, 68, 173),
             button_border_inactive: Rgb(52, 152, 219),
-            button_bg_active: Rgb(52, 152, 219), // Added for active button background
-            
+            button_bg_active: Rgb(52, 152, 219),
+
             help_text: Rgb(44, 62, 80),
             instructions_text: Rgb(44, 62, 80),
             popup_border: Rgb(231, 76, 60),
@@ -245,7 +244,7 @@ pub fn get_theme(theme_name: ThemeName) -> Theme {
             border: Rgb(82, 114, 98),
             border_focus: Rgb(128, 192, 176),
             button: Rgb(92, 162, 110),
-            
+
             text: Rgb(200, 230, 210),
             error: Rgb(210, 80, 80),
             dim: Rgb(60, 80, 70),
@@ -263,8 +262,8 @@ pub fn get_theme(theme_name: ThemeName) -> Theme {
             button_text_inactive: Rgb(200, 230, 210),
             button_border_active: Rgb(160, 210, 180),
             button_border_inactive: Rgb(92, 162, 110),
-            button_bg_active: Rgb(92, 162, 110), // Added for active button background
-            
+            button_bg_active: Rgb(92, 162, 110),
+
             help_text: Rgb(60, 80, 70),
             instructions_text: Rgb(60, 80, 70),
             popup_border: Rgb(210, 80, 80),
@@ -275,7 +274,7 @@ pub fn get_theme(theme_name: ThemeName) -> Theme {
             border: Rgb(100, 100, 100),
             border_focus: Rgb(200, 200, 200),
             button: Rgb(80, 80, 80),
-            
+
             text: Rgb(220, 220, 220),
             error: Rgb(255, 0, 0),
             dim: Rgb(60, 60, 60),
@@ -293,20 +292,19 @@ pub fn get_theme(theme_name: ThemeName) -> Theme {
             button_text_inactive: Rgb(220, 220, 220),
             button_border_active: Rgb(150, 150, 150),
             button_border_inactive: Rgb(80, 80, 80),
-            button_bg_active: Rgb(80, 80, 80), // Added for active button background
-            
+            button_bg_active: Rgb(80, 80, 80),
+
             help_text: Rgb(60, 60, 60),
             instructions_text: Rgb(60, 60, 60),
             popup_border: Rgb(255, 0, 0),
             popup_text: Rgb(255, 0, 0),
         },
         ThemeName::Default => Theme {
-            // Default Theme
             background: Rgb(20, 20, 30),
             border: Rgb(120, 120, 120),
             border_focus: Rgb(255, 215, 0),
             button: Rgb(50, 150, 50),
-            
+
             text: Rgb(240, 240, 240),
             error: Rgb(230, 60, 60),
             dim: Rgb(90, 90, 90),
@@ -324,8 +322,8 @@ pub fn get_theme(theme_name: ThemeName) -> Theme {
             button_text_inactive: Rgb(240, 240, 240),
             button_border_active: Rgb(80, 200, 80),
             button_border_inactive: Rgb(50, 150, 50),
-            button_bg_active: Rgb(80, 200, 80), // Added for active button background
-            
+            button_bg_active: Rgb(80, 200, 80),
+
             help_text: Rgb(90, 90, 90),
             instructions_text: Rgb(90, 90, 90),
             popup_border: Rgb(230, 60, 60),
