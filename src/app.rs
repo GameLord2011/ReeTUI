@@ -67,7 +67,7 @@ impl Default for AppState {
             error_display_until: None,       // No error display time initially
             message_scroll_offset: 0,        // Initialize scroll offset
             current_theme: ThemeName::Default, // Default theme
-            selected_setting_index: 0,         // Default to the first setting
+            selected_setting_index: 0,       // Default to the first setting
         }
     }
 }
@@ -101,17 +101,12 @@ impl AppState {
 
     pub fn set_current_channel(&mut self, channel: Channel) {
         self.current_channel = Some(channel.clone());
-        self.messages
-            .entry(channel.id.clone())
-            .or_insert_with(Vec::new);
+        self.messages.entry(channel.id.clone()).or_default();
         self.message_scroll_offset = 0; // Reset scroll on channel change
     }
 
     pub fn add_message(&mut self, message: BroadcastMessage) {
-        let channel_messages = self
-            .messages
-            .entry(message.channel_id.clone())
-            .or_insert_with(Vec::new);
+        let channel_messages = self.messages.entry(message.channel_id.clone()).or_default();
         channel_messages.push(message);
         // Auto-scroll to the bottom when a new message arrives
         self.message_scroll_offset = 0;
@@ -121,16 +116,12 @@ impl AppState {
         self.messages.get(channel_id)
     }
 
-    
-
     pub fn add_or_update_channel(&mut self, new_channel: Channel) {
         if let Some(pos) = self.channels.iter().position(|c| c.id == new_channel.id) {
             self.channels[pos] = new_channel;
         } else {
             self.channels.push(new_channel.clone());
-            self.messages
-                .entry(new_channel.id.clone())
-                .or_insert_with(Vec::new);
+            self.messages.entry(new_channel.id.clone()).or_default();
         }
     }
 

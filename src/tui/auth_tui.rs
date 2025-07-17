@@ -1,16 +1,16 @@
 use crate::api::auth_api;
 use crate::app::AppState;
-use crate::tui::themes::interpolate_rgb;
-use crate::tui::themes::{get_theme, rgb_to_color, Theme, ThemeName};
 use crate::tui::TuiPage;
+use crate::tui::themes::interpolate_rgb;
+use crate::tui::themes::{Theme, ThemeName, get_theme, rgb_to_color};
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::{
+    Frame, Terminal,
     backend::Backend,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Clear, Paragraph},
-    Frame, Terminal,
 };
 use sha2::{Digest, Sha256};
 use std::{
@@ -21,15 +21,15 @@ use std::{
 use tokio::time::sleep;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-enum AuthMode { // choose your fighter
-
+enum AuthMode {
+    // choose your fighter
     Register,
     Login,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-enum SelectedField { // where's the focus?
-
+enum SelectedField {
+    // where's the focus?
     Username,
     Password,
     Icon,
@@ -208,7 +208,7 @@ pub async fn run_auth_page<B: Backend>(
                                                 return Ok(TuiPage::Home);
                                             }
                                             Err(e) => {
-                                                *message_state.lock().unwrap() = format!("{}", e);
+                                                *message_state.lock().unwrap() = e.to_string();
                                                 let msg_clone = message_state.clone();
                                                 tokio::spawn(async move {
                                                     sleep(Duration::from_secs(3)).await;
@@ -230,10 +230,6 @@ pub async fn run_auth_page<B: Backend>(
                                             continue;
                                         }
 
-                                        let hashed_password = format!(
-                                            "{:x}",
-                                            Sha256::digest(password_input.as_bytes())
-                                        );
                                         *message_state.lock().unwrap() =
                                             "Logging in...".to_string();
                                         terminal.draw(|f| {
@@ -252,7 +248,7 @@ pub async fn run_auth_page<B: Backend>(
                                         match auth_api::login(
                                             &client,
                                             &username_input,
-                                            &hashed_password,
+                                            &password_input,
                                         )
                                         .await
                                         {
@@ -266,7 +262,7 @@ pub async fn run_auth_page<B: Backend>(
                                                 return Ok(TuiPage::Home);
                                             }
                                             Err(e) => {
-                                                *message_state.lock().unwrap() = format!("{}", e);
+                                                *message_state.lock().unwrap() = e.to_string();
                                                 let msg_clone = message_state.clone();
                                                 tokio::spawn(async move {
                                                     sleep(Duration::from_secs(3)).await;
@@ -404,6 +400,7 @@ fn draw_ascii_title(f: &mut Frame, area: Rect, theme: &Theme, current_mode: &Aut
     f.render_widget(title_paragraph, title_area);
 }
 
+#[warn(clippy::too_many_arguments)] // it doesn't work wtf
 fn draw_auth_ui(
     f: &mut Frame,
     username_input: &str,
@@ -619,15 +616,9 @@ fn draw_auth_ui(
         rgb_to_color(&theme.button_text_inactive)
     };
 
-    let button_style = if button_is_selected {
-        Style::default()
-            .fg(button_text_color)
-            .add_modifier(Modifier::BOLD)
-    } else {
-        Style::default()
-            .fg(button_text_color)
-            .add_modifier(Modifier::BOLD)
-    };
+    let button_style = Style::default()
+        .fg(button_text_color)
+        .add_modifier(Modifier::BOLD);
     let btn_para = Paragraph::new(ratatui::text::Span::styled(button_text, button_style))
         .alignment(Alignment::Center)
         .block(

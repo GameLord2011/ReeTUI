@@ -6,7 +6,7 @@ pub struct AuthRequest<'a> {
     pub username: &'a str,
     pub password: &'a str,
 }
-
+// hello bruh, where is this
 // for register reqwest
 #[derive(Serialize)]
 pub struct RegisterRequest<'a> {
@@ -40,7 +40,7 @@ pub struct BroadcastMessage {
 }
 
 // for receiving freaking channel update
-#[derive(Deserialize, Debug, Clone)] // Added Clone derive for ChannelBroadcast
+#[derive(Deserialize, Debug, Clone)]
 pub struct ChannelBroadcast {
     pub id: String,
     pub name: String,
@@ -48,7 +48,7 @@ pub struct ChannelBroadcast {
 }
 
 // Definition for a Channel, used for managing channel lists in the client
-#[derive(Serialize, Deserialize, Debug, Clone)] // Added Serialize, Deserialize, Debug, Clone derives
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Channel {
     pub id: String,
     pub name: String,

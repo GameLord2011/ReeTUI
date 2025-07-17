@@ -22,6 +22,7 @@ use std::{
     sync::{Arc, Mutex},
     time::Duration,
 };
+use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite;
 
 fn get_color_for_user(username: &str) -> Color {
@@ -146,6 +147,11 @@ impl ThemeSettingsForm {
     }
 }
 
+enum WsCommand {
+    Message { channel_id: String, content: String },
+    Pong,
+}
+
 pub async fn run_chat_page<B: Backend>(
     terminal: &mut Terminal<B>,
     app_state: Arc<Mutex<AppState>>,
@@ -168,6 +174,49 @@ pub async fn run_chat_page<B: Backend>(
             .await
             .expect("Failed to connect to WebSocket")
     };
+
+    let (command_tx, mut command_rx) = mpsc::unbounded_channel::<WsCommand>();
+
+    // WebSocket writer task
+    tokio::spawn(async move {
+        while let Some(command) = command_rx.recv().await {
+            match command {
+                WsCommand::Message { channel_id, content } => {
+                    if websocket::send_message(&mut ws_writer, &channel_id, &content)
+                        .await
+                        .is_err()
+                    {
+                        eprintln!("Failed to send message via websocket");
+                        break;
+                    }
+                }
+                WsCommand::Pong => {
+                    if ws_writer
+                        .send(tungstenite::Message::Pong(vec![].into()))
+                        .await
+                        .is_err()
+                    {
+                        eprintln!("Failed to send pong");
+                        break;
+                    }
+                }
+            }
+        }
+    });
+
+    // Request initial history for "home" channel
+    if command_tx
+        .send(WsCommand::Message {
+            channel_id: "home".to_string(),
+            content: "/get_history home".to_string(),
+        })
+        .is_err()
+    {
+        app_state
+            .lock()
+            .unwrap()
+            .set_error_message("Failed to send command".to_string(), 3000);
+    }
 
     loop {
         app_state.lock().unwrap().clear_expired_error();
@@ -291,28 +340,20 @@ pub async fn run_chat_page<B: Backend>(
                                                         "/approve_channel {} {}",
                                                         channel_name, channel_icon
                                                     );
-                                                    drop(state);
-                                                    if let Err(e) = websocket::send_message(
-                                                        &mut ws_writer,
-                                                        "home",
-                                                        &command,
-                                                    )
-                                                    .await
+                                                    if command_tx
+                                                        .send(WsCommand::Message {
+                                                            channel_id: "home".to_string(),
+                                                            content: command,
+                                                        })
+                                                        .is_err()
                                                     {
-                                                        let mut state = app_state.lock().unwrap();
                                                         state.set_error_message(
                                                             format!(
-                                                                "Failed to create channel: {:?}",
-                                                                e
+                                                                "Failed to create channel"
                                                             ),
                                                             3000,
                                                         );
-                                                        eprintln!(
-                                                            "Failed to create channel: {:?}",
-                                                            e
-                                                        );
                                                     } else {
-                                                        let mut state = app_state.lock().unwrap();
                                                         state.set_error_message(
                                                             format!(
                                                                 "Channel '{}' created!",
@@ -328,7 +369,8 @@ pub async fn run_chat_page<B: Backend>(
                                                     }
                                                 } else {
                                                     state.set_error_message(
-                                                        "Channel name cannot be empty!".to_string(),
+                                                        "Channel name cannot be empty!"
+                                                            .to_string(),
                                                         3000,
                                                     );
                                                 }
@@ -407,7 +449,27 @@ pub async fn run_chat_page<B: Backend>(
                                 };
                                 channel_list_state.select(Some(i));
                                 if let Some(selected_channel) = state.channels.get(i).cloned() {
+                                    let channel_id = selected_channel.id.clone();
+                                    let messages_loaded = state
+                                        .messages
+                                        .get(&channel_id)
+                                        .map_or(false, |v| !v.is_empty());
                                     state.set_current_channel(selected_channel);
+
+                                    if !messages_loaded {
+                                        if command_tx
+                                            .send(WsCommand::Message {
+                                                channel_id: channel_id.clone(),
+                                                content: format!("/get_history {}", channel_id),
+                                            })
+                                            .is_err()
+                                        {
+                                            state.set_error_message(
+                                                "Failed to send command".to_string(),
+                                                3000,
+                                            );
+                                        }
+                                    }
                                 }
                             }
                             KeyCode::Up => {
@@ -426,7 +488,30 @@ pub async fn run_chat_page<B: Backend>(
                                     };
                                     channel_list_state.select(Some(i));
                                     if let Some(selected_channel) = state.channels.get(i).cloned() {
+                                        let channel_id = selected_channel.id.clone();
+                                        let messages_loaded = state
+                                            .messages
+                                            .get(&channel_id)
+                                            .map_or(false, |v| !v.is_empty());
                                         state.set_current_channel(selected_channel);
+
+                                        if !messages_loaded {
+                                            if command_tx
+                                                .send(WsCommand::Message {
+                                                    channel_id: channel_id.clone(),
+                                                    content: format!(
+                                                        "/get_history {}",
+                                                        channel_id
+                                                    ),
+                                                })
+                                                .is_err()
+                                            {
+                                                state.set_error_message(
+                                                    "Failed to send command".to_string(),
+                                                    3000,
+                                                );
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -446,7 +531,30 @@ pub async fn run_chat_page<B: Backend>(
                                     };
                                     channel_list_state.select(Some(i));
                                     if let Some(selected_channel) = state.channels.get(i).cloned() {
+                                        let channel_id = selected_channel.id.clone();
+                                        let messages_loaded = state
+                                            .messages
+                                            .get(&channel_id)
+                                            .map_or(false, |v| !v.is_empty());
                                         state.set_current_channel(selected_channel);
+
+                                        if !messages_loaded {
+                                            if command_tx
+                                                .send(WsCommand::Message {
+                                                    channel_id: channel_id.clone(),
+                                                    content: format!(
+                                                        "/get_history {}",
+                                                        channel_id
+                                                    ),
+                                                })
+                                                .is_err()
+                                            {
+                                                state.set_error_message(
+                                                    "Failed to send command".to_string(),
+                                                    3000,
+                                                );
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -455,20 +563,14 @@ pub async fn run_chat_page<B: Backend>(
                                     if let Some(current_channel) = &state.current_channel {
                                         let channel_id = current_channel.id.clone();
                                         let content = input_text.clone();
-                                        drop(state);
-                                        if let Err(e) = websocket::send_message(
-                                            &mut ws_writer,
-                                            &channel_id,
-                                            &content,
-                                        )
-                                        .await
+                                        if command_tx
+                                            .send(WsCommand::Message { channel_id, content })
+                                            .is_err()
                                         {
-                                            let mut state = app_state.lock().unwrap();
                                             state.set_error_message(
-                                                format!("Failed to send message: {:?}", e),
+                                                "Failed to send message".to_string(),
                                                 3000,
                                             );
-                                            eprintln!("Failed to send message: {:?}", e);
                                         }
                                     }
                                     input_text.clear();
@@ -519,13 +621,10 @@ pub async fn run_chat_page<B: Backend>(
                     }
                 }
                 Ok(tungstenite::Message::Ping(_)) => {
-                    if let Err(e) = ws_writer
-                        .send(tungstenite::Message::Pong(vec![].into()))
-                        .await
-                    {
+                    if command_tx.send(WsCommand::Pong).is_err() {
                         let mut state = app_state.lock().unwrap();
-                        state.set_error_message(format!("Failed to send pong: {:?}", e), 3000);
-                        eprintln!("Failed to send pong: {:?}", e);
+                        state.set_error_message("Failed to send pong command".to_string(), 3000);
+                        eprintln!("Failed to send pong command");
                     }
                 }
                 Err(e) => {
