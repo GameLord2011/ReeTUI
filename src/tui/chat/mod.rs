@@ -27,6 +27,7 @@ use unicode_segmentation::UnicodeSegmentation;
 
 use crate::tui::chat::create_channel_form::{CreateChannelForm, CreateChannelInput};
 use crate::tui::chat::message_parsing::{replace_shortcodes_with_emojis, should_show_emoji_popup};
+
 use crate::tui::chat::theme_settings_form::ThemeSettingsForm;
 use crate::tui::chat::ui::draw_chat_ui;
 use crate::tui::chat::ws_command::WsCommand;
@@ -313,7 +314,7 @@ pub async fn run_chat_page<B: Backend>(
                                 _ => {}
                             },
                             PopupType::Deconnection => match key.code {
-                                KeyCode::Char('y') | KeyCode::Char('Y') => {
+                                KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
                                     state_guard.clear_user_auth();
                                     return Ok(TuiPage::Auth);
                                 }
@@ -329,119 +330,106 @@ pub async fn run_chat_page<B: Backend>(
                                 }
                                 _ => {}
                             },
-                            PopupType::Mentions => {
-                                if num_filtered_users == 0 && !state_guard.mention_query.is_empty()
-                                {
+                            PopupType::Mentions => match key.code {
+                                KeyCode::Up => {
+                                    if num_filtered_users > 0 {
+                                        state_guard.selected_mention_index = (state_guard
+                                            .selected_mention_index
+                                            + num_filtered_users
+                                            - 1)
+                                            % num_filtered_users;
+                                    } else {
+                                        state_guard.selected_mention_index = 0;
+                                    }
+                                }
+                                KeyCode::Down => {
+                                    if num_filtered_users > 0 {
+                                        state_guard.selected_mention_index =
+                                            (state_guard.selected_mention_index + 1)
+                                                % num_filtered_users;
+                                    } else {
+                                        state_guard.selected_mention_index = 0;
+                                    }
+                                }
+                                KeyCode::Enter => {
+                                    if let Some(user) =
+                                        filtered_users.get(state_guard.selected_mention_index)
+                                    {
+                                        let query_start =
+                                            input_text.rfind('@').unwrap_or(input_text.len());
+                                        input_text
+                                            .replace_range(query_start.., &format!("@{} ", user));
+                                        state_guard.cursor_position = input_text.len();
+                                    }
                                     state_guard.popup_state.show = false;
                                     state_guard.popup_state.popup_type = PopupType::None;
+                                    state_guard.selected_mention_index = 0;
                                     state_guard.mention_query.clear();
-                                    continue;
                                 }
+                                KeyCode::Esc => {
+                                    state_guard.popup_state.show = false;
+                                    state_guard.popup_state.popup_type = PopupType::None;
+                                    state_guard.selected_mention_index = 0;
+                                    state_guard.mention_query.clear();
+                                }
+                                KeyCode::Backspace => {
+                                    if state_guard.cursor_position > 0 {
+                                        let old_pos = state_guard.cursor_position;
+                                        let new_pos = input_text[..old_pos]
+                                            .grapheme_indices(true)
+                                            .last()
+                                            .map(|(i, _)| i)
+                                            .unwrap_or(0);
+                                        input_text.replace_range(new_pos..old_pos, "");
+                                        state_guard.cursor_position = new_pos;
+                                    }
 
-                                match key.code {
-                                    KeyCode::Up => {
-                                        if num_filtered_users > 0 {
-                                            state_guard.selected_mention_index = (state_guard
-                                                .selected_mention_index
-                                                + num_filtered_users
-                                                - 1)
-                                                % num_filtered_users;
-                                        } else {
-                                            state_guard.selected_mention_index = 0;
-                                        }
-                                    }
-                                    KeyCode::Down => {
-                                        if num_filtered_users > 0 {
-                                            state_guard.selected_mention_index =
-                                                (state_guard.selected_mention_index + 1)
-                                                    % num_filtered_users;
-                                        } else {
-                                            state_guard.selected_mention_index = 0;
-                                        }
-                                    }
-                                    KeyCode::Enter => {
-                                        if let Some(user) =
-                                            filtered_users.get(state_guard.selected_mention_index)
-                                        {
-                                            let query_start =
-                                                input_text.rfind('@').unwrap_or(input_text.len());
-                                            input_text.replace_range(
-                                                query_start..,
-                                                &format!("@{} ", user),
-                                            );
-                                            state_guard.cursor_position = input_text.len();
-                                        }
-                                        state_guard.popup_state.show = false;
-                                        state_guard.popup_state.popup_type = PopupType::None;
-                                        state_guard.selected_mention_index = 0;
+                                    if let Some(last_at_idx) = input_text.rfind('@') {
+                                        state_guard.mention_query =
+                                            input_text[last_at_idx + 1..].to_string();
+                                    } else {
                                         state_guard.mention_query.clear();
                                     }
-                                    KeyCode::Esc => {
-                                        state_guard.popup_state.show = false;
-                                        state_guard.popup_state.popup_type = PopupType::None;
+
+                                    if num_filtered_users > 0 {
+                                        state_guard.selected_mention_index = state_guard
+                                            .selected_mention_index
+                                            .min(num_filtered_users.saturating_sub(1));
+                                    } else {
                                         state_guard.selected_mention_index = 0;
-                                        state_guard.mention_query.clear();
                                     }
-                                    KeyCode::Backspace => {
-                                        if state_guard.cursor_position > 0 {
-                                            let old_pos = state_guard.cursor_position;
-                                            let new_pos = input_text[..old_pos]
-                                                .grapheme_indices(true)
-                                                .last()
-                                                .map(|(i, _)| i)
-                                                .unwrap_or(0);
-                                            input_text.replace_range(new_pos..old_pos, "");
-                                            state_guard.cursor_position = new_pos;
-                                        }
-
-                                        if let Some(last_at_idx) = input_text.rfind('@') {
-                                            state_guard.mention_query =
-                                                input_text[last_at_idx + 1..].to_string();
-                                        } else {
-                                            state_guard.mention_query.clear();
-                                        }
-
-                                        if num_filtered_users > 0 {
-                                            state_guard.selected_mention_index = state_guard
-                                                .selected_mention_index
-                                                .min(num_filtered_users.saturating_sub(1));
-                                        } else {
-                                            state_guard.selected_mention_index = 0;
-                                        }
-                                    }
-                                    KeyCode::Char(c) => {
-                                        input_text.insert(state_guard.cursor_position, c);
-                                        state_guard.cursor_position += c.len_utf8();
-                                        state_guard.mention_query.push(c);
-
-                                        let new_filtered_users: Vec<String> = state_guard
-                                            .active_users
-                                            .iter()
-                                            .filter(|user| {
-                                                user.to_lowercase().contains(
-                                                    &state_guard.mention_query.to_lowercase(),
-                                                )
-                                            })
-                                            .cloned()
-                                            .collect();
-                                        let new_num_filtered_users = new_filtered_users.len();
-                                        if new_num_filtered_users > 0 {
-                                            state_guard.selected_mention_index = state_guard
-                                                .selected_mention_index
-                                                .min(new_num_filtered_users.saturating_sub(1));
-                                        } else {
-                                            state_guard.selected_mention_index = 0;
-                                        }
-                                    }
-                                    _ => {}
                                 }
-                            }
+                                KeyCode::Char(c) => {
+                                    input_text.insert(state_guard.cursor_position, c);
+                                    state_guard.cursor_position += c.len_utf8();
+                                    state_guard.mention_query.push(c);
+
+                                    let new_filtered_users: Vec<String> = state_guard
+                                        .active_users
+                                        .iter()
+                                        .filter(|user| {
+                                            user.to_lowercase()
+                                                .contains(&state_guard.mention_query.to_lowercase())
+                                        })
+                                        .cloned()
+                                        .collect();
+                                    let new_num_filtered_users = new_filtered_users.len();
+                                    if new_num_filtered_users > 0 {
+                                        state_guard.selected_mention_index = state_guard
+                                            .selected_mention_index
+                                            .min(new_num_filtered_users.saturating_sub(1));
+                                    } else {
+                                        state_guard.selected_mention_index = 0;
+                                    }
+                                }
+                                _ => {}
+                            },
                             PopupType::Emojis => {
                                 if num_filtered_emojis == 0 && !state_guard.emoji_query.is_empty() {
                                     state_guard.popup_state.show = false;
                                     state_guard.popup_state.popup_type = PopupType::None;
                                     state_guard.emoji_query.clear();
-                                    continue;
+                                    // continue; // This `continue` is problematic in this context.
                                 }
 
                                 match key.code {
@@ -568,12 +556,15 @@ pub async fn run_chat_page<B: Backend>(
                                 // No specific key handling for None popup type
                             }
                         }
-                        if !should_show_emoji_popup(&input_text) {
-                            state_guard.popup_state.show = false;
-                            state_guard.popup_state.popup_type = PopupType::None;
-                            state_guard.emoji_query.clear();
-                        }
+                        // This block should only apply to Emojis popup or main input
+                        // The original `else` in `else { match key.code { ... } }` caused the error.
+                        // It seems like there was an attempt to duplicate the `match key.code`
+                        // block. Removing the outer `else` and keeping the inner `match`
+                        // directly within the `if state_guard.popup_state.show` block,
+                        // and handling cases where `state_guard.popup_state.show` is false
+                        // in a single `else` block should resolve the issue.
                     } else {
+                        // This else block handles when no popup is shown
                         match key.code {
                             KeyCode::Char('@') => {
                                 state_guard.popup_state.show = true;

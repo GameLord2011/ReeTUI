@@ -1,14 +1,14 @@
 use crate::api::models::BroadcastMessage;
 use crate::app::{AppState, PopupType};
 use crate::tui::chat::create_channel_form::{CreateChannelForm, ICONS};
-use crate::tui::chat::popups::create_channel::draw_create_channel_popup;
-use crate::tui::chat::popups::deconnection::draw_deconnection_popup;
-use crate::tui::chat::popups::emojis::draw_emojis_popup;
-use crate::tui::chat::popups::help::draw_help_popup;
-use crate::tui::chat::popups::mentions::draw_mentions_popup;
-use crate::tui::chat::popups::quit::draw_quit_popup;
-use crate::tui::chat::popups::set_theme::draw_set_theme_popup;
-use crate::tui::chat::popups::settings::draw_settings_popup;
+use crate::tui::chat::popups::create_channel::{draw_create_channel_popup, get_create_channel_popup_height};
+use crate::tui::chat::popups::deconnection::{draw_deconnection_popup, get_deconnection_popup_height};
+use crate::tui::chat::popups::emojis::{draw_emojis_popup, get_emojis_popup_height};
+use crate::tui::chat::popups::help::{draw_help_popup, get_help_popup_height};
+use crate::tui::chat::popups::mentions::{draw_mentions_popup, get_mentions_popup_height};
+use crate::tui::chat::popups::quit::{draw_quit_popup, get_quit_popup_height};
+use crate::tui::chat::popups::set_theme::{draw_set_theme_popup, get_set_theme_popup_height};
+use crate::tui::chat::popups::settings::{draw_settings_popup, get_settings_popup_height};
 use crate::tui::chat::theme_settings_form::ThemeSettingsForm;
 use crate::tui::chat::utils::{centered_rect, get_color_for_user};
 use crate::tui::themes::{get_contrasting_text_color, get_theme, rgb_to_color, Theme};
@@ -18,7 +18,7 @@ use ratatui::prelude::Stylize;
 use ratatui::{
     backend::Backend,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span, Text},
     widgets::{Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph},
     Frame,
@@ -26,6 +26,9 @@ use ratatui::{
 use regex::Regex;
 use std::collections::VecDeque;
 use unicode_segmentation::UnicodeSegmentation;
+
+
+
 pub fn draw_chat_ui<B: Backend>(
     f: &mut Frame,
     state: &mut AppState,
@@ -193,33 +196,38 @@ pub fn draw_chat_ui<B: Backend>(
                     .bg(rgb_to_color(&current_theme.background)),
             );
         let area = match state.popup_state.popup_type {
-            PopupType::Quit | PopupType::Deconnection => {
-                let width = (size.width as f32 * 0.60) as u16;
-                let height = (size.height as f32 * 0.20) as u16;
+            PopupType::Quit => {
+                let height = get_quit_popup_height();
+                let width = 40; // A reasonable default width for quit popup
+                centered_rect(width, height, size)
+            }
+            PopupType::Deconnection => {
+                let height = get_deconnection_popup_height();
+                let width = 50; // A reasonable default width for deconnection popup
                 centered_rect(width, height, size)
             }
             PopupType::Settings => {
-                let width = (size.width as f32 * 0.50) as u16;
-                let height = (size.height as f32 * 0.40) as u16;
+                let height = get_settings_popup_height();
+                let width = 40; // A reasonable default width for settings popup
                 centered_rect(width, height, size)
             }
             PopupType::CreateChannel => {
-                let required_width = (ICONS.len() * 3) as u16 + 2 + 2;
-                let required_height = 14;
-                centered_rect(required_width, required_height, size)
+                let height = get_create_channel_popup_height();
+                let width = (ICONS.len() * 3) as u16 + 2 + 2; // Width based on icons
+                centered_rect(width, height, size)
             }
             PopupType::SetTheme => {
-                let required_width = (ICONS.len() * 3) as u16 + 2 + 2;
-                let num_themes = theme_settings_form.themes.len() as u16;
-                let required_height = num_themes + 6;
-                centered_rect(required_width, required_height, size)
+                let height = get_set_theme_popup_height(theme_settings_form);
+                let width = (ICONS.len() * 3) as u16 + 2 + 2; // Width based on icons
+                centered_rect(width, height, size)
             }
             PopupType::Help => {
-                let width = (size.width as f32 * 0.70) as u16;
-                let height = (size.height as f32 * 0.70) as u16;
+                let height = get_help_popup_height();
+                let width = 80; // A reasonable default width for help popup
                 centered_rect(width, height, size)
             }
             PopupType::Mentions => {
+                let height = get_mentions_popup_height(state);
                 let max_width = filtered_users
                     .iter()
                     .map(|user| user.len() as u16 + 4)
@@ -227,16 +235,6 @@ pub fn draw_chat_ui<B: Backend>(
                     .unwrap_or(0)
                     .min(size.width - 4);
                 let width = max_width.max(20);
-                let filtered_users_count = state
-                    .active_users
-                    .iter()
-                    .filter(|user| {
-                        user.to_lowercase()
-                            .contains(&state.mention_query.to_lowercase())
-                    })
-                    .count();
-                let dynamic_height = (filtered_users_count as u16).min(7) + 2;
-                let height = dynamic_height.max(3);
                 let input_area_y = chat_chunks[1].y + chat_chunks[1].height - input_height;
                 Rect::new(
                     chat_chunks[1].x,
@@ -246,6 +244,7 @@ pub fn draw_chat_ui<B: Backend>(
                 )
             }
             PopupType::Emojis => {
+                let height = get_emojis_popup_height(state);
                 let max_width = filtered_emojis
                     .iter()
                     .map(|emoji_str| (emoji_str.len() + 3) as u16)
@@ -253,16 +252,6 @@ pub fn draw_chat_ui<B: Backend>(
                     .unwrap_or(0)
                     .min(size.width - 4);
                 let width = max_width.max(20);
-                let filtered_emojis_count = emojis::iter()
-                    .filter(|emoji| {
-                        emoji
-                            .name()
-                            .to_lowercase()
-                            .contains(&state.emoji_query.to_lowercase())
-                    })
-                    .count();
-                let dynamic_height = (filtered_emojis_count as u16).min(7) + 2;
-                let height = dynamic_height.max(3);
                 let input_area_y = chat_chunks[1].y + chat_chunks[1].height - input_height;
                 Rect::new(
                     chat_chunks[1].x,

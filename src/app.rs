@@ -7,7 +7,8 @@ use std::time::Instant;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PopupType {
-    Quit, // you should never remove it
+    
+    Quit, // Do not remove this variant, it is used in other parts of the code.
     Settings,
     CreateChannel,
     SetTheme,

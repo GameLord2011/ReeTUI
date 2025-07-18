@@ -8,6 +8,19 @@ use ratatui::{
 use crate::app::AppState;
 use crate::tui::themes::{get_theme, rgb_to_color};
 
+pub fn get_emojis_popup_height(state: &AppState) -> u16 {
+    let filtered_emojis_count = emojis::iter()
+        .filter(|emoji| {
+            emoji
+                .name()
+                .to_lowercase()
+                .contains(&state.emoji_query.to_lowercase())
+        })
+        .count();
+    // content (min(filtered_emojis_count, 10)) + borders (2) + extra padding (2)
+    std::cmp::min(filtered_emojis_count as u16, 10) + 2 + 2
+}
+
 pub fn draw_emojis_popup(f: &mut Frame, state: &mut AppState, area: Rect, popup_block: &Block) {
     let current_theme = get_theme(state.current_theme);
     let inner_area = popup_block.inner(area);

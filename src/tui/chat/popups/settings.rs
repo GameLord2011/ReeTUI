@@ -9,6 +9,12 @@ use ratatui::{
 use crate::app::AppState;
 use crate::tui::themes::{get_theme, rgb_to_color};
 
+pub fn get_settings_popup_height() -> u16 {
+    let options = ["Themes", "Deconnection", "Help / Commands"];
+    // title (1) + options (options.len()) + hint (1) + margins (2) + borders (2) + extra padding (2)
+    1 + options.len() as u16 + 1 + 2 + 2 + 2
+}
+
 pub fn draw_settings_popup(f: &mut Frame, state: &mut AppState, area: Rect, popup_block: &Block) {
     let current_theme = get_theme(state.current_theme);
     let inner_area = popup_block.inner(area);

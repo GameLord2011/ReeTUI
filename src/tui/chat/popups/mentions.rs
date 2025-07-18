@@ -8,6 +8,20 @@ use ratatui::{
 use crate::app::AppState;
 use crate::tui::themes::{get_theme, rgb_to_color};
 
+pub fn get_mentions_popup_height(state: &AppState) -> u16 {
+    let filtered_users_count = state
+        .active_users
+        .iter()
+        .filter(|user| {
+            user.to_lowercase()
+                .contains(&state.mention_query.to_lowercase())
+                && user != &&state.username.clone().unwrap_or_default()
+        })
+        .count();
+    // content (min(filtered_users_count, 10)) + borders (2) + extra padding (2)
+    std::cmp::min(filtered_users_count as u16, 10) + 2 + 2
+}
+
 pub fn draw_mentions_popup(f: &mut Frame, state: &mut AppState, area: Rect, popup_block: &Block) {
     let current_theme = get_theme(state.current_theme);
     let inner_area = popup_block.inner(area);

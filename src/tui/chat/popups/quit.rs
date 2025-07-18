@@ -10,6 +10,10 @@ use ratatui::{
 use crate::app::AppState;
 use crate::tui::themes::{get_theme, rgb_to_color};
 
+pub fn get_quit_popup_height() -> u16 {
+    4 + 2 // 4 lines of content + 2 for borders
+}
+
 pub fn draw_quit_popup(f: &mut Frame, state: &mut AppState, area: Rect, popup_block: &Block) {
     let current_theme = get_theme(state.current_theme);
     let popup_text = Paragraph::new(vec![

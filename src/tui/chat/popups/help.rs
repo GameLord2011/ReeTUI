@@ -1,13 +1,41 @@
 use ratatui::{
     layout::Rect,
-    style::{Modifier, Style},
-    text::{Line, Span, Text},
+    style::Style,
+    text::{Line, Span},
     widgets::{Block, Paragraph},
     Frame,
 };
 
 use crate::app::AppState;
 use crate::tui::themes::{get_theme, rgb_to_color};
+
+pub fn get_help_popup_height() -> u16 {
+    let commands = vec![
+        "General:",
+        "  Echap                - Open Quit popup",
+        "  Ctrl+S               - Open Settings popup",
+        "  Ctrl+N               - Open Create Channel popup",
+        "  Tab                  - Switch to next channel",
+        "  Ctrl+Up/Down         - Scroll messages",
+        "  Up/Down              - Switch channels",
+        "  Enter                - Send message",
+        "  Backspace            - Delete last char in input",
+        "",
+        "Popups (varies per popup):",
+        "  Esc                  - Close popup / Cancel",
+        "  Enter                - Confirm / Select / Create",
+        "  Tab/Up/Down          - Navigate fields/options (in forms)",
+        "  Left/Right           - Select icon (in Create Channel)",
+        "  Q/q (Quit popup)     - Confirm quit",
+        "  Y/y (Deconn popup)   - Confirm deconnection",
+        "  N/n (Deconn popup)   - Cancel deconnection",
+        "  T/t (Settings)       - Open Themes",
+        "  D/d (Settings)       - Open Deconnection",
+        "  H/h (Settings)       - Open Help (this page)",
+    ];
+    // padding (4) + commands (commands.len()) + borders (2)
+    4 + commands.len() as u16 + 2
+}
 
 pub fn draw_help_popup(f: &mut Frame, state: &mut AppState, area: Rect, popup_block: &Block) {
     let current_theme = get_theme(state.current_theme);
@@ -37,12 +65,12 @@ pub fn draw_help_popup(f: &mut Frame, state: &mut AppState, area: Rect, popup_bl
 
     let formatted_commands: Vec<Line> = commands
         .iter()
-        .map(|&s|
+        .map(|&s| {
             Line::from(Span::styled(
                 s,
                 Style::default().fg(rgb_to_color(&current_theme.text)),
             ))
-        )
+        })
         .collect();
 
     let commands_paragraph = Paragraph::new(formatted_commands)

@@ -10,6 +10,11 @@ use crate::app::AppState;
 use crate::tui::themes::{get_theme, rgb_to_color};
 use crate::tui::chat::create_channel_form::{CreateChannelForm, CreateChannelInput, ICONS};
 
+pub fn get_create_channel_popup_height() -> u16 {
+    // margin (2) + name_input (3) + icon_selector (3) + spacer (1) + create_button (3) + hint (1) + borders (2)
+    2 + 3 + 3 + 1 + 3 + 1 + 2
+}
+
 pub fn draw_create_channel_popup(
     f: &mut Frame,
     state: &mut AppState,

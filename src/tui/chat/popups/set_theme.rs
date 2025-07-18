@@ -7,9 +7,14 @@ use ratatui::{
 };
 
 use crate::app::AppState;
-use crate::tui::themes::{get_theme, rgb_to_color};
-use crate::tui::chat::theme_settings_form::ThemeSettingsForm;
 use crate::tui::chat::create_channel_form::ICONS;
+use crate::tui::chat::theme_settings_form::ThemeSettingsForm;
+use crate::tui::themes::{get_theme, rgb_to_color};
+
+pub fn get_set_theme_popup_height(theme_settings_form: &ThemeSettingsForm) -> u16 {
+    // margin (2) + title (1) + list_height (num_themes + 2) + hint (2) + borders (2) + extra padding (2)
+    2 + 1 + (theme_settings_form.themes.len() as u16 + 2) + 2 + 2 + 2
+}
 
 pub fn draw_set_theme_popup(
     f: &mut Frame,
