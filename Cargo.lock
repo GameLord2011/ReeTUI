@@ -15,6 +15,7 @@ dependencies = [
  "log",
  "notify-rust",
  "ratatui",
+ "regex",
  "reqwest",
  "rustls",
  "serde",
@@ -24,6 +25,7 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tokio-tungstenite",
+ "unicode-segmentation",
  "uuid",
 ]
 

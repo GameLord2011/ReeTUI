@@ -51,10 +51,24 @@ pub struct Theme {
     pub instructions_text: Rgb,
     pub popup_border: Rgb,
     pub popup_text: Rgb,
+    pub mention_bg: Rgb,
 }
 
 pub fn rgb_to_color(rgb: &Rgb) -> Color {
     Color::Rgb(rgb.0, rgb.1, rgb.2)
+}
+
+pub fn get_contrasting_text_color(bg_rgb: &Rgb) -> Color {
+    // Calculate luminance to determine if the background is light or dark
+    // Formula: L = 0.2126 * R + 0.7152 * G + 0.0722 * B
+    let luminance = (0.2126 * bg_rgb.0 as f32 + 0.7152 * bg_rgb.1 as f32 + 0.0722 * bg_rgb.2 as f32) / 255.0;
+
+    // Use a threshold (e.g., 0.5) to decide between black and white
+    if luminance > 0.5 {
+        Color::Black
+    } else {
+        Color::White
+    }
 }
 
 pub fn get_theme(theme_name: ThemeName) -> Theme {
@@ -88,6 +102,8 @@ pub fn get_theme(theme_name: ThemeName) -> Theme {
             instructions_text: Rgb(108, 112, 134),
             popup_border: Rgb(243, 139, 168),
             popup_text: Rgb(243, 139, 168),
+            
+            mention_bg: Rgb(250, 179, 135),
         },
         ThemeName::Dracula => Theme {
             background: Rgb(40, 42, 54),
@@ -118,6 +134,8 @@ pub fn get_theme(theme_name: ThemeName) -> Theme {
             instructions_text: Rgb(68, 71, 90),
             popup_border: Rgb(255, 85, 85),
             popup_text: Rgb(255, 85, 85),
+            
+            mention_bg: Rgb(255, 121, 198),
         },
         ThemeName::SolarizedDark => Theme {
             background: Rgb(0, 43, 54),
@@ -148,6 +166,8 @@ pub fn get_theme(theme_name: ThemeName) -> Theme {
             instructions_text: Rgb(7, 54, 66),
             popup_border: Rgb(220, 50, 47),
             popup_text: Rgb(220, 50, 47),
+            
+            mention_bg: Rgb(108, 113, 196),
         },
         ThemeName::GruvboxDark => Theme {
             background: Rgb(40, 40, 40),
@@ -178,6 +198,8 @@ pub fn get_theme(theme_name: ThemeName) -> Theme {
             instructions_text: Rgb(102, 92, 84),
             popup_border: Rgb(251, 73, 52),
             popup_text: Rgb(251, 73, 52),
+            
+            mention_bg: Rgb(250, 184, 100),
         },
         ThemeName::Nord => Theme {
             background: Rgb(46, 52, 64),
@@ -208,6 +230,8 @@ pub fn get_theme(theme_name: ThemeName) -> Theme {
             instructions_text: Rgb(76, 86, 106),
             popup_border: Rgb(191, 97, 106),
             popup_text: Rgb(191, 97, 106),
+            
+            mention_bg: Rgb(136, 192, 208),
         },
         ThemeName::Oceanic => Theme {
             background: Rgb(23, 32, 42),
@@ -238,6 +262,8 @@ pub fn get_theme(theme_name: ThemeName) -> Theme {
             instructions_text: Rgb(44, 62, 80),
             popup_border: Rgb(231, 76, 60),
             popup_text: Rgb(231, 76, 60),
+            
+            mention_bg: Rgb(46, 204, 113),
         },
         ThemeName::Forest => Theme {
             background: Rgb(34, 54, 46),
@@ -268,6 +294,8 @@ pub fn get_theme(theme_name: ThemeName) -> Theme {
             instructions_text: Rgb(60, 80, 70),
             popup_border: Rgb(210, 80, 80),
             popup_text: Rgb(210, 80, 80),
+            
+            mention_bg: Rgb(128, 192, 176),
         },
         ThemeName::Monochrome => Theme {
             background: Rgb(15, 15, 15),
@@ -298,6 +326,8 @@ pub fn get_theme(theme_name: ThemeName) -> Theme {
             instructions_text: Rgb(60, 60, 60),
             popup_border: Rgb(255, 0, 0),
             popup_text: Rgb(255, 0, 0),
+            
+            mention_bg: Rgb(200, 200, 200),
         },
         ThemeName::Default => Theme {
             background: Rgb(20, 20, 30),
@@ -328,6 +358,8 @@ pub fn get_theme(theme_name: ThemeName) -> Theme {
             instructions_text: Rgb(90, 90, 90),
             popup_border: Rgb(230, 60, 60),
             popup_text: Rgb(230, 60, 60),
+            
+            mention_bg: Rgb(255, 215, 0),
         },
     }
 }

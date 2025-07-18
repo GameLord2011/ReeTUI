@@ -10,11 +10,13 @@ use std::{
 };
 
 pub mod auth_tui;
-pub mod chat_tui;
+pub mod chat;
 pub mod home_tui;
 pub mod themes;
 
 // SIMPLE
+// BUT BEHIND THIS SIMPLICITY
+// HIDE A BUNCH OF SPAGHETI CODE
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum TuiPage {
@@ -42,7 +44,7 @@ pub async fn run_tui(app_state: Arc<Mutex<AppState>>) -> io::Result<()> {
                 current_page = home_tui::run_home_page(&mut terminal, app_state.clone()).await?;
             }
             TuiPage::Chat => {
-                current_page = chat_tui::run_chat_page(&mut terminal, app_state.clone()).await?;
+                current_page = chat::run_chat_page(&mut terminal, app_state.clone()).await?;
             }
             TuiPage::Exit => break,
         }
