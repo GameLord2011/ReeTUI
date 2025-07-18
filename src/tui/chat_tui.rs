@@ -7,6 +7,7 @@ use chrono::{TimeZone, Utc};
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use emojis;
 use futures_util::{SinkExt, StreamExt};
+use notify_rust::Notification;
 use ratatui::style::Stylize;
 use ratatui::widgets::Clear;
 use ratatui::{
@@ -243,7 +244,10 @@ pub async fn run_chat_page<B: Backend>(
         })?;
 
         let current_popup_type = app_state.lock().unwrap().popup_state.popup_type;
-        if app_state.lock().unwrap().popup_state.show && current_popup_type != PopupType::Emojis {
+        if app_state.lock().unwrap().popup_state.show
+            && current_popup_type != PopupType::Emojis
+            && current_popup_type != PopupType::Mentions
+        {
             terminal.hide_cursor()?;
         } else {
             terminal.show_cursor()?;
@@ -416,68 +420,115 @@ pub async fn run_chat_page<B: Backend>(
                                 }
                                 _ => {}
                             },
-                            PopupType::Mentions => match key.code {
-                                KeyCode::Up => {
-                                    state.selected_mention_index =
-                                        state.selected_mention_index.saturating_sub(1);
-                                }
-                                KeyCode::Down => {
-                                    state.selected_mention_index = (state.selected_mention_index
-                                        + 1)
-                                    .min(state.active_users.len().saturating_sub(1));
-                                }
-                                KeyCode::Enter => {
-                                    if let Some(user) =
-                                        state.active_users.get(state.selected_mention_index)
-                                    {
-                                        let query_start =
-                                            input_text.rfind('@').unwrap_or(input_text.len());
-                                        input_text
-                                            .replace_range(query_start.., &format!("@{}: ", user));
+                            PopupType::Mentions => {
+                                let filtered_users: Vec<String> = state
+                                    .active_users
+                                    .iter()
+                                    .filter(|user| {
+                                        user.to_lowercase()
+                                            .contains(&state.mention_query.to_lowercase())
+                                            && user != &&state.username.clone().unwrap_or_default()
+                                    })
+                                    .cloned()
+                                    .collect();
+                                let num_filtered_users = filtered_users.len();
 
-                                        if let Some(current_channel) = &state.current_channel {
-                                            let channel_id = current_channel.id.clone();
-                                            let notification_content =
-                                                format!("/notify {} {}", user, channel_id);
-                                            if command_tx
-                                                .send(WsCommand::Message {
-                                                    channel_id: "home".to_string(),
-                                                    content: notification_content,
-                                                })
-                                                .is_err()
-                                            {
-                                                state.set_error_message(
-                                                    "Failed to send mention notification"
-                                                        .to_string(),
-                                                    3000,
-                                                );
-                                            }
+                                if num_filtered_users == 0 && !state.mention_query.is_empty() {
+                                    state.popup_state.show = false;
+                                    state.popup_state.popup_type = PopupType::None;
+                                    state.mention_query.clear();
+                                    continue;
+                                }
+
+                                match key.code {
+                                    KeyCode::Up => {
+                                        if num_filtered_users > 0 {
+                                            state.selected_mention_index =
+                                                (state.selected_mention_index + num_filtered_users
+                                                    - 1)
+                                                    % num_filtered_users;
+                                        } else {
+                                            state.selected_mention_index = 0;
                                         }
                                     }
-                                    state.popup_state.show = false;
-                                    state.popup_state.popup_type = PopupType::None;
-                                    state.selected_mention_index = 0;
-                                    state.mention_query.clear();
-                                }
-                                KeyCode::Esc => {
-                                    state.popup_state.show = false;
-                                    state.popup_state.popup_type = PopupType::None;
-                                    state.selected_mention_index = 0;
-                                    state.mention_query.clear();
-                                }
-                                KeyCode::Backspace => {
-                                    state.mention_query.pop();
-                                    if state.mention_query.is_empty() {
-                                        let _ = input_text.pop();
+                                    KeyCode::Down => {
+                                        if num_filtered_users > 0 {
+                                            state.selected_mention_index =
+                                                (state.selected_mention_index + 1)
+                                                    % num_filtered_users;
+                                        } else {
+                                            state.selected_mention_index = 0;
+                                        }
+                                    }
+                                    KeyCode::Enter => {
+                                        if let Some(user) =
+                                            filtered_users.get(state.selected_mention_index)
+                                        {
+                                            let query_start =
+                                                input_text.rfind('@').unwrap_or(input_text.len());
+                                            input_text.replace_range(
+                                                query_start..,
+                                                &format!("@{} ", user),
+                                            );
+                                            state.cursor_position = input_text.len();
+                                        }
                                         state.popup_state.show = false;
                                         state.popup_state.popup_type = PopupType::None;
+                                        state.selected_mention_index = 0;
+                                        state.mention_query.clear();
                                     }
+                                    KeyCode::Esc => {
+                                        state.popup_state.show = false;
+                                        state.popup_state.popup_type = PopupType::None;
+                                        state.selected_mention_index = 0;
+                                        state.mention_query.clear();
+                                    }
+                                    KeyCode::Backspace => {
+                                        input_text.pop();
+                                        state.mention_query.pop();
+                                        if state.mention_query.is_empty() {
+                                            if let Some(last_char) = input_text.chars().last() {
+                                                if last_char == '@' {
+                                                    input_text.pop();
+                                                    state.popup_state.show = false;
+                                                    state.popup_state.popup_type = PopupType::None;
+                                                }
+                                            }
+                                        }
+
+                                        if num_filtered_users > 0 {
+                                            state.selected_mention_index = state
+                                                .selected_mention_index
+                                                .min(num_filtered_users.saturating_sub(1));
+                                        } else {
+                                            state.selected_mention_index = 0;
+                                        }
+                                    }
+                                    KeyCode::Char(c) => {
+                                        input_text.push(c);
+                                        state.mention_query.push(c);
+
+                                        let new_filtered_users: Vec<String> = state
+                                            .active_users
+                                            .iter()
+                                            .filter(|user| {
+                                                user.to_lowercase()
+                                                    .contains(&state.mention_query.to_lowercase())
+                                            })
+                                            .cloned()
+                                            .collect();
+                                        let new_num_filtered_users = new_filtered_users.len();
+                                        if new_num_filtered_users > 0 {
+                                            state.selected_mention_index = state
+                                                .selected_mention_index
+                                                .min(new_num_filtered_users.saturating_sub(1));
+                                        } else {
+                                            state.selected_mention_index = 0;
+                                        }
+                                    }
+                                    _ => {}
                                 }
-                                KeyCode::Char(c) => {
-                                    state.mention_query.push(c);
-                                }
-                                _ => {}
-                            },
+                            }
                             PopupType::Emojis => {
                                 let filtered_emojis: Vec<_> = emojis::iter()
                                     .filter(|emoji| {
@@ -539,7 +590,10 @@ pub async fn run_chat_page<B: Backend>(
                                         state.emoji_query.clear();
                                     }
                                     KeyCode::Backspace => {
-                                        input_text.pop();
+                                        if state.cursor_position > 0 {
+                                            input_text.remove(state.cursor_position - 1);
+                                            state.cursor_position -= 1;
+                                        }
                                         state.emoji_query.pop();
                                         if state.emoji_query.is_empty() {
                                             if let Some(last_char) = input_text.chars().last() {
@@ -558,9 +612,16 @@ pub async fn run_chat_page<B: Backend>(
                                         } else {
                                             state.selected_emoji_index = 0;
                                         }
+                                        if !should_show_emoji_popup(&input_text) {
+                                            state.popup_state.show = false;
+                                            state.popup_state.popup_type = PopupType::None;
+                                            state.emoji_query.clear();
+                                        }
                                     }
                                     KeyCode::Char(c) => {
-                                        input_text.push(c);
+                                        input_text.insert(state.cursor_position, c);
+                                        state.cursor_position += 1;
+                                        state.emoji_query.push(c);
 
                                         if let Some(last_colon_idx) = input_text.rfind(':') {
                                             state.emoji_query =
@@ -586,6 +647,7 @@ pub async fn run_chat_page<B: Backend>(
                                                             last_colon_idx..,
                                                             emoji.as_str(),
                                                         );
+                                                        state.cursor_position = input_text.len();
                                                         state.popup_state.show = false;
                                                         state.popup_state.popup_type =
                                                             PopupType::None;
@@ -594,13 +656,10 @@ pub async fn run_chat_page<B: Backend>(
                                                 }
                                             }
                                         }
-
-                                        if num_filtered_emojis > 0 {
-                                            state.selected_emoji_index = state
-                                                .selected_emoji_index
-                                                .min(num_filtered_emojis.saturating_sub(1));
-                                        } else {
-                                            state.selected_emoji_index = 0;
+                                        if !should_show_emoji_popup(&input_text) {
+                                            state.popup_state.show = false;
+                                            state.popup_state.popup_type = PopupType::None;
+                                            state.emoji_query.clear();
                                         }
                                     }
                                     _ => {}
@@ -627,10 +686,17 @@ pub async fn run_chat_page<B: Backend>(
                                 }
                             }
                             KeyCode::Char(':') => {
-                                input_text.push(':');
-                                state.popup_state.show = true;
-                                state.popup_state.popup_type = PopupType::Emojis;
-                                state.emoji_query.clear();
+                                input_text.insert(state.cursor_position, ':');
+                                state.cursor_position += 1;
+                                if should_show_emoji_popup(&input_text) {
+                                    state.popup_state.show = true;
+                                    state.popup_state.popup_type = PopupType::Emojis;
+                                    state.emoji_query.clear();
+                                } else {
+                                    state.popup_state.show = false;
+                                    state.popup_state.popup_type = PopupType::None;
+                                    state.emoji_query.clear();
+                                }
                             }
                             KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                                 state.popup_state.show = true;
@@ -814,16 +880,31 @@ pub async fn run_chat_page<B: Backend>(
                                         }
                                     }
                                     input_text.clear();
+                                    state.cursor_position = 0;
                                 }
                             }
                             KeyCode::Backspace => {
-                                input_text.pop();
+                                if state.cursor_position > 0 {
+                                    input_text.remove(state.cursor_position - 1);
+                                    state.cursor_position -= 1;
+                                }
                             }
                             KeyCode::Char(c) => {
                                 if state.popup_state.popup_type == PopupType::Mentions {
                                     state.mention_query.push(c);
+                                    input_text.insert(state.cursor_position, c);
+                                    state.cursor_position += 1;
                                 } else if state.popup_state.popup_type == PopupType::Emojis {
                                     state.emoji_query.push(c);
+                                    input_text.insert(state.cursor_position, c);
+                                    state.cursor_position += 1;
+
+                                    if let Some(last_colon_idx) = input_text.rfind(':') {
+                                        state.emoji_query =
+                                            input_text[last_colon_idx + 1..].to_string();
+                                    } else {
+                                        state.emoji_query.clear();
+                                    }
 
                                     if let Some(last_colon_idx) = input_text.rfind(':') {
                                         let potential_shortcode_with_colons =
@@ -842,6 +923,7 @@ pub async fn run_chat_page<B: Backend>(
                                                         last_colon_idx..,
                                                         emoji.as_str(),
                                                     );
+                                                    state.cursor_position = input_text.len();
                                                     state.popup_state.show = false;
                                                     state.popup_state.popup_type = PopupType::None;
                                                     state.emoji_query.clear();
@@ -850,8 +932,31 @@ pub async fn run_chat_page<B: Backend>(
                                         }
                                     }
                                 } else {
-                                    input_text.push(c);
+                                    input_text.insert(state.cursor_position, c);
+                                    state.cursor_position += 1;
+                                    if should_show_emoji_popup(&input_text) {
+                                        state.popup_state.show = true;
+                                        state.popup_state.popup_type = PopupType::Emojis;
+                                        state.emoji_query.clear();
+                                    } else {
+                                        state.popup_state.show = false;
+                                        state.popup_state.popup_type = PopupType::None;
+                                        state.emoji_query.clear();
+                                    }
                                 }
+                            }
+                            KeyCode::Left => {
+                                state.cursor_position = state.cursor_position.saturating_sub(1);
+                            }
+                            KeyCode::Right => {
+                                state.cursor_position =
+                                    (state.cursor_position + 1).min(input_text.len());
+                            }
+                            KeyCode::Home => {
+                                state.cursor_position = 0;
+                            }
+                            KeyCode::End => {
+                                state.cursor_position = input_text.len();
                             }
                             _ => {}
                         }
@@ -869,7 +974,24 @@ pub async fn run_chat_page<B: Backend>(
                     let mut state = app_state.lock().unwrap();
                     match server_message {
                         ServerMessage::ChatMessage(chat_msg) => {
-                            state.add_message(chat_msg);
+                            let current_username = state.username.clone();
+                            let channel_name = state
+                                .channels
+                                .iter()
+                                .find(|c| c.id == chat_msg.channel_id)
+                                .map(|c| c.name.clone())
+                                .unwrap_or_else(|| "Unknown Channel".to_string());
+                            state.add_message(chat_msg.clone());
+                            if let Some(username) = current_username {
+                                if chat_msg.content.contains(&format!("@{}", username))
+                                    || chat_msg.content.contains("@everyone")
+                                {
+                                    let _ = Notification::new()
+                                        .summary(&format!("New mention in {}", channel_name))
+                                        .body(&format!("{}: {}", chat_msg.user, chat_msg.content))
+                                        .show();
+                                }
+                            }
                         }
                         ServerMessage::History(history) => {
                             if !history.is_empty() {
@@ -1065,12 +1187,13 @@ fn draw_chat_ui<B: Backend>(
         .block(input_block)
         .style(Style::default().fg(rgb_to_color(&current_theme.input_text_active)));
 
+    f.render_widget(input_paragraph, input_area);
+
     if !state.popup_state.show || state.popup_state.popup_type == PopupType::Emojis {
-        let input_cursor_x = chat_chunks[1].x + 1 + input_text.len() as u16;
+        let input_cursor_x = chat_chunks[1].x + 1 + state.cursor_position as u16;
         let input_cursor_y = chat_chunks[1].y + 1;
         f.set_cursor_position((input_cursor_x, input_cursor_y));
     }
-    f.render_widget(input_paragraph, input_area);
 
     if state.popup_state.show {
         let popup_title = match state.popup_state.popup_type {
@@ -1124,7 +1247,17 @@ fn draw_chat_ui<B: Backend>(
             }
             PopupType::Mentions => {
                 let width = (size.width as f32 * 0.30) as u16;
-                let height = (size.height as f32 * 0.50) as u16;
+                let filtered_users_count = state
+                    .active_users
+                    .iter()
+                    .filter(|user| {
+                        user.to_lowercase()
+                            .contains(&state.mention_query.to_lowercase())
+                    })
+                    .count();
+                let dynamic_height = (filtered_users_count as u16).min(7) + 2;
+                let height = dynamic_height.max(3);
+
                 let input_area_y = chat_chunks[1].y + chat_chunks[1].height - input_height;
                 Rect::new(
                     chat_chunks[1].x,
@@ -1218,7 +1351,7 @@ fn draw_chat_ui<B: Backend>(
     }
 
     if !state.popup_state.show {
-        let input_cursor_x = chat_chunks[1].x + 1 + input_text.len() as u16;
+        let input_cursor_x = chat_chunks[1].x + 1 + state.cursor_position as u16;
         let input_cursor_y = chat_chunks[1].y + 1;
         f.set_cursor_position((input_cursor_x, input_cursor_y));
     }
@@ -1740,6 +1873,7 @@ fn draw_mentions_popup(f: &mut Frame, state: &mut AppState, area: Rect, popup_bl
         .filter(|user| {
             user.to_lowercase()
                 .contains(&state.mention_query.to_lowercase())
+                && user != &&state.username.clone().unwrap_or_default()
         })
         .cloned()
         .collect();
@@ -1848,4 +1982,27 @@ fn replace_shortcodes_with_emojis(text: &str) -> String {
     }
     result.push_str(&text[current_pos..]);
     result
+}
+
+fn should_show_emoji_popup(input_text: &str) -> bool {
+    let colons: Vec<_> = input_text.match_indices(':').collect();
+    let num_colons = colons.len();
+
+    if num_colons == 0 || num_colons % 2 == 0 {
+        return false;
+    }
+
+    // If there's an odd number of colons, check the last one
+    if let Some((last_colon_idx, _)) = colons.last() {
+        let after_last_colon_idx = last_colon_idx + 1;
+        if after_last_colon_idx < input_text.len() {
+            let char_after_colon = input_text.chars().nth(after_last_colon_idx).unwrap();
+            if char_after_colon.is_whitespace() {
+                return false;
+            }
+        }
+        // If it's the last character or not followed by whitespace, show
+        return true;
+    }
+    false // Should not be reached if num_colons > 0 and odd
 }

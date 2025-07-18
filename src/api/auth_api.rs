@@ -2,7 +2,6 @@ use crate::api::error::AuthError;
 use crate::api::models::AuthRequest;
 use crate::api::models::RegisterRequest;
 use crate::api::models::TokenResponse;
-use log::error;
 use reqwest::Client;
 use reqwest::StatusCode;
 
@@ -46,12 +45,11 @@ pub async fn login(
     let status = response.status();
 
     if status.is_success() {
-        let full_response_body = response.text().await?;
+        let full_response_body = response.text().await?.to_string();
         match serde_json::from_str::<TokenResponse>(&full_response_body) {
             Ok(token_response) => Ok(token_response),
-            Err(e) => {
-                error!("Failed to parse TokenResponse: {:?}", e);
-                error!("Raw response body: {}", full_response_body);
+            Err(_e) => {
+                // Removed error logging as per user request
                 Err(AuthError::ServerError(status))
             }
         }

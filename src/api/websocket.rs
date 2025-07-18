@@ -1,4 +1,4 @@
-use crate::api::models::{BroadcastMessage, ChannelBroadcast, ChannelCommand, HistoryResponse};
+use crate::api::models::{ActiveUsersResponse, BroadcastMessage, ChannelBroadcast, ChannelCommand, HistoryResponse};
 use futures_util::{
     stream::{SplitSink, SplitStream},
     SinkExt, StreamExt,
@@ -60,8 +60,8 @@ pub fn parse_server_message(msg_text: &str) -> ServerMessage {
         return ServerMessage::ChannelDelete(channel_id.to_string());
     }
 
-    if let Ok(active_users) = serde_json::from_str::<Vec<String>>(msg_text) {
-        return ServerMessage::ActiveUsers(active_users);
+    if let Ok(active_users_response) = serde_json::from_str::<ActiveUsersResponse>(msg_text) {
+        return ServerMessage::ActiveUsers(active_users_response.active_users);
     }
 
     if let Ok(channel_broadcast) = serde_json::from_str(msg_text) {

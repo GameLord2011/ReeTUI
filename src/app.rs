@@ -56,6 +56,7 @@ pub struct AppState {
     pub selected_emoji_index: usize,
     pub mention_query: String,
     pub emoji_query: String,
+    pub cursor_position: usize,
 }
 
 impl Default for AppState {
@@ -82,6 +83,7 @@ impl Default for AppState {
             selected_emoji_index: 0,
             mention_query: String::new(),
             emoji_query: String::new(),
+            cursor_position: 0,
         }
     }
 }

@@ -63,3 +63,8 @@ pub struct Notification {
     pub message: String,
     pub channel_id: String,
 }
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct ActiveUsersResponse {
+    pub active_users: Vec<String>,
+}
