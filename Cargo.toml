@@ -4,7 +4,7 @@ version = "0.0.1"
 edition = "2024"
 
 [dependencies]
-reqwest = { version = "0.12.22", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12.22", default-features = false, features = ["json", "rustls-tls", "multipart", "stream"] }
 tokio = { version = "1", features = ["full"] }
 tokio-tungstenite = { version = "0.27.0", features = ["rustls-tls-native-roots"] }
 serde = { version = "1.0", features = ["derive"] }

@@ -10,7 +10,7 @@ pub fn interpolate_rgb(start: &Rgb, end: &Rgb, fraction: f32) -> Rgb {
     Rgb(r, g, b)
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ThemeName {
     Default,
     Oceanic,
@@ -21,6 +21,48 @@ pub enum ThemeName {
     SolarizedDark,
     GruvboxDark,
     Nord,
+    Cyberpunk,
+    AutumnLeaves,
+    HighContrastLight,
+    Amethyst,
+}
+
+impl ThemeName {
+    pub fn icon(&self) -> &'static str {
+        match self {
+            ThemeName::Default => "󰎓 ",
+            ThemeName::Oceanic => "󰥛 ",
+            ThemeName::Forest => "󰔱 ",
+            ThemeName::Monochrome => "󰋰 ",
+            ThemeName::CatppuccinMocha => "󰄛 ",
+            ThemeName::Dracula => "󰭟 ",
+            ThemeName::SolarizedDark => "󰓠 ",
+            ThemeName::GruvboxDark => "󰟾 ",
+            ThemeName::Nord => " ",
+            ThemeName::Cyberpunk => "󰹫 ",
+            ThemeName::AutumnLeaves => " ",
+            ThemeName::HighContrastLight => " ",
+            ThemeName::Amethyst => "󰮊 ",
+        }
+    }
+
+    pub fn all_themes() -> Vec<ThemeName> {
+        vec![
+            ThemeName::Default,
+            ThemeName::Oceanic,
+            ThemeName::Forest,
+            ThemeName::Monochrome,
+            ThemeName::CatppuccinMocha,
+            ThemeName::Dracula,
+            ThemeName::SolarizedDark,
+            ThemeName::GruvboxDark,
+            ThemeName::Nord,
+            ThemeName::Cyberpunk,
+            ThemeName::AutumnLeaves,
+            ThemeName::HighContrastLight,
+            ThemeName::Amethyst,
+        ]
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -61,7 +103,8 @@ pub fn rgb_to_color(rgb: &Rgb) -> Color {
 pub fn get_contrasting_text_color(bg_rgb: &Rgb) -> Color {
     // Calculate luminance to determine if the background is light or dark
     // Formula: L = 0.2126 * R + 0.7152 * G + 0.0722 * B
-    let luminance = (0.2126 * bg_rgb.0 as f32 + 0.7152 * bg_rgb.1 as f32 + 0.0722 * bg_rgb.2 as f32) / 255.0;
+    let luminance =
+        (0.2126 * bg_rgb.0 as f32 + 0.7152 * bg_rgb.1 as f32 + 0.0722 * bg_rgb.2 as f32) / 255.0;
 
     // Use a threshold (e.g., 0.5) to decide between black and white
     if luminance > 0.5 {
@@ -102,7 +145,7 @@ pub fn get_theme(theme_name: ThemeName) -> Theme {
             instructions_text: Rgb(108, 112, 134),
             popup_border: Rgb(243, 139, 168),
             popup_text: Rgb(243, 139, 168),
-            
+
             mention_bg: Rgb(250, 179, 135),
         },
         ThemeName::Dracula => Theme {
@@ -134,7 +177,7 @@ pub fn get_theme(theme_name: ThemeName) -> Theme {
             instructions_text: Rgb(68, 71, 90),
             popup_border: Rgb(255, 85, 85),
             popup_text: Rgb(255, 85, 85),
-            
+
             mention_bg: Rgb(255, 121, 198),
         },
         ThemeName::SolarizedDark => Theme {
@@ -166,7 +209,7 @@ pub fn get_theme(theme_name: ThemeName) -> Theme {
             instructions_text: Rgb(7, 54, 66),
             popup_border: Rgb(220, 50, 47),
             popup_text: Rgb(220, 50, 47),
-            
+
             mention_bg: Rgb(108, 113, 196),
         },
         ThemeName::GruvboxDark => Theme {
@@ -198,7 +241,7 @@ pub fn get_theme(theme_name: ThemeName) -> Theme {
             instructions_text: Rgb(102, 92, 84),
             popup_border: Rgb(251, 73, 52),
             popup_text: Rgb(251, 73, 52),
-            
+
             mention_bg: Rgb(250, 184, 100),
         },
         ThemeName::Nord => Theme {
@@ -230,7 +273,7 @@ pub fn get_theme(theme_name: ThemeName) -> Theme {
             instructions_text: Rgb(76, 86, 106),
             popup_border: Rgb(191, 97, 106),
             popup_text: Rgb(191, 97, 106),
-            
+
             mention_bg: Rgb(136, 192, 208),
         },
         ThemeName::Oceanic => Theme {
@@ -262,7 +305,7 @@ pub fn get_theme(theme_name: ThemeName) -> Theme {
             instructions_text: Rgb(44, 62, 80),
             popup_border: Rgb(231, 76, 60),
             popup_text: Rgb(231, 76, 60),
-            
+
             mention_bg: Rgb(46, 204, 113),
         },
         ThemeName::Forest => Theme {
@@ -294,7 +337,7 @@ pub fn get_theme(theme_name: ThemeName) -> Theme {
             instructions_text: Rgb(60, 80, 70),
             popup_border: Rgb(210, 80, 80),
             popup_text: Rgb(210, 80, 80),
-            
+
             mention_bg: Rgb(128, 192, 176),
         },
         ThemeName::Monochrome => Theme {
@@ -326,7 +369,7 @@ pub fn get_theme(theme_name: ThemeName) -> Theme {
             instructions_text: Rgb(60, 60, 60),
             popup_border: Rgb(255, 0, 0),
             popup_text: Rgb(255, 0, 0),
-            
+
             mention_bg: Rgb(200, 200, 200),
         },
         ThemeName::Default => Theme {
@@ -358,8 +401,124 @@ pub fn get_theme(theme_name: ThemeName) -> Theme {
             instructions_text: Rgb(90, 90, 90),
             popup_border: Rgb(230, 60, 60),
             popup_text: Rgb(230, 60, 60),
-            
+
             mention_bg: Rgb(255, 215, 0),
+        },
+        ThemeName::Cyberpunk => Theme {
+            background: Rgb(10, 0, 20),
+            border: Rgb(0, 200, 255),
+            border_focus: Rgb(255, 0, 200),
+            button: Rgb(0, 255, 100),
+            text: Rgb(180, 200, 220),
+            error: Rgb(255, 50, 50),
+            dim: Rgb(30, 0, 40),
+            accent: Rgb(255, 150, 0),
+            title_gradient_start: Rgb(0, 200, 255),
+            title_gradient_end: Rgb(255, 0, 200),
+            input_border_active: Rgb(255, 0, 200),
+            input_border_inactive: Rgb(0, 200, 255),
+            input_text_active: Rgb(180, 200, 220),
+            input_text_inactive: Rgb(120, 140, 160),
+            placeholder_text: Rgb(30, 0, 40),
+            selected_icon: Rgb(0, 255, 255),
+            dimmed_icon: Rgb(30, 0, 40),
+            button_text_active: Rgb(10, 0, 20),
+            button_text_inactive: Rgb(180, 200, 220),
+            button_border_active: Rgb(0, 255, 255),
+            button_border_inactive: Rgb(0, 255, 100),
+            button_bg_active: Rgb(0, 255, 255),
+            help_text: Rgb(30, 0, 40),
+            instructions_text: Rgb(30, 0, 40),
+            popup_border: Rgb(255, 50, 50),
+            popup_text: Rgb(255, 50, 50),
+            mention_bg: Rgb(255, 0, 200),
+        },
+        ThemeName::AutumnLeaves => Theme {
+            background: Rgb(50, 30, 10),
+            border: Rgb(80, 120, 90),
+            border_focus: Rgb(255, 190, 0),
+            button: Rgb(180, 70, 50),
+            text: Rgb(250, 245, 230),
+            error: Rgb(150, 40, 40),
+            dim: Rgb(70, 40, 15),
+            accent: Rgb(200, 90, 30),
+            title_gradient_start: Rgb(255, 190, 0),
+            title_gradient_end: Rgb(150, 40, 40),
+            input_border_active: Rgb(255, 190, 0),
+            input_border_inactive: Rgb(80, 120, 90),
+            input_text_active: Rgb(250, 245, 230),
+            input_text_inactive: Rgb(200, 190, 170),
+            placeholder_text: Rgb(70, 40, 15),
+            selected_icon: Rgb(220, 140, 70),
+            dimmed_icon: Rgb(70, 40, 15),
+            button_text_active: Rgb(50, 30, 10),
+            button_text_inactive: Rgb(250, 245, 230),
+            button_border_active: Rgb(220, 140, 70),
+            button_border_inactive: Rgb(180, 70, 50),
+            button_bg_active: Rgb(220, 140, 70),
+            help_text: Rgb(70, 40, 15),
+            instructions_text: Rgb(70, 40, 15),
+            popup_border: Rgb(150, 40, 40),
+            popup_text: Rgb(150, 40, 40),
+            mention_bg: Rgb(255, 190, 0),
+        },
+        ThemeName::HighContrastLight => Theme {
+            background: Rgb(240, 240, 240),
+            border: Rgb(100, 100, 100),
+            border_focus: Rgb(0, 120, 215),
+            button: Rgb(0, 128, 128),
+            text: Rgb(30, 30, 30),
+            error: Rgb(200, 0, 0),
+            dim: Rgb(180, 180, 180),
+            accent: Rgb(255, 100, 0),
+            title_gradient_start: Rgb(0, 120, 215),
+            title_gradient_end: Rgb(0, 128, 128),
+            input_border_active: Rgb(0, 120, 215),
+            input_border_inactive: Rgb(100, 100, 100),
+            input_text_active: Rgb(30, 30, 30),
+            input_text_inactive: Rgb(80, 80, 80),
+            placeholder_text: Rgb(180, 180, 180),
+            selected_icon: Rgb(0, 80, 150),
+            dimmed_icon: Rgb(180, 180, 180),
+            button_text_active: Rgb(240, 240, 240),
+            button_text_inactive: Rgb(240, 240, 240),
+            button_border_active: Rgb(0, 80, 150),
+            button_border_inactive: Rgb(0, 128, 128),
+            button_bg_active: Rgb(0, 80, 150),
+            help_text: Rgb(180, 180, 180),
+            instructions_text: Rgb(180, 180, 180),
+            popup_border: Rgb(200, 0, 0),
+            popup_text: Rgb(200, 0, 0),
+            mention_bg: Rgb(0, 120, 215),
+        },
+        ThemeName::Amethyst => Theme {
+            background: Rgb(30, 10, 40),
+            border: Rgb(100, 80, 120),
+            border_focus: Rgb(180, 100, 255),
+            button: Rgb(50, 180, 100),
+            text: Rgb(220, 200, 255),
+            error: Rgb(200, 0, 100),
+            dim: Rgb(60, 30, 80),
+            accent: Rgb(210, 170, 50),
+            title_gradient_start: Rgb(180, 100, 255),
+            title_gradient_end: Rgb(100, 0, 150), // A darker purple for the end gradient
+            input_border_active: Rgb(180, 100, 255),
+            input_border_inactive: Rgb(100, 80, 120),
+            input_text_active: Rgb(220, 200, 255),
+            input_text_inactive: Rgb(160, 140, 190),
+            placeholder_text: Rgb(60, 30, 80),
+            selected_icon: Rgb(230, 150, 255),
+            dimmed_icon: Rgb(60, 30, 80),
+            button_text_active: Rgb(30, 10, 40),
+            button_text_inactive: Rgb(220, 200, 255),
+            button_border_active: Rgb(230, 150, 255),
+            button_border_inactive: Rgb(50, 180, 100),
+            button_bg_active: Rgb(230, 150, 255),
+            help_text: Rgb(60, 30, 80),
+            instructions_text: Rgb(60, 30, 80),
+            popup_border: Rgb(200, 0, 100),
+            popup_text: Rgb(200, 0, 100),
+            mention_bg: Rgb(180, 100, 255),
         },
     }
 }

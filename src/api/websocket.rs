@@ -64,12 +64,14 @@ pub fn parse_server_message(msg_text: &str) -> ServerMessage {
         return ServerMessage::ActiveUsers(active_users_response.active_users);
     }
 
-    if let Ok(channel_broadcast) = serde_json::from_str(msg_text) {
-        return ServerMessage::ChannelUpdate(channel_broadcast);
+    // Try to parse as BroadcastMessage first, as it's the most common type
+    if let Ok(chat_msg) = serde_json::from_str::<BroadcastMessage>(msg_text) {
+        return ServerMessage::ChatMessage(chat_msg);
     }
 
-    if let Ok(chat_msg) = serde_json::from_str(msg_text) {
-        return ServerMessage::ChatMessage(chat_msg);
+    // Fallback for other types if BroadcastMessage parsing fails
+    if let Ok(channel_broadcast) = serde_json::from_str(msg_text) {
+        return ServerMessage::ChannelUpdate(channel_broadcast);
     }
 
     ServerMessage::Unknown(msg_text.to_string())

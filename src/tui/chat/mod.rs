@@ -6,6 +6,9 @@ pub mod ui;
 pub mod utils;
 pub mod ws_command;
 
+#[cfg(test)]
+pub mod tests;
+
 use crate::api::models::Channel;
 use crate::api::websocket::{self, ServerMessage};
 use crate::app::{AppState, PopupType};
@@ -18,16 +21,21 @@ use ratatui::{prelude::Backend, widgets::ListState, Terminal};
 use regex::Regex;
 use std::{
     io,
+    path::PathBuf,
     sync::{Arc, Mutex},
     time::Duration,
 };
+use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite;
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::tui::chat::create_channel_form::{CreateChannelForm, CreateChannelInput};
-use crate::tui::chat::message_parsing::{replace_shortcodes_with_emojis, should_show_emoji_popup};
+use crate::tui::chat::message_parsing::{
+    replace_shortcodes_with_emojis, should_show_emoji_popup, should_show_mention_popup,
+};
 
+use crate::api::file_api;
 use crate::tui::chat::theme_settings_form::ThemeSettingsForm;
 use crate::tui::chat::ui::draw_chat_ui;
 use crate::tui::chat::ws_command::WsCommand;
@@ -42,6 +50,7 @@ pub async fn run_chat_page<B: Backend>(
 
     let mut create_channel_form = CreateChannelForm::new();
     let mut theme_settings_form = ThemeSettingsForm::new(app_state.lock().unwrap().current_theme);
+    let mut file_manager = popups::file_manager::FileManager::new(popups::file_manager::FileManagerMode::LocalUpload, Vec::new());
 
     let (mut ws_writer, mut ws_reader) = {
         let state = app_state.lock().unwrap();
@@ -55,6 +64,9 @@ pub async fn run_chat_page<B: Backend>(
     };
 
     let (command_tx, mut command_rx) = mpsc::unbounded_channel::<WsCommand>();
+    let (file_command_tx, mut file_command_rx) = mpsc::unbounded_channel::<WsCommand>();
+
+    let http_client = reqwest::Client::new();
 
     tokio::spawn(async move {
         while let Some(command) = command_rx.recv().await {
@@ -81,6 +93,124 @@ pub async fn run_chat_page<B: Backend>(
                         break;
                     }
                 }
+                _ => {}
+            }
+        }
+    });
+
+    let app_state_clone_for_file_commands = app_state.clone();
+    let http_client_clone = http_client.clone();
+    tokio::spawn(async move {
+        while let Some(command) = file_command_rx.recv().await {
+            match command {
+                WsCommand::UploadFile {
+                    channel_id,
+                    file_path,
+                } => {
+                    let token = {
+                        let state_guard = app_state_clone_for_file_commands.lock().unwrap();
+                        state_guard
+                            .auth_token
+                            .clone()
+                            .expect("Auth token not found for file upload")
+                    };
+
+                    match file_api::upload_file(
+                        &http_client_clone,
+                        &token,
+                        &channel_id,
+                        file_path.clone(),
+                    )
+                    .await
+                    {
+                        Ok(file_id) => {
+                            let mut state_guard = app_state_clone_for_file_commands.lock().unwrap();
+                            state_guard
+                                .set_error_message(format!("File uploaded: {}", file_id), 3000);
+                        }
+                        Err(e) => {
+                            let mut state_guard = app_state_clone_for_file_commands.lock().unwrap();
+                            state_guard
+                                .set_error_message(format!("File upload failed: {}", e), 5000);
+                        }
+                    }
+                }
+                WsCommand::DownloadFile { file_id, file_name } => {
+                    let _ = {
+                        let state_guard = app_state_clone_for_file_commands.lock().unwrap();
+                        state_guard
+                            .current_channel
+                            .as_ref()
+                            .map(|c| c.id.clone())
+                            .unwrap_or_default()
+                    };
+
+                    let download_path = PathBuf::from("./downloads").join(&file_name);
+                    if !download_path.parent().unwrap().exists() {
+                        tokio::fs::create_dir_all(download_path.parent().unwrap())
+                            .await
+                            .unwrap();
+                    }
+
+                    let mut downloaded_bytes: u64 = 0;
+                    let total_bytes: u64;
+
+                    let response = http_client_clone
+                        .get(&format!(
+                            "https://back.reetui.hackclub.app/files/download/{}",
+                            file_id
+                        ))
+                        .send()
+                        .await;
+
+                    match response {
+                        Ok(res) => {
+                            total_bytes = res.content_length().unwrap_or(0);
+                            let mut file = tokio::fs::File::create(&download_path).await.unwrap();
+                            let mut stream = res.bytes_stream();
+
+                            while let Some(chunk) = stream.next().await {
+                                match chunk {
+                                    Ok(bytes) => {
+                                        file.write_all(&bytes).await.unwrap();
+                                        downloaded_bytes += bytes.len() as u64;
+                                        let progress = if total_bytes > 0 {
+                                            (downloaded_bytes as f64 / total_bytes as f64 * 100.0)
+                                                as u8
+                                        } else {
+                                            0
+                                        };
+                                        let mut state_guard =
+                                            app_state_clone_for_file_commands.lock().unwrap();
+                                        state_guard.set_error_message(
+                                            format!("Downloading {}... {}%", file_name, progress),
+                                            1000,
+                                        );
+                                    }
+                                    Err(e) => {
+                                        let mut state_guard =
+                                            app_state_clone_for_file_commands.lock().unwrap();
+                                        state_guard.set_error_message(
+                                            format!("Download failed: {}", e),
+                                            5000,
+                                        );
+                                        break;
+                                    }
+                                }
+                            }
+                            let mut state_guard = app_state_clone_for_file_commands.lock().unwrap();
+                            state_guard.set_error_message(
+                                format!("Downloaded {} to {:?}", file_name, download_path),
+                                3000,
+                            );
+                        }
+                        Err(e) => {
+                            let mut state_guard = app_state_clone_for_file_commands.lock().unwrap();
+                            state_guard.set_error_message(format!("Download failed: {}", e), 5000);
+                        }
+                    }
+                }
+                _ => {}
             }
         }
     });
@@ -141,6 +271,7 @@ pub async fn run_chat_page<B: Backend>(
                 &mut channel_list_state,
                 &mut create_channel_form,
                 &mut theme_settings_form,
+                &mut file_manager,
                 &filtered_users,
                 &filtered_emojis,
                 &mention_regex,
@@ -297,17 +428,20 @@ pub async fn run_chat_page<B: Backend>(
                             PopupType::SetTheme => match key.code {
                                 KeyCode::Up => {
                                     theme_settings_form.previous_theme();
+                                    state_guard.current_theme =
+                                        theme_settings_form.get_selected_theme();
                                 }
                                 KeyCode::Down => {
                                     theme_settings_form.next_theme();
-                                }
-                                KeyCode::Enter => {
                                     state_guard.current_theme =
                                         theme_settings_form.get_selected_theme();
+                                }
+                                KeyCode::Enter => {
                                     state_guard.popup_state.show = false;
                                     state_guard.popup_state.popup_type = PopupType::None;
                                 }
                                 KeyCode::Esc => {
+                                    state_guard.current_theme = theme_settings_form.original_theme;
                                     state_guard.popup_state.show = false;
                                     state_guard.popup_state.popup_type = PopupType::None;
                                 }
@@ -398,6 +532,11 @@ pub async fn run_chat_page<B: Backend>(
                                     } else {
                                         state_guard.selected_mention_index = 0;
                                     }
+                                    if !should_show_mention_popup(&input_text) {
+                                        state_guard.popup_state.show = false;
+                                        state_guard.popup_state.popup_type = PopupType::None;
+                                        state_guard.mention_query.clear();
+                                    }
                                 }
                                 KeyCode::Char(c) => {
                                     input_text.insert(state_guard.cursor_position, c);
@@ -420,6 +559,11 @@ pub async fn run_chat_page<B: Backend>(
                                             .min(new_num_filtered_users.saturating_sub(1));
                                     } else {
                                         state_guard.selected_mention_index = 0;
+                                    }
+                                    if !should_show_mention_popup(&input_text) {
+                                        state_guard.popup_state.show = false;
+                                        state_guard.popup_state.popup_type = PopupType::None;
+                                        state_guard.mention_query.clear();
                                     }
                                 }
                                 _ => {}
@@ -555,14 +699,63 @@ pub async fn run_chat_page<B: Backend>(
                             PopupType::None => {
                                 // No specific key handling for None popup type
                             }
+                            PopupType::FileManager => match key.code {
+                                KeyCode::Esc => {
+                                    state_guard.popup_state.show = false;
+                                    state_guard.popup_state.popup_type = PopupType::None;
+                                }
+                                _ => {
+                                    let file_manager_event = file_manager.handle_key_event(key);
+                                    match file_manager_event {
+                                        popups::file_manager::FileManagerEvent::FileSelectedForUpload(path) => {
+                                            if let Some(current_channel) = &state_guard.current_channel {
+                                                let channel_id = current_channel.id.clone();
+                                                if file_command_tx
+                                                    .send(WsCommand::UploadFile {
+                                                        channel_id,
+                                                        file_path: path,
+                                                    })
+                                                    .is_err()
+                                                {
+                                                    state_guard.set_error_message(
+                                                        "Failed to send upload command".to_string(),
+                                                        3000,
+                                                    );
+                                                }
+                                            } else {
+                                                state_guard.set_error_message(
+                                                    "No channel selected to upload file.".to_string(),
+                                                    3000,
+                                                );
+                                            }
+                                            state_guard.popup_state.show = false;
+                                            state_guard.popup_state.popup_type = PopupType::None;
+                                        },
+                                        popups::file_manager::FileManagerEvent::FileSelectedForDownload(file_id, file_name) => {
+                                            if file_command_tx
+                                                .send(WsCommand::DownloadFile {
+                                                    file_id,
+                                                    file_name,
+                                                })
+                                                .is_err()
+                                            {
+                                                state_guard.set_error_message(
+                                                    "Failed to send download command".to_string(),
+                                                    3000,
+                                                );
+                                            }
+                                            state_guard.popup_state.show = false;
+                                            state_guard.popup_state.popup_type = PopupType::None;
+                                        },
+                                        popups::file_manager::FileManagerEvent::CloseFileManager => {
+                                            state_guard.popup_state.show = false;
+                                            state_guard.popup_state.popup_type = PopupType::None;
+                                        },
+                                        popups::file_manager::FileManagerEvent::None => {},
+                                    }
+                                }
+                            },
                         }
-                        // This block should only apply to Emojis popup or main input
-                        // The original `else` in `else { match key.code { ... } }` caused the error.
-                        // It seems like there was an attempt to duplicate the `match key.code`
-                        // block. Removing the outer `else` and keeping the inner `match`
-                        // directly within the `if state_guard.popup_state.show` block,
-                        // and handling cases where `state_guard.popup_state.show` is false
-                        // in a single `else` block should resolve the issue.
                     } else {
                         // This else block handles when no popup is shown
                         match key.code {
@@ -603,6 +796,33 @@ pub async fn run_chat_page<B: Backend>(
                                 state_guard.popup_state.show = true;
                                 state_guard.popup_state.popup_type = PopupType::CreateChannel;
                                 create_channel_form = CreateChannelForm::new();
+                            }
+                            KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                                state_guard.popup_state.show = true;
+                                state_guard.popup_state.popup_type = PopupType::FileManager;
+                                file_manager = popups::file_manager::FileManager::new(
+                                    popups::file_manager::FileManagerMode::LocalUpload,
+                                    Vec::new(),
+                                );
+                            }
+                            KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                                state_guard.popup_state.show = true;
+                                state_guard.popup_state.popup_type = PopupType::FileManager;
+                                // Mock data for downloadable files for now
+                                let downloadable_files = vec![
+                                    popups::file_manager::DownloadableFile {
+                                        id: "file1".to_string(),
+                                        name: "document.pdf".to_string(),
+                                    },
+                                    popups::file_manager::DownloadableFile {
+                                        id: "file2".to_string(),
+                                        name: "image.png".to_string(),
+                                    },
+                                ];
+                                file_manager = popups::file_manager::FileManager::new(
+                                    popups::file_manager::FileManagerMode::RemoteDownload,
+                                    downloadable_files,
+                                );
                             }
                             KeyCode::Tab => {
                                 let i = match channel_list_state.selected() {
@@ -765,20 +985,90 @@ pub async fn run_chat_page<B: Backend>(
                             }
                             KeyCode::Enter => {
                                 if !input_text.is_empty() {
-                                    if let Some(current_channel) = &state_guard.current_channel {
-                                        let channel_id = current_channel.id.clone();
-                                        let content = replace_shortcodes_with_emojis(&input_text);
-                                        if command_tx
-                                            .send(WsCommand::Message {
-                                                channel_id,
-                                                content,
-                                            })
-                                            .is_err()
-                                        {
+                                    if input_text.starts_with("/upload ") {
+                                        let parts: Vec<&str> = input_text.splitn(2, ' ').collect();
+                                        if parts.len() == 2 {
+                                            let file_path_str = parts[1].trim();
+                                            let file_path = PathBuf::from(file_path_str);
+                                            if file_path.exists() && file_path.is_file() {
+                                                if let Some(current_channel) =
+                                                    &state_guard.current_channel
+                                                {
+                                                    let channel_id = current_channel.id.clone();
+                                                    if file_command_tx
+                                                        .send(WsCommand::UploadFile {
+                                                            channel_id,
+                                                            file_path,
+                                                        })
+                                                        .is_err()
+                                                    {
+                                                        state_guard.set_error_message(
+                                                            "Failed to send upload command"
+                                                                .to_string(),
+                                                            3000,
+                                                        );
+                                                    }
+                                                } else {
+                                                    state_guard.set_error_message(
+                                                        "No channel selected to upload file."
+                                                            .to_string(),
+                                                        3000,
+                                                    );
+                                                }
+                                            } else {
+                                                state_guard.set_error_message(
+                                                    format!("File not found: {}", file_path_str),
+                                                    3000,
+                                                );
+                                            }
+                                        } else {
                                             state_guard.set_error_message(
-                                                "Failed to send message".to_string(),
+                                                "Usage: /upload <file_path>".to_string(),
                                                 3000,
                                             );
+                                        }
+                                    } else if input_text.starts_with("/download ") {
+                                        let parts: Vec<&str> = input_text.splitn(3, ' ').collect();
+                                        if parts.len() == 3 {
+                                            let file_id = parts[1].trim().to_string();
+                                            let file_name = parts[2].trim().to_string();
+                                            if file_command_tx
+                                                .send(WsCommand::DownloadFile {
+                                                    file_id,
+                                                    file_name,
+                                                })
+                                                .is_err()
+                                            {
+                                                state_guard.set_error_message(
+                                                    "Failed to send download command".to_string(),
+                                                    3000,
+                                                );
+                                            }
+                                        } else {
+                                            state_guard.set_error_message(
+                                                "Usage: /download <file_id> <file_name>"
+                                                    .to_string(),
+                                                3000,
+                                            );
+                                        }
+                                    } else {
+                                        if let Some(current_channel) = &state_guard.current_channel
+                                        {
+                                            let channel_id = current_channel.id.clone();
+                                            let content =
+                                                replace_shortcodes_with_emojis(&input_text);
+                                            if command_tx
+                                                .send(WsCommand::Message {
+                                                    channel_id,
+                                                    content,
+                                                })
+                                                .is_err()
+                                            {
+                                                state_guard.set_error_message(
+                                                    "Failed to send message".to_string(),
+                                                    3000,
+                                                );
+                                            }
                                         }
                                     }
                                     input_text.clear();

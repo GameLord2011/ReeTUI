@@ -5,24 +5,15 @@ pub struct ThemeSettingsForm {
     pub selected_theme_index: usize,
     pub themes: Vec<ThemeName>,
     pub list_state: ListState,
+    pub original_theme: ThemeName,
 }
 
 impl ThemeSettingsForm {
     pub fn new(current_theme: ThemeName) -> Self {
-        let themes = vec![
-            ThemeName::Default,
-            ThemeName::Oceanic,
-            ThemeName::Forest,
-            ThemeName::Monochrome,
-            ThemeName::CatppuccinMocha,
-            ThemeName::Dracula,
-            ThemeName::SolarizedDark,
-            ThemeName::GruvboxDark,
-            ThemeName::Nord,
-        ];
+        let themes = ThemeName::all_themes();
         let selected_theme_index = themes
             .iter()
-            .position(|&t| format!("{:?}", t) == format!("{:?}", current_theme))
+            .position(|&t| t == current_theme)
             .unwrap_or(0);
 
         let mut list_state = ListState::default();
@@ -32,6 +23,7 @@ impl ThemeSettingsForm {
             selected_theme_index,
             themes,
             list_state,
+            original_theme: current_theme,
         }
     }
 

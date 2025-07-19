@@ -7,7 +7,6 @@ use std::time::Instant;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PopupType {
-    
     Quit, // Do not remove this variant, it is used in other parts of the code.
     Settings,
     CreateChannel,
@@ -16,6 +15,7 @@ pub enum PopupType {
     Help,
     Mentions,
     Emojis,
+    FileManager,
     None,
 }
 

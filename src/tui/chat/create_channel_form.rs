@@ -1,5 +1,4 @@
 pub const ICONS: [&str; 11] = ["󰱨", "󰱩", "󱃞", "󰱫", "󰱬", "󰱮", "󰱰", "󰽌", "󰱱", "󰱸", "󰇹"];
-
 #[derive(Default)]
 pub struct CreateChannelForm {
     pub name: String,
@@ -52,3 +51,4 @@ impl CreateChannelForm {
         ICONS[self.selected_icon_index].to_string()
     }
 }
+

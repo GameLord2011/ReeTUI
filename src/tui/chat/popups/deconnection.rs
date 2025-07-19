@@ -10,21 +10,32 @@ use ratatui::{
 use crate::app::AppState;
 use crate::tui::themes::{get_theme, rgb_to_color};
 
-pub fn get_deconnection_popup_height() -> u16 {
-    4 + 2 // 4 lines of content + 2 for borders
+pub fn get_deconnection_popup_size() -> (u16, u16) {
+    let text1 = "Are you sure you want to disconnect?";
+    let text2 = "(Y)es / (N)o";
+    let width = text1.len().max(text2.len()) as u16 + 4;
+    // content: text1(1) + empty_line(1) + text2(1) = 3
+    // layout: popup_border(2) + paragraph_margin(2) = 4
+    let height = 1 + 1 + 1 + 2 + 2;
+    (width, height)
 }
 
-pub fn draw_deconnection_popup(f: &mut Frame, state: &mut AppState, area: Rect, popup_block: &Block) {
+pub fn draw_deconnection_popup(
+    f: &mut Frame,
+    state: &mut AppState,
+    area: Rect,
+    popup_block: &Block,
+) {
     let current_theme = get_theme(state.current_theme);
     let popup_text = Paragraph::new(vec![
         Line::from(""),
         Line::from(Line::styled(
-            "  Are you sure you want to disconnect?",
+            "Are you sure you want to disconnect?",
             Style::default().fg(rgb_to_color(&current_theme.popup_text)),
         )),
         Line::from(""),
         Line::from(Line::styled(
-            "  (Y)es / (N)o / (Esc) Cancel",
+            "(Y)es / (N)o",
             Style::default().fg(rgb_to_color(&current_theme.accent)),
         )),
     ])

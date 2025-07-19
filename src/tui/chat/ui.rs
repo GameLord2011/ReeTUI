@@ -1,14 +1,19 @@
 use crate::api::models::BroadcastMessage;
 use crate::app::{AppState, PopupType};
-use crate::tui::chat::create_channel_form::{CreateChannelForm, ICONS};
-use crate::tui::chat::popups::create_channel::{draw_create_channel_popup, get_create_channel_popup_height};
-use crate::tui::chat::popups::deconnection::{draw_deconnection_popup, get_deconnection_popup_height};
-use crate::tui::chat::popups::emojis::{draw_emojis_popup, get_emojis_popup_height};
-use crate::tui::chat::popups::help::{draw_help_popup, get_help_popup_height};
-use crate::tui::chat::popups::mentions::{draw_mentions_popup, get_mentions_popup_height};
-use crate::tui::chat::popups::quit::{draw_quit_popup, get_quit_popup_height};
-use crate::tui::chat::popups::set_theme::{draw_set_theme_popup, get_set_theme_popup_height};
-use crate::tui::chat::popups::settings::{draw_settings_popup, get_settings_popup_height};
+use crate::tui::chat::create_channel_form::CreateChannelForm;
+use crate::tui::chat::popups::create_channel::{
+    draw_create_channel_popup, get_create_channel_popup_size,
+};
+use crate::tui::chat::popups::deconnection::{
+    draw_deconnection_popup, get_deconnection_popup_size,
+};
+use crate::tui::chat::popups::emojis::{draw_emojis_popup, get_emojis_popup_size};
+use crate::tui::chat::popups::help::{draw_help_popup, get_help_popup_size};
+use crate::tui::chat::popups::mentions::{draw_mentions_popup, get_mentions_popup_size};
+use crate::tui::chat::popups::quit::{draw_quit_popup, get_quit_popup_size};
+use crate::tui::chat::popups::set_theme::{draw_set_theme_popup, get_set_theme_popup_size};
+use crate::tui::chat::popups::file_manager::FileManager;
+use crate::tui::chat::popups::settings::{draw_settings_popup, get_settings_popup_size};
 use crate::tui::chat::theme_settings_form::ThemeSettingsForm;
 use crate::tui::chat::utils::{centered_rect, get_color_for_user};
 use crate::tui::themes::{get_contrasting_text_color, get_theme, rgb_to_color, Theme};
@@ -27,8 +32,6 @@ use regex::Regex;
 use std::collections::VecDeque;
 use unicode_segmentation::UnicodeSegmentation;
 
-
-
 pub fn draw_chat_ui<B: Backend>(
     f: &mut Frame,
     state: &mut AppState,
@@ -36,6 +39,7 @@ pub fn draw_chat_ui<B: Backend>(
     channel_list_state: &mut ListState,
     create_channel_form: &mut CreateChannelForm,
     theme_settings_form: &mut ThemeSettingsForm,
+    file_manager: &mut FileManager,
     filtered_users: &Vec<String>,
     filtered_emojis: &Vec<String>,
     mention_regex: &Regex,
@@ -47,6 +51,12 @@ pub fn draw_chat_ui<B: Backend>(
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(20), Constraint::Percentage(80)].as_ref())
         .split(size);
+
+    let left_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(0), Constraint::Length(3)]) // Channels and then user info
+        .split(chunks[0]);
+
     let channels_block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
@@ -71,7 +81,7 @@ pub fn draw_chat_ui<B: Backend>(
             } else {
                 Style::default().fg(rgb_to_color(&current_theme.text))
             };
-            ListItem::new(format!("{} {}", channel.icon, channel.name)).style(style)
+            ListItem::new(format!("{} {}", channel.icon, channel.name.as_str())).style(style)
         })
         .collect();
     let channels_list = List::new(channel_items)
@@ -82,8 +92,32 @@ pub fn draw_chat_ui<B: Backend>(
                 .fg(rgb_to_color(&current_theme.button_text_active))
                 .bg(rgb_to_color(&current_theme.button_bg_active)),
         )
-        .highlight_symbol(">> ");
-    f.render_stateful_widget(channels_list, chunks[0], channel_list_state);
+        .highlight_symbol(" ");
+    f.render_stateful_widget(channels_list, left_chunks[0], channel_list_state);
+
+    // User Info Section
+    let user_info_block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .title("User Info")
+        .style(
+            Style::default()
+                .fg(rgb_to_color(&current_theme.border_focus))
+                .bg(rgb_to_color(&current_theme.background)),
+        );
+
+    let username_text = state.username.clone().unwrap_or_default();
+    let user_icon = state.user_icon.clone().unwrap_or_default();
+
+    let user_info_paragraph = Paragraph::new(Line::from(vec![
+        Span::styled(format!("{} ", user_icon), Style::default().fg(rgb_to_color(&current_theme.text))),
+        Span::styled(username_text, Style::default().fg(rgb_to_color(&current_theme.accent)).add_modifier(Modifier::BOLD)),
+    ]))
+    .alignment(Alignment::Center)
+    .block(user_info_block);
+
+    f.render_widget(user_info_paragraph, left_chunks[1]);
+
     let chat_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(1), Constraint::Length(3)].as_ref())
@@ -138,13 +172,13 @@ pub fn draw_chat_ui<B: Backend>(
             let start_index = message_count.saturating_sub(view_height + scroll_offset);
             let end_index = message_count.saturating_sub(scroll_offset);
             if message_count > view_height {
-                rendered_lines[start_index..end_index].to_vec()
+                &rendered_lines[start_index..end_index]
             } else {
-                rendered_lines.clone().into()
+                rendered_lines.as_ref()
             }
         };
-        let messages_paragraph =
-            Paragraph::new(messages_to_render).wrap(ratatui::widgets::Wrap { trim: false });
+        let messages_paragraph = Paragraph::new(messages_to_render.to_vec())
+            .wrap(ratatui::widgets::Wrap { trim: false });
         f.render_widget(messages_paragraph, inner_messages_area);
     }
     let input_block = Block::default()
@@ -162,14 +196,16 @@ pub fn draw_chat_ui<B: Backend>(
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(0), Constraint::Length(input_height)])
         .split(chat_chunks[1])[1];
-    let input_paragraph = Paragraph::new(Text::from(input_text.to_string()))
+    let input_paragraph = Paragraph::new(Text::from(input_text))
         .block(input_block)
         .style(Style::default().fg(rgb_to_color(&current_theme.input_text_active)));
     f.render_widget(input_paragraph, input_area);
     if !state.popup_state.show || state.popup_state.popup_type == PopupType::Emojis {
-        let cursor_x_offset =
-            UnicodeSegmentation::graphemes(&input_text[..state.cursor_position], true).count()
-                as u16;
+        let cursor_x_offset = input_text
+            .graphemes(true)
+            .take(state.cursor_position)
+            .map(|g| g.len())
+            .sum::<usize>() as u16;
         let input_cursor_x = chat_chunks[1].x + 1 + cursor_x_offset;
         let input_cursor_y = chat_chunks[1].y + 1;
         f.set_cursor_position((input_cursor_x, input_cursor_y));
@@ -185,8 +221,9 @@ pub fn draw_chat_ui<B: Backend>(
             PopupType::None => "",
             PopupType::Mentions => "Mentions",
             PopupType::Emojis => "Emojis",
+            PopupType::FileManager => "File Manager",
         };
-        let popup_block = Block::default()
+        let popup_block_widget = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
             .title(popup_title)
@@ -195,39 +232,16 @@ pub fn draw_chat_ui<B: Backend>(
                     .fg(rgb_to_color(&current_theme.popup_border))
                     .bg(rgb_to_color(&current_theme.background)),
             );
-        let area = match state.popup_state.popup_type {
-            PopupType::Quit => {
-                let height = get_quit_popup_height();
-                let width = 40; // A reasonable default width for quit popup
-                centered_rect(width, height, size)
-            }
-            PopupType::Deconnection => {
-                let height = get_deconnection_popup_height();
-                let width = 50; // A reasonable default width for deconnection popup
-                centered_rect(width, height, size)
-            }
-            PopupType::Settings => {
-                let height = get_settings_popup_height();
-                let width = 40; // A reasonable default width for settings popup
-                centered_rect(width, height, size)
-            }
-            PopupType::CreateChannel => {
-                let height = get_create_channel_popup_height();
-                let width = (ICONS.len() * 3) as u16 + 2 + 2; // Width based on icons
-                centered_rect(width, height, size)
-            }
-            PopupType::SetTheme => {
-                let height = get_set_theme_popup_height(theme_settings_form);
-                let width = (ICONS.len() * 3) as u16 + 2 + 2; // Width based on icons
-                centered_rect(width, height, size)
-            }
-            PopupType::Help => {
-                let height = get_help_popup_height();
-                let width = 80; // A reasonable default width for help popup
-                centered_rect(width, height, size)
-            }
+
+        let (popup_width, popup_height) = match state.popup_state.popup_type {
+            PopupType::Quit => get_quit_popup_size(),
+            PopupType::Deconnection => get_deconnection_popup_size(),
+            PopupType::Settings => get_settings_popup_size(),
+            PopupType::CreateChannel => get_create_channel_popup_size(),
+            PopupType::SetTheme => get_set_theme_popup_size(theme_settings_form),
+            PopupType::Help => get_help_popup_size(),
             PopupType::Mentions => {
-                let height = get_mentions_popup_height(state);
+                let (_, height) = get_mentions_popup_size(state); // Get height from mentions module
                 let max_width = filtered_users
                     .iter()
                     .map(|user| user.len() as u16 + 4)
@@ -235,16 +249,10 @@ pub fn draw_chat_ui<B: Backend>(
                     .unwrap_or(0)
                     .min(size.width - 4);
                 let width = max_width.max(20);
-                let input_area_y = chat_chunks[1].y + chat_chunks[1].height - input_height;
-                Rect::new(
-                    chat_chunks[1].x,
-                    input_area_y.saturating_sub(height + 1),
-                    width,
-                    height,
-                )
+                (width, height)
             }
             PopupType::Emojis => {
-                let height = get_emojis_popup_height(state);
+                let (_, height) = get_emojis_popup_size(state); // Get height from emojis module
                 let max_width = filtered_emojis
                     .iter()
                     .map(|emoji_str| (emoji_str.len() + 3) as u16)
@@ -252,42 +260,66 @@ pub fn draw_chat_ui<B: Backend>(
                     .unwrap_or(0)
                     .min(size.width - 4);
                 let width = max_width.max(20);
+                (width, height)
+            }
+            PopupType::FileManager => (90, 90),
+            _ => (0, 0),
+        };
+
+        let popup_area = match state.popup_state.popup_type {
+            PopupType::Mentions | PopupType::Emojis => {
                 let input_area_y = chat_chunks[1].y + chat_chunks[1].height - input_height;
                 Rect::new(
                     chat_chunks[1].x,
-                    input_area_y.saturating_sub(height + 1),
-                    width,
-                    height,
+                    input_area_y.saturating_sub(popup_height + 1),
+                    popup_width,
+                    popup_height,
                 )
             }
-            _ => Rect::default(),
+            _ => centered_rect(popup_width, popup_height, size),
         };
-        f.render_widget(Clear, area);
-        f.render_widget(&popup_block, area);
+
+        f.render_widget(Clear, popup_area);
+        f.render_widget(&popup_block_widget, popup_area);
         match state.popup_state.popup_type {
             PopupType::Quit => {
-                draw_quit_popup(f, state, area, &popup_block);
+                draw_quit_popup(f, state, popup_area, &popup_block_widget);
             }
             PopupType::Settings => {
-                draw_settings_popup(f, state, area, &popup_block);
+                draw_settings_popup(f, state, popup_area, &popup_block_widget);
             }
             PopupType::CreateChannel => {
-                draw_create_channel_popup(f, state, area, create_channel_form, &popup_block);
+                draw_create_channel_popup(
+                    f,
+                    state,
+                    popup_area,
+                    create_channel_form,
+                    &popup_block_widget,
+                );
             }
             PopupType::SetTheme => {
-                draw_set_theme_popup(f, state, area, theme_settings_form, &popup_block);
+                draw_set_theme_popup(
+                    f,
+                    state,
+                    popup_area,
+                    theme_settings_form,
+                    &popup_block_widget,
+                );
             }
             PopupType::Deconnection => {
-                draw_deconnection_popup(f, state, area, &popup_block);
+                draw_deconnection_popup(f, state, popup_area, &popup_block_widget);
             }
             PopupType::Help => {
-                draw_help_popup(f, state, area, &popup_block);
+                draw_help_popup(f, state, popup_area, &popup_block_widget);
             }
             PopupType::Mentions => {
-                draw_mentions_popup(f, state, area, &popup_block);
+                draw_mentions_popup(f, state, popup_area, &popup_block_widget);
             }
             PopupType::Emojis => {
-                draw_emojis_popup(f, state, area, &popup_block);
+                draw_emojis_popup(f, state, popup_area, &popup_block_widget);
+            }
+            PopupType::FileManager => {
+                file_manager.ui(f);
             }
             _ => { /* No specific rendering for other popup types yet */ }
         }
@@ -301,7 +333,7 @@ pub fn draw_chat_ui<B: Backend>(
                     .fg(rgb_to_color(&current_theme.error))
                     .bg(rgb_to_color(&current_theme.background)),
             );
-        let error_paragraph = Paragraph::new(Line::from(error_msg.clone()))
+        let error_paragraph = Paragraph::new(Line::from(error_msg.as_str()))
             .style(Style::default().fg(rgb_to_color(&current_theme.text)))
             .alignment(Alignment::Center)
             .block(error_block);
@@ -317,9 +349,11 @@ pub fn draw_chat_ui<B: Backend>(
         f.render_widget(error_paragraph, error_area);
     }
     if !state.popup_state.show {
-        let cursor_x_offset =
-            UnicodeSegmentation::graphemes(&input_text[..state.cursor_position], true).count()
-                as u16;
+        let cursor_x_offset = input_text
+            .graphemes(true)
+            .take(state.cursor_position)
+            .map(|g| g.len())
+            .sum::<usize>() as u16;
         let input_cursor_x = chat_chunks[1].x + 1 + cursor_x_offset;
         let input_cursor_y = chat_chunks[1].y + 1;
         f.set_cursor_position((input_cursor_x, input_cursor_y));
@@ -340,8 +374,31 @@ pub fn format_message_lines(
         .format("%H:%M")
         .to_string();
     let user_color = get_color_for_user(&msg.user);
-    if last_user.as_ref() == Some(&msg.user) {
-        let mut current_spans = Vec::new();
+
+    let mut message_content_spans = Vec::new();
+
+    if msg.message_type == "file" {
+        message_content_spans.push(Span::styled(
+            format!("📁 File: {} ({} MB)", msg.file_name.as_deref().unwrap_or("Unknown"), msg.file_size_mb.unwrap_or(0.0)),
+            Style::default().fg(rgb_to_color(&theme.accent)).add_modifier(Modifier::BOLD),
+        ));
+        if msg.is_image.unwrap_or(false) {
+            if let Some(preview) = &msg.image_preview {
+                message_content_spans.push(Span::raw("\n"));
+                message_content_spans.push(Span::styled(
+                    format!("🖼️ Image Preview (base64, first 100KB): {}", preview),
+                    Style::default().fg(rgb_to_color(&theme.dim)),
+                ));
+            }
+        }
+        if let Some(file_id) = &msg.file_id {
+            message_content_spans.push(Span::raw("\n"));
+            message_content_spans.push(Span::styled(
+                format!("Download: /download {} {}", file_id, msg.file_name.as_deref().unwrap_or("Unknown")),
+                Style::default().fg(rgb_to_color(&theme.help_text)).add_modifier(Modifier::ITALIC),
+            ));
+        }
+    } else {
         let mut current_text_slice = msg.content.as_str();
         while !current_text_slice.is_empty() {
             if let Some(mention_match) = mention_regex.find(current_text_slice) {
@@ -349,30 +406,33 @@ pub fn format_message_lines(
                     current_text_slice.split_at(mention_match.start());
                 let mut temp_slice = before_mention;
                 while let Some(emoji_match) = emoji_regex.find(temp_slice) {
-                    current_spans.push(
-                        Span::raw(&temp_slice[..emoji_match.start()]).fg(rgb_to_color(&theme.text)),
+                    message_content_spans.push(
+                        Span::raw(temp_slice[..emoji_match.start()].to_string())
+                            .fg(rgb_to_color(&theme.text)),
                     );
                     let shortcode = &emoji_match.as_str()[1..emoji_match.as_str().len() - 1];
                     if let Some(emoji) = emojis::get_by_shortcode(shortcode) {
-                        current_spans.push(Span::raw(emoji.as_str()).fg(rgb_to_color(&theme.text)));
+                        message_content_spans.push(Span::raw(emoji.as_str()).fg(rgb_to_color(&theme.text)));
                     } else {
-                        current_spans
-                            .push(Span::raw(emoji_match.as_str()).fg(rgb_to_color(&theme.text)));
+                        message_content_spans.push(
+                            Span::raw(emoji_match.as_str().to_string())
+                                .fg(rgb_to_color(&theme.text)),
+                        );
                     }
                     temp_slice = &temp_slice[emoji_match.end()..];
                 }
-                current_spans.push(Span::raw(temp_slice).fg(rgb_to_color(&theme.text)));
-                current_spans.push(Span::styled(
+                message_content_spans.push(Span::raw(temp_slice.to_string()).fg(rgb_to_color(&theme.text)));
+                message_content_spans.push(Span::styled(
                     "",
                     Style::default().fg(rgb_to_color(&theme.mention_bg)),
                 ));
-                current_spans.push(Span::styled(
-                    mention_match.as_str(),
+                message_content_spans.push(Span::styled(
+                    mention_match.as_str().to_string(),
                     Style::default()
                         .fg(get_contrasting_text_color(&theme.mention_bg))
                         .bg(rgb_to_color(&theme.mention_bg)),
                 ));
-                current_spans.push(Span::styled(
+                message_content_spans.push(Span::styled(
                     "",
                     Style::default().fg(rgb_to_color(&theme.mention_bg)),
                 ));
@@ -380,43 +440,45 @@ pub fn format_message_lines(
             } else {
                 let mut temp_slice = current_text_slice;
                 while let Some(emoji_match) = emoji_regex.find(temp_slice) {
-                    current_spans.push(
-                        Span::raw(&temp_slice[..emoji_match.start()]).fg(rgb_to_color(&theme.text)),
+                    message_content_spans.push(
+                        Span::raw(temp_slice[..emoji_match.start()].to_string())
+                            .fg(rgb_to_color(&theme.text)),
                     );
                     let shortcode = &emoji_match.as_str()[1..emoji_match.as_str().len() - 1];
                     if let Some(emoji) = emojis::get_by_shortcode(shortcode) {
-                        current_spans.push(Span::raw(emoji.as_str()).fg(rgb_to_color(&theme.text)));
+                        message_content_spans.push(Span::raw(emoji.as_str()).fg(rgb_to_color(&theme.text)));
                     } else {
-                        current_spans
-                            .push(Span::raw(emoji_match.as_str()).fg(rgb_to_color(&theme.text)));
+                        message_content_spans.push(
+                            Span::raw(emoji_match.as_str().to_string())
+                                .fg(rgb_to_color(&theme.text)),
+                        );
                     }
                     temp_slice = &temp_slice[emoji_match.end()..];
                 }
-                current_spans.push(Span::raw(temp_slice).fg(rgb_to_color(&theme.text)));
+                message_content_spans.push(Span::raw(temp_slice.to_string()).fg(rgb_to_color(&theme.text)));
                 current_text_slice = "";
             }
         }
-        lines.push_back(Line::from(vec![
-            Span::styled(
-                "│ ".to_string(),
+    }
+
+    if last_user.as_ref() == Some(&msg.user) {
+        lines.push_back(Line::from(
+            std::iter::once(Span::styled(
+                "│ ",
                 Style::default().fg(rgb_to_color(&theme.dim)),
-            ),
-            Span::raw(
-                current_spans
-                    .iter()
-                    .map(|s| s.content.to_string())
-                    .collect::<String>(),
-            ),
-        ]));
+            ))
+            .chain(message_content_spans.into_iter())
+            .collect::<Vec<Span>>(),
+        ));
     } else {
         let header_spans = vec![
-            Span::styled("╭ ".to_string(), Style::default().fg(user_color)),
+            Span::styled("╭ ", Style::default().fg(user_color)),
             Span::styled(
                 format!("{} ", msg.icon),
                 Style::default().fg(rgb_to_color(&theme.text)),
             ),
             Span::styled(
-                msg.user.clone(),
+                msg.user.as_str().to_string(),
                 Style::default().fg(user_color).add_modifier(Modifier::BOLD),
             ),
         ];
@@ -441,72 +503,13 @@ pub fn format_message_lines(
             ));
         }
         lines.push_back(Line::from(header_line_spans));
-        let mut current_spans = Vec::new();
-        let mut current_text_slice = msg.content.as_str();
-        while !current_text_slice.is_empty() {
-            if let Some(mention_match) = mention_regex.find(current_text_slice) {
-                let (before_mention, after_mention) =
-                    current_text_slice.split_at(mention_match.start());
-                let mut temp_slice = before_mention;
-                while let Some(emoji_match) = emoji_regex.find(temp_slice) {
-                    current_spans.push(
-                        Span::raw(&temp_slice[..emoji_match.start()]).fg(rgb_to_color(&theme.text)),
-                    );
-                    let shortcode = &emoji_match.as_str()[1..emoji_match.as_str().len() - 1];
-                    if let Some(emoji) = emojis::get_by_shortcode(shortcode) {
-                        current_spans.push(Span::raw(emoji.as_str()).fg(rgb_to_color(&theme.text)));
-                    } else {
-                        current_spans
-                            .push(Span::raw(emoji_match.as_str()).fg(rgb_to_color(&theme.text)));
-                    }
-                    temp_slice = &temp_slice[emoji_match.end()..];
-                }
-                current_spans.push(Span::raw(temp_slice).fg(rgb_to_color(&theme.text)));
-                current_spans.push(Span::styled(
-                    "",
-                    Style::default().fg(rgb_to_color(&theme.mention_bg)),
-                ));
-                current_spans.push(Span::styled(
-                    mention_match.as_str(),
-                    Style::default()
-                        .fg(get_contrasting_text_color(&theme.mention_bg))
-                        .bg(rgb_to_color(&theme.mention_bg)),
-                ));
-                current_spans.push(Span::styled(
-                    "",
-                    Style::default().fg(rgb_to_color(&theme.mention_bg)),
-                ));
-                current_text_slice = &after_mention[mention_match.len()..];
-            } else {
-                let mut temp_slice = current_text_slice;
-                while let Some(emoji_match) = emoji_regex.find(temp_slice) {
-                    current_spans.push(
-                        Span::raw(&temp_slice[..emoji_match.start()]).fg(rgb_to_color(&theme.text)),
-                    );
-                    let shortcode = &emoji_match.as_str()[1..emoji_match.as_str().len() - 1];
-                    if let Some(emoji) = emojis::get_by_shortcode(shortcode) {
-                        current_spans.push(Span::raw(emoji.as_str()).fg(rgb_to_color(&theme.text)));
-                    } else {
-                        current_spans
-                            .push(Span::raw(emoji_match.as_str()).fg(rgb_to_color(&theme.text)));
-                    }
-                    temp_slice = &temp_slice[emoji_match.end()..];
-                }
-                current_spans.push(Span::raw(temp_slice).fg(rgb_to_color(&theme.text)));
-                current_text_slice = "";
-            }
-        }
-        lines.push_back(Line::from(vec![
-            Span::styled(
-                "│ ".to_string(),
+        lines.push_back(Line::from(
+            std::iter::once(Span::styled(
+                "│ ",
                 Style::default().fg(rgb_to_color(&theme.dim)),
-            ),
-            Span::raw(
-                current_spans
-                    .iter()
-                    .map(|s| s.content.to_string())
-                    .collect::<String>(),
-            ),
-        ]));
+            ))
+            .chain(message_content_spans.into_iter())
+            .collect::<Vec<Span>>(),
+        ));
     }
 }

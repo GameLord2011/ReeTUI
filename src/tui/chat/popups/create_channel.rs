@@ -1,18 +1,23 @@
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
-    text::{Line, Span},
+    text::{Line, Span, Text}, // Added Text for optimization
     widgets::{Block, Paragraph},
     Frame,
 };
 
 use crate::app::AppState;
-use crate::tui::themes::{get_theme, rgb_to_color};
 use crate::tui::chat::create_channel_form::{CreateChannelForm, CreateChannelInput, ICONS};
+use crate::tui::themes::{get_theme, rgb_to_color};
 
-pub fn get_create_channel_popup_height() -> u16 {
-    // margin (2) + name_input (3) + icon_selector (3) + spacer (1) + create_button (3) + hint (1) + borders (2)
-    2 + 3 + 3 + 1 + 3 + 1 + 2
+pub fn get_create_channel_popup_size() -> (u16, u16) {
+    let hint_text = "(Enter) Confirm / (Esc) Cancel";
+    let icons_row_width = (ICONS.len() * 3) as u16;
+    // content: name_input(3) + icon_selector(3) + spacer(1) + create_button(3) + hint(1) = 11
+    // layout: form_margin(2) + popup_border(2) = 4
+    let height = 3 + 3 + 1 + 3 + 1 + 2 + 2;
+    let width = hint_text.len().max(icons_row_width as usize) as u16 + 4; // +4 for borders and margin
+    (width, height)
 }
 
 pub fn draw_create_channel_popup(
@@ -37,7 +42,7 @@ pub fn draw_create_channel_popup(
         .margin(1)
         .split(inner_area);
 
-    let icons_row_width = (ICONS.len() * 3) as u16;
+    let icons_row_width = (ICONS.len() * 3) as u16; // Calculated once
 
     let name_area_h = Layout::default()
         .direction(Direction::Horizontal)
@@ -59,7 +64,7 @@ pub fn draw_create_channel_popup(
                 Style::default().fg(rgb_to_color(&current_theme.input_border_inactive))
             },
         );
-    let name_paragraph = Paragraph::new(create_channel_form.name.clone())
+    let name_paragraph = Paragraph::new(Text::from(create_channel_form.name.as_str())) // Optimized: avoid clone
         .style(
             if create_channel_form.input_focused == CreateChannelInput::Name {
                 Style::default().fg(rgb_to_color(&current_theme.input_text_active))
@@ -107,8 +112,7 @@ pub fn draw_create_channel_popup(
                 icon_char,
                 Style::default()
                     .fg(rgb_to_color(&current_theme.accent))
-                    .add_modifier(Modifier::BOLD)
-                    .add_modifier(Modifier::UNDERLINED),
+                    .add_modifier(Modifier::BOLD),
             ));
         } else {
             spans.push(Span::styled(
@@ -160,7 +164,7 @@ pub fn draw_create_channel_popup(
     f.render_widget(create_button_paragraph, create_button_area_h[1]);
 
     let hint_paragraph = Paragraph::new(Line::from(Span::styled(
-        "  (Tab) Next / (Up/Down) Navigate / (Left/Right) Change Icon / (Enter) Confirm / (Esc) Cancel",
+        "(Enter) Confirm / (Esc) Cancel",
         Style::default().fg(rgb_to_color(&current_theme.accent)),
     )))
     .alignment(ratatui::layout::Alignment::Center);

@@ -348,8 +348,14 @@ fn get_validation_error(
     if username_input.trim().is_empty() {
         return Some("Username cannot be empty.".to_string());
     }
+    if username_input.contains(' ') {
+        return Some("Username cannot contain spaces.".to_string());
+    }
     if password_input.trim().is_empty() {
         return Some("Password cannot be empty.".to_string());
+    }
+    if password_input.contains(' ') {
+        return Some("Password cannot contain spaces.".to_string());
     }
     None
 }

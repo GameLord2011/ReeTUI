@@ -36,6 +36,24 @@ pub struct BroadcastMessage {
     pub content: String,
     pub timestamp: i64,
     pub channel_id: String,
+    #[serde(default = "default_message_type")]
+    pub message_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_size_mb: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_image: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub image_preview: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub download_url: Option<String>,
+}
+
+fn default_message_type() -> String {
+    "text".to_string()
 }
 
 #[derive(Deserialize, Debug, Clone)]

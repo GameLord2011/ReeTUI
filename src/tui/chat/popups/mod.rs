@@ -1,6 +1,7 @@
 pub mod create_channel;
 pub mod deconnection;
 pub mod emojis;
+pub mod file_manager;
 pub mod help;
 pub mod mentions;
 pub mod quit;
