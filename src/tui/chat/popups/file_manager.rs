@@ -1,13 +1,13 @@
 use std::{
     env,
-    path::{Path, PathBuf},
+    path::PathBuf,
 };
 
 use crate::tui::chat::utils::{centered_rect_with_size, centered_rect_with_size_and_padding};
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     prelude::*,
-    widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph},
+    widgets::{Block, Borders, Clear, List, ListItem, ListState},
 };
 
 pub enum FileManagerMode {

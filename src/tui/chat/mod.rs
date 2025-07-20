@@ -25,8 +25,8 @@ use std::{
     sync::{Arc, Mutex},
     time::Duration,
 };
-use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
+use tokio::io::AsyncWriteExt;
 use tokio_tungstenite::tungstenite;
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -65,6 +65,7 @@ pub async fn run_chat_page<B: Backend>(
 
     let (command_tx, mut command_rx) = mpsc::unbounded_channel::<WsCommand>();
     let (file_command_tx, mut file_command_rx) = mpsc::unbounded_channel::<WsCommand>();
+    let (progress_tx, mut progress_rx) = mpsc::unbounded_channel::<u8>();
 
     let http_client = reqwest::Client::new();
 
@@ -100,6 +101,7 @@ pub async fn run_chat_page<B: Backend>(
 
     let app_state_clone_for_file_commands = app_state.clone();
     let http_client_clone = http_client.clone();
+    let progress_tx_clone = progress_tx.clone();
     tokio::spawn(async move {
         while let Some(command) = file_command_rx.recv().await {
             match command {
@@ -120,6 +122,7 @@ pub async fn run_chat_page<B: Backend>(
                         &token,
                         &channel_id,
                         file_path.clone(),
+                        progress_tx_clone.clone(),
                     )
                     .await
                     {
@@ -131,7 +134,7 @@ pub async fn run_chat_page<B: Backend>(
                         Err(e) => {
                             let mut state_guard = app_state_clone_for_file_commands.lock().unwrap();
                             state_guard
-                                .set_error_message(format!("File upload failed: {}", e), 5000);
+                                .set_error_message(format!("File upload failed: {}", e.to_string()), 5000);
                         }
                     }
                 }
@@ -152,52 +155,17 @@ pub async fn run_chat_page<B: Backend>(
                             .unwrap();
                     }
 
-                    let mut downloaded_bytes: u64 = 0;
-                    let total_bytes: u64;
-
-                    let response = http_client_clone
-                        .get(&format!(
-                            "https://back.reetui.hackclub.app/files/download/{}",
-                            file_id
-                        ))
-                        .send()
-                        .await;
-
-                    match response {
-                        Ok(res) => {
-                            total_bytes = res.content_length().unwrap_or(0);
+                    match file_api::download_file(
+                        &http_client_clone,
+                        &file_id,
+                        &file_name,
+                        progress_tx_clone.clone(),
+                    )
+                    .await
+                    {
+                        Ok(bytes) => {
                             let mut file = tokio::fs::File::create(&download_path).await.unwrap();
-                            let mut stream = res.bytes_stream();
-
-                            while let Some(chunk) = stream.next().await {
-                                match chunk {
-                                    Ok(bytes) => {
-                                        file.write_all(&bytes).await.unwrap();
-                                        downloaded_bytes += bytes.len() as u64;
-                                        let progress = if total_bytes > 0 {
-                                            (downloaded_bytes as f64 / total_bytes as f64 * 100.0)
-                                                as u8
-                                        } else {
-                                            0
-                                        };
-                                        let mut state_guard =
-                                            app_state_clone_for_file_commands.lock().unwrap();
-                                        state_guard.set_error_message(
-                                            format!("Downloading {}... {}%", file_name, progress),
-                                            1000,
-                                        );
-                                    }
-                                    Err(e) => {
-                                        let mut state_guard =
-                                            app_state_clone_for_file_commands.lock().unwrap();
-                                        state_guard.set_error_message(
-                                            format!("Download failed: {}", e),
-                                            5000,
-                                        );
-                                        break;
-                                    }
-                                }
-                            }
+                            file.write_all(&bytes).await.unwrap();
                             let mut state_guard = app_state_clone_for_file_commands.lock().unwrap();
                             state_guard.set_error_message(
                                 format!("Downloaded {} to {:?}", file_name, download_path),
@@ -206,12 +174,20 @@ pub async fn run_chat_page<B: Backend>(
                         }
                         Err(e) => {
                             let mut state_guard = app_state_clone_for_file_commands.lock().unwrap();
-                            state_guard.set_error_message(format!("Download failed: {}", e), 5000);
+                            state_guard.set_error_message(format!("Download failed: {}", e.to_string()), 5000);
                         }
                     }
                 }
                 _ => {}
             }
+        }
+    });
+
+    let app_state_clone_for_progress = app_state.clone();
+    tokio::spawn(async move {
+        while let Some(progress) = progress_rx.recv().await {
+            let mut state_guard = app_state_clone_for_progress.lock().unwrap();
+            state_guard.set_error_message(format!("File transfer progress: {}%", progress), 1000);
         }
     });
 

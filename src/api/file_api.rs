@@ -1,20 +1,61 @@
-use reqwest::{Client, multipart};
+use reqwest::{Client, multipart, Body};
 use std::path::PathBuf;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
+use tokio::sync::mpsc;
+use futures_util::StreamExt;
+use hyper;
+use std::fmt;
 
 const API_BASE_URL: &str = "https://back.reetui.hackclub.app";
+
+#[derive(Debug)]
+pub enum FileApiError {
+    RequestFailedStatus(reqwest::StatusCode),
+    RequestError(reqwest::Error),
+    IoError(std::io::Error),
+    Other(String),
+}
+
+impl fmt::Display for FileApiError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            FileApiError::RequestFailedStatus(status) => write!(f, "Request failed with status: {}", status),
+            FileApiError::RequestError(e) => write!(f, "Request error: {}", e),
+            FileApiError::IoError(e) => write!(f, "IO error: {}", e),
+            FileApiError::Other(e) => write!(f, "Error: {}", e),
+        }
+    }
+}
+
+impl std::error::Error for FileApiError {}
+
+impl From<reqwest::Error> for FileApiError {
+    fn from(err: reqwest::Error) -> Self {
+        FileApiError::RequestError(err)
+    }
+}
+
+impl From<std::io::Error> for FileApiError {
+    fn from(err: std::io::Error) -> Self {
+        FileApiError::IoError(err)
+    }
+}
 
 pub async fn upload_file(
     client: &Client,
     token: &str,
     channel_id: &str,
     file_path: PathBuf,
-) -> Result<String, Box<dyn std::error::Error>> {
-    let file_name = file_path.file_name().unwrap().to_str().unwrap().to_string();
+    progress_sender: mpsc::UnboundedSender<u8>,
+) -> Result<String, FileApiError> {
+    let file_name = file_path.file_name().ok_or(FileApiError::Other("Invalid file name".to_string()))?.to_str().ok_or(FileApiError::Other("Invalid file name".to_string()))?.to_string();
     let mut file = File::open(&file_path).await?;
     let mut buffer = Vec::new();
     file.read_to_end(&mut buffer).await?;
+
+    // Send 0% progress before starting the upload
+    let _ = progress_sender.send(0);
 
     let form = multipart::Form::new()
         .part("file", multipart::Part::bytes(buffer).file_name(file_name));
@@ -27,26 +68,42 @@ pub async fn upload_file(
         .await?;
 
     if response.status().is_success() {
+        // Send 100% progress on successful upload
+        let _ = progress_sender.send(100);
         Ok(response.text().await?)
     } else {
         let status = response.status();
-        let error_text = response.text().await?;
-        Err(format!("Failed to upload file ({}): {}", status, error_text).into())
+        let error_text = response.text().await?; // Keep error_text for potential future use or logging
+        Err(FileApiError::RequestFailedStatus(status))
     }
 }
 
 pub async fn download_file(
     client: &Client,
     file_id: &str,
-) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    file_name: &str,
+    progress_sender: mpsc::UnboundedSender<u8>,
+) -> Result<Vec<u8>, FileApiError> {
     let response = client
         .get(&format!("{}/files/download/{}", API_BASE_URL, file_id))
         .send()
         .await?;
 
     if response.status().is_success() {
-        Ok(response.bytes().await?.to_vec())
+        let total_size = response.content_length().unwrap_or(0);
+        let mut downloaded_size: u64 = 0;
+        let mut buffer = Vec::new();
+        let mut stream = response.bytes_stream();
+
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk?;
+            buffer.extend_from_slice(&chunk);
+            downloaded_size += chunk.len() as u64;
+            let progress = ((downloaded_size as f64 / total_size as f64) * 100.0) as u8;
+            let _ = progress_sender.send(progress);
+        }
+        Ok(buffer)
     } else {
-        Err(format!("Failed to download file: {:?}", response.status()).into())
+        Err(FileApiError::RequestFailedStatus(response.status()))
     }
 }

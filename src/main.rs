@@ -19,5 +19,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         error!("TUI application error: {:?}", e);
     }
 
+    let cache_dir = std::env::temp_dir().join("ReeTUI_cache");
+    if cache_dir.exists() {
+        let _ = std::fs::remove_dir_all(cache_dir);
+    }
+
     Ok(())
 }

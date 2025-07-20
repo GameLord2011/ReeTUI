@@ -8,11 +8,11 @@ use crate::tui::chat::popups::deconnection::{
     draw_deconnection_popup, get_deconnection_popup_size,
 };
 use crate::tui::chat::popups::emojis::{draw_emojis_popup, get_emojis_popup_size};
+use crate::tui::chat::popups::file_manager::FileManager;
 use crate::tui::chat::popups::help::{draw_help_popup, get_help_popup_size};
 use crate::tui::chat::popups::mentions::{draw_mentions_popup, get_mentions_popup_size};
 use crate::tui::chat::popups::quit::{draw_quit_popup, get_quit_popup_size};
 use crate::tui::chat::popups::set_theme::{draw_set_theme_popup, get_set_theme_popup_size};
-use crate::tui::chat::popups::file_manager::FileManager;
 use crate::tui::chat::popups::settings::{draw_settings_popup, get_settings_popup_size};
 use crate::tui::chat::theme_settings_form::ThemeSettingsForm;
 use crate::tui::chat::utils::{centered_rect, get_color_for_user};
@@ -29,7 +29,12 @@ use ratatui::{
     Frame,
 };
 use regex::Regex;
+use sha2::{Digest, Sha256};
 use std::collections::VecDeque;
+use std::env;
+use std::fs;
+use std::path::Path;
+use std::process::Command;
 use unicode_segmentation::UnicodeSegmentation;
 
 pub fn draw_chat_ui<B: Backend>(
@@ -110,8 +115,16 @@ pub fn draw_chat_ui<B: Backend>(
     let user_icon = state.user_icon.clone().unwrap_or_default();
 
     let user_info_paragraph = Paragraph::new(Line::from(vec![
-        Span::styled(format!("{} ", user_icon), Style::default().fg(rgb_to_color(&current_theme.text))),
-        Span::styled(username_text, Style::default().fg(rgb_to_color(&current_theme.accent)).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            format!("{} ", user_icon),
+            Style::default().fg(rgb_to_color(&current_theme.text)),
+        ),
+        Span::styled(
+            username_text,
+            Style::default()
+                .fg(rgb_to_color(&current_theme.accent))
+                .add_modifier(Modifier::BOLD),
+        ),
     ]))
     .alignment(Alignment::Center)
     .block(user_info_block);
@@ -377,26 +390,157 @@ pub fn format_message_lines(
 
     let mut message_content_spans = Vec::new();
 
-    if msg.message_type == "file" {
-        message_content_spans.push(Span::styled(
-            format!("📁 File: {} ({} MB)", msg.file_name.as_deref().unwrap_or("Unknown"), msg.file_size_mb.unwrap_or(0.0)),
-            Style::default().fg(rgb_to_color(&theme.accent)).add_modifier(Modifier::BOLD),
-        ));
+    """    if msg.message_type == "file" {
         if msg.is_image.unwrap_or(false) {
-            if let Some(preview) = &msg.image_preview {
-                message_content_spans.push(Span::raw("\n"));
+            if let Some(download_url) = &msg.download_url {
+                let mut hasher = Sha256::new();
+                hasher.update(download_url.as_bytes());
+                let hash_result = hasher.finalize();
+                let file_hash = format!("{:x}", hash_result);
+
+                let cache_dir = env::temp_dir().join("ReeTUI_cache");
+                if !cache_dir.exists() {
+                    fs::create_dir_all(&cache_dir).unwrap_or_default();
+                }
+                let file_name = msg.file_name.clone().unwrap_or_default();
+                let file_extension = Path::new(&file_name)
+                    .extension()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("tmp");
+                let cached_image_path =
+                    cache_dir.join(format!("{}.{}", &file_hash, file_extension));
+
+                if !cached_image_path.exists() {
+                    if let Ok(mut response) = reqwest::blocking::get(download_url) {
+                        if let Ok(mut file) = fs::File::create(&cached_image_path) {
+                            let _ = response.copy_to(&mut file);
+                        }
+                    }
+                }
+
+                if last_user.as_ref() != Some(&msg.user) {
+                    let header_spans = vec![
+                        Span::styled("╭ ", Style::default().fg(user_color)),
+                        Span::styled(
+                            format!("{} ", msg.icon),
+                            Style::default().fg(rgb_to_color(&theme.text)),
+                        ),
+                        Span::styled(
+                            msg.user.as_str().to_string(),
+                            Style::default().fg(user_color).add_modifier(Modifier::BOLD),
+                        ),
+                    ];
+                    let header_width = header_spans.iter().map(|s| s.width()).sum::<usize>();
+                    let available_width = width as usize;
+                    let timestamp_width = timestamp_str.len();
+                    let mut header_line_spans = header_spans;
+                    if available_width > header_width + timestamp_width + 1 {
+                        let padding = available_width
+                            .saturating_sub(header_width)
+                            .saturating_sub(timestamp_width);
+                        header_line_spans.push(Span::raw(" ".repeat(padding)));
+                        header_line_spans.push(Span::styled(
+                            timestamp_str.clone(),
+                            Style::default().fg(rgb_to_color(&theme.dim)),
+                        ));
+                    } else {
+                        header_line_spans.push(Span::raw(" "));
+                        header_line_spans.push(Span::styled(
+                            timestamp_str.clone(),
+                            Style::default().fg(rgb_to_color(&theme.dim)),
+                        ));
+                    }
+                    lines.push_back(Line::from(header_line_spans));
+                }
+
+                if cached_image_path.exists() {
+                    let chafa_width = width.saturating_sub(15).max(10);
+                    let chafa_height = 15;
+                    if let Ok(output) = Command::new("chafa")
+                        .arg("--size")
+                        .arg(format!("{}x{}", chafa_width, chafa_height))
+                        .arg(&cached_image_path)
+                        .output()
+                    {
+                        if output.status.success() {
+                            let preview = String::from_utf8_lossy(&output.stdout).to_string();
+                            let text = Text::from(preview);
+                            for line in text.lines {
+                                let mut spans = vec![Span::styled("│ ", Style::default().fg(rgb_to_color(&theme.dim)))];
+                                spans.extend(line.spans);
+                                lines.push_back(Line::from(spans));
+                            }
+                        } else {
+                            lines.push_back(Line::from(vec![
+                                Span::styled("│ ", Style::default().fg(rgb_to_color(&theme.dim))),
+                                Span::styled(
+                                    format!(
+                                        "Failed to generate preview for {}",
+                                        msg.file_name.as_deref().unwrap_or("image")
+                                    ),
+                                    Style::default()
+                                        .fg(rgb_to_color(&theme.error))
+                                        .add_modifier(Modifier::ITALIC),
+                                ),
+                            ]));
+                        }
+                    }
+                } else {
+                    lines.push_back(Line::from(vec![
+                        Span::styled("│ ", Style::default().fg(rgb_to_color(&theme.dim))),
+                        Span::styled(
+                            format!(
+                                "Failed to download image: {}",
+                                msg.file_name.as_deref().unwrap_or("image")
+                            ),
+                            Style::default()
+                                .fg(rgb_to_color(&theme.error))
+                                .add_modifier(Modifier::ITALIC),
+                        ),
+                    ]));
+                }
+
+                lines.push_back(Line::from(vec![
+                    Span::styled("│ ", Style::default().fg(rgb_to_color(&theme.dim))),
+                    Span::styled(
+                        format!("Download with: /download {}", file_hash),
+                        Style::default()
+                            .fg(rgb_to_color(&theme.dim))
+                            .add_modifier(Modifier::ITALIC),
+                    ),
+                ]));
+                return;
+            } else {
                 message_content_spans.push(Span::styled(
-                    format!("🖼️ Image Preview (base64, first 100KB): {}", preview),
-                    Style::default().fg(rgb_to_color(&theme.dim)),
+                    format!(
+                        "Image file with no download URL: {}",
+                        msg.file_name.as_deref().unwrap_or("image")
+                    ),
+                    Style::default()
+                        .fg(rgb_to_color(&theme.error))
+                        .add_modifier(Modifier::ITALIC),
                 ));
             }
-        }
-        if let Some(file_id) = &msg.file_id {
-            message_content_spans.push(Span::raw("\n"));
+        } else {""
             message_content_spans.push(Span::styled(
-                format!("Download: /download {} {}", file_id, msg.file_name.as_deref().unwrap_or("Unknown")),
-                Style::default().fg(rgb_to_color(&theme.help_text)).add_modifier(Modifier::ITALIC),
+                format!(
+                    "📁 File: {} ({} MB)",
+                    msg.file_name.as_deref().unwrap_or("Unknown"),
+                    msg.file_size_mb.unwrap_or(0.0)
+                ),
+                Style::default()
+                    .fg(rgb_to_color(&theme.accent))
+                    .add_modifier(Modifier::BOLD),
             ));
+            if let Some(download_url) = &msg.download_url {
+                message_content_spans.push(Span::raw("\n"));
+                message_content_spans.push(Span::styled(
+                    format!("Download available: {}", download_url),
+                    Style::default()
+                        .fg(rgb_to_color(&theme.help_text))
+                        .add_modifier(Modifier::ITALIC),
+                ));
+            }
         }
     } else {
         let mut current_text_slice = msg.content.as_str();
@@ -412,7 +556,8 @@ pub fn format_message_lines(
                     );
                     let shortcode = &emoji_match.as_str()[1..emoji_match.as_str().len() - 1];
                     if let Some(emoji) = emojis::get_by_shortcode(shortcode) {
-                        message_content_spans.push(Span::raw(emoji.as_str()).fg(rgb_to_color(&theme.text)));
+                        message_content_spans
+                            .push(Span::raw(emoji.as_str()).fg(rgb_to_color(&theme.text)));
                     } else {
                         message_content_spans.push(
                             Span::raw(emoji_match.as_str().to_string())
@@ -421,7 +566,8 @@ pub fn format_message_lines(
                     }
                     temp_slice = &temp_slice[emoji_match.end()..];
                 }
-                message_content_spans.push(Span::raw(temp_slice.to_string()).fg(rgb_to_color(&theme.text)));
+                message_content_spans
+                    .push(Span::raw(temp_slice.to_string()).fg(rgb_to_color(&theme.text)));
                 message_content_spans.push(Span::styled(
                     "",
                     Style::default().fg(rgb_to_color(&theme.mention_bg)),
@@ -446,7 +592,8 @@ pub fn format_message_lines(
                     );
                     let shortcode = &emoji_match.as_str()[1..emoji_match.as_str().len() - 1];
                     if let Some(emoji) = emojis::get_by_shortcode(shortcode) {
-                        message_content_spans.push(Span::raw(emoji.as_str()).fg(rgb_to_color(&theme.text)));
+                        message_content_spans
+                            .push(Span::raw(emoji.as_str()).fg(rgb_to_color(&theme.text)));
                     } else {
                         message_content_spans.push(
                             Span::raw(emoji_match.as_str().to_string())
@@ -455,7 +602,8 @@ pub fn format_message_lines(
                     }
                     temp_slice = &temp_slice[emoji_match.end()..];
                 }
-                message_content_spans.push(Span::raw(temp_slice.to_string()).fg(rgb_to_color(&theme.text)));
+                message_content_spans
+                    .push(Span::raw(temp_slice.to_string()).fg(rgb_to_color(&theme.text)));
                 current_text_slice = "";
             }
         }
