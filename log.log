@@ -1,18 +1,18 @@
-[2025-07-17T18:29:53Z DEBUG ReeTUI] ReeTUI application started.
-[2025-07-17T18:30:02Z DEBUG reqwest::connect] starting new connection: https://back.reetui.hackclub.app/
-[2025-07-17T18:30:02Z DEBUG rustls::client::hs] No cached session for DnsName("back.reetui.hackclub.app")
-[2025-07-17T18:30:02Z DEBUG rustls::client::hs] Not resuming any session
-[2025-07-17T18:30:02Z DEBUG rustls::client::hs] Using ciphersuite TLS13_AES_128_GCM_SHA256
-[2025-07-17T18:30:02Z DEBUG rustls::client::tls13] Not resuming
-[2025-07-17T18:30:02Z DEBUG rustls::client::tls13] TLS1.3 encrypted extensions: [Protocols(SingleProtocolName(ProtocolName(687474702f312e31)))]
-[2025-07-17T18:30:02Z DEBUG rustls::client::hs] ALPN protocol is Some(b"http/1.1")
-[2025-07-17T18:30:03Z DEBUG rustls::common_state] Sending warning alert CloseNotify
-[2025-07-17T18:30:05Z DEBUG rustls::webpki::anchors] add_parsable_certificates processed 143 valid and 0 invalid certs
-[2025-07-17T18:30:05Z DEBUG tokio_tungstenite::tls::encryption::rustls] Added 143/143 native root certificates (ignored 0)
-[2025-07-17T18:30:05Z DEBUG rustls::client::hs] No cached session for DnsName("isock.reetui.hackclub.app")
-[2025-07-17T18:30:05Z DEBUG rustls::client::hs] Not resuming any session
-[2025-07-17T18:30:05Z DEBUG rustls::client::hs] Using ciphersuite TLS13_AES_128_GCM_SHA256
-[2025-07-17T18:30:05Z DEBUG rustls::client::tls13] Not resuming
-[2025-07-17T18:30:05Z DEBUG rustls::client::tls13] TLS1.3 encrypted extensions: []
-[2025-07-17T18:30:05Z DEBUG rustls::client::hs] ALPN protocol is None
-[2025-07-17T18:30:05Z DEBUG tungstenite::handshake::client] Client handshake done.
+[2025-07-21T19:35:47Z DEBUG ReeTUI] ReeTUI application started.
+[2025-07-21T19:35:52Z DEBUG reqwest::connect] starting new connection: https://back.reetui.hackclub.app/
+[2025-07-21T19:35:53Z DEBUG rustls::client::hs] No cached session for DnsName("back.reetui.hackclub.app")
+[2025-07-21T19:35:53Z DEBUG rustls::client::hs] Not resuming any session
+[2025-07-21T19:35:53Z DEBUG rustls::client::hs] Using ciphersuite TLS13_AES_128_GCM_SHA256
+[2025-07-21T19:35:53Z DEBUG rustls::client::tls13] Not resuming
+[2025-07-21T19:35:53Z DEBUG rustls::client::tls13] TLS1.3 encrypted extensions: ServerExtensions { selected_protocol: SingleProtocolName(ProtocolName(687474702f312e31)), unknown_extensions: {}, .. }
+[2025-07-21T19:35:53Z DEBUG rustls::client::hs] ALPN protocol is Some(b"http/1.1")
+[2025-07-21T19:35:53Z DEBUG rustls::common_state] Sending warning alert CloseNotify
+[2025-07-21T19:36:07Z DEBUG rustls::webpki::anchors] add_parsable_certificates processed 143 valid and 0 invalid certs
+[2025-07-21T19:36:07Z DEBUG tokio_tungstenite::tls::encryption::rustls] Added 143/143 native root certificates (ignored 0)
+[2025-07-21T19:36:07Z DEBUG rustls::client::hs] No cached session for DnsName("isock.reetui.hackclub.app")
+[2025-07-21T19:36:07Z DEBUG rustls::client::hs] Not resuming any session
+[2025-07-21T19:36:07Z DEBUG rustls::client::hs] Using ciphersuite TLS13_AES_128_GCM_SHA256
+[2025-07-21T19:36:07Z DEBUG rustls::client::tls13] Not resuming
+[2025-07-21T19:36:07Z DEBUG rustls::client::tls13] TLS1.3 encrypted extensions: ServerExtensions { unknown_extensions: {}, .. }
+[2025-07-21T19:36:07Z DEBUG rustls::client::hs] ALPN protocol is None
+[2025-07-21T19:36:08Z DEBUG tungstenite::handshake::client] Client handshake done.

@@ -10,7 +10,12 @@ use std::sync::{Arc, Mutex};
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _ = rustls::crypto::ring::default_provider().install_default();
 
-    // Logger initialization removed to disable logging.
+    // Initialize logger
+    let log_file = std::fs::File::create("log.log").expect("Could not create log file");
+    env_logger::builder()
+        .target(env_logger::Target::Pipe(Box::new(log_file)))
+        .filter_level(log::LevelFilter::Debug)
+        .init();
     log::debug!("ReeTUI application started.");
 
     let app_state = Arc::new(Mutex::new(AppState::new()));

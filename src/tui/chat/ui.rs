@@ -14,28 +14,24 @@ use crate::tui::chat::popups::mentions::{draw_mentions_popup, get_mentions_popup
 use crate::tui::chat::popups::quit::{draw_quit_popup, get_quit_popup_size};
 use crate::tui::chat::popups::set_theme::{draw_set_theme_popup, get_set_theme_popup_size};
 use crate::tui::chat::popups::settings::{draw_settings_popup, get_settings_popup_size};
+use crate::tui::chat::popups::download_progress::{draw_download_progress_popup, get_download_progress_popup_size};
+use crate::tui::chat::popups::debug_json::{draw_debug_json_popup, get_debug_json_popup_size};
 use crate::tui::chat::theme_settings_form::ThemeSettingsForm;
 use crate::tui::chat::utils::{centered_rect, get_color_for_user};
 use crate::tui::themes::{get_contrasting_text_color, get_theme, rgb_to_color, Theme};
 use chrono::{TimeZone, Utc};
-use ratatui::prelude::Stylize;
+use sha2::Digest;
 
 use ratatui::{
     backend::Backend,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Modifier, Style},
+    style::{Modifier, Style, Stylize},
     text::{Line, Span, Text},
     widgets::{Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph},
     Frame,
 };
 use regex::Regex;
-use sha2::{Digest, Sha256};
 use std::collections::VecDeque;
-use std::env;
-use std::fs;
-use std::path::Path;
-use std::process::Command;
-use unicode_segmentation::UnicodeSegmentation;
 
 pub fn draw_chat_ui<B: Backend>(
     f: &mut Frame,
@@ -213,16 +209,7 @@ pub fn draw_chat_ui<B: Backend>(
         .block(input_block)
         .style(Style::default().fg(rgb_to_color(&current_theme.input_text_active)));
     f.render_widget(input_paragraph, input_area);
-    if !state.popup_state.show || state.popup_state.popup_type == PopupType::Emojis {
-        let cursor_x_offset = input_text
-            .graphemes(true)
-            .take(state.cursor_position)
-            .map(|g| g.len())
-            .sum::<usize>() as u16;
-        let input_cursor_x = chat_chunks[1].x + 1 + cursor_x_offset;
-        let input_cursor_y = chat_chunks[1].y + 1;
-        f.set_cursor_position((input_cursor_x, input_cursor_y));
-    }
+
     if state.popup_state.show {
         let popup_title = match state.popup_state.popup_type {
             PopupType::Quit => "Quit",
@@ -235,6 +222,9 @@ pub fn draw_chat_ui<B: Backend>(
             PopupType::Mentions => "Mentions",
             PopupType::Emojis => "Emojis",
             PopupType::FileManager => "File Manager",
+            PopupType::DownloadProgress => "Downloading",
+            PopupType::DebugJson => "Debug JSON",
+            PopupType::Notification => "Notification",
         };
         let popup_block_widget = Block::default()
             .borders(Borders::ALL)
@@ -276,6 +266,8 @@ pub fn draw_chat_ui<B: Backend>(
                 (width, height)
             }
             PopupType::FileManager => (90, 90),
+            PopupType::DownloadProgress => get_download_progress_popup_size(),
+            PopupType::DebugJson => get_debug_json_popup_size(),
             _ => (0, 0),
         };
 
@@ -334,42 +326,14 @@ pub fn draw_chat_ui<B: Backend>(
             PopupType::FileManager => {
                 file_manager.ui(f);
             }
+            PopupType::DownloadProgress => {
+                draw_download_progress_popup(f, popup_area, state.download_progress);
+            }
+            PopupType::DebugJson => {
+                draw_debug_json_popup(f, popup_area, &state.debug_json_content);
+            }
             _ => { /* No specific rendering for other popup types yet */ }
         }
-    }
-    if let Some(error_msg) = &state.error_message {
-        let error_block = Block::default()
-            .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
-            .style(
-                Style::default()
-                    .fg(rgb_to_color(&current_theme.error))
-                    .bg(rgb_to_color(&current_theme.background)),
-            );
-        let error_paragraph = Paragraph::new(Line::from(error_msg.as_str()))
-            .style(Style::default().fg(rgb_to_color(&current_theme.text)))
-            .alignment(Alignment::Center)
-            .block(error_block);
-        let error_width = (error_msg.len() + 4) as u16;
-        let error_height = 3;
-        let error_area = Rect::new(
-            size.width.saturating_sub(error_width).saturating_sub(1),
-            1,
-            error_width,
-            error_height,
-        );
-        f.render_widget(Clear, error_area);
-        f.render_widget(error_paragraph, error_area);
-    }
-    if !state.popup_state.show {
-        let cursor_x_offset = input_text
-            .graphemes(true)
-            .take(state.cursor_position)
-            .map(|g| g.len())
-            .sum::<usize>() as u16;
-        let input_cursor_x = chat_chunks[1].x + 1 + cursor_x_offset;
-        let input_cursor_y = chat_chunks[1].y + 1;
-        f.set_cursor_position((input_cursor_x, input_cursor_y));
     }
 }
 pub fn format_message_lines(
@@ -390,33 +354,28 @@ pub fn format_message_lines(
 
     let mut message_content_spans = Vec::new();
 
-    """    if msg.message_type == "file" {
+    if msg.message_type == "file" {
+        
         if msg.is_image.unwrap_or(false) {
             if let Some(download_url) = &msg.download_url {
-                let mut hasher = Sha256::new();
+                let mut hasher = sha2::Sha256::new();
                 hasher.update(download_url.as_bytes());
                 let hash_result = hasher.finalize();
                 let file_hash = format!("{:x}", hash_result);
 
-                let cache_dir = env::temp_dir().join("ReeTUI_cache");
+                let cache_dir = std::env::temp_dir().join("ReeTUI_cache");
                 if !cache_dir.exists() {
-                    fs::create_dir_all(&cache_dir).unwrap_or_default();
+                    std::fs::create_dir_all(&cache_dir).unwrap_or_default();
                 }
                 let file_name = msg.file_name.clone().unwrap_or_default();
-                let file_extension = Path::new(&file_name)
+                let file_extension = std::path::Path::new(&file_name)
                     .extension()
                     .and_then(|s| s.to_str())
                     .unwrap_or("tmp");
                 let cached_image_path =
                     cache_dir.join(format!("{}.{}", &file_hash, file_extension));
 
-                if !cached_image_path.exists() {
-                    if let Ok(mut response) = reqwest::blocking::get(download_url) {
-                        if let Ok(mut file) = fs::File::create(&cached_image_path) {
-                            let _ = response.copy_to(&mut file);
-                        }
-                    }
-                }
+                
 
                 if last_user.as_ref() != Some(&msg.user) {
                     let header_spans = vec![
@@ -454,47 +413,40 @@ pub fn format_message_lines(
                 }
 
                 if cached_image_path.exists() {
-                    let chafa_width = width.saturating_sub(15).max(10);
-                    let chafa_height = 15;
-                    if let Ok(output) = Command::new("chafa")
-                        .arg("--size")
-                        .arg(format!("{}x{}", chafa_width, chafa_height))
-                        .arg(&cached_image_path)
-                        .output()
-                    {
-                        if output.status.success() {
-                            let preview = String::from_utf8_lossy(&output.stdout).to_string();
-                            let text = Text::from(preview);
-                            for line in text.lines {
-                                let mut spans = vec![Span::styled("│ ", Style::default().fg(rgb_to_color(&theme.dim)))];
-                                spans.extend(line.spans);
-                                lines.push_back(Line::from(spans));
-                            }
-                        } else {
-                            lines.push_back(Line::from(vec![
-                                Span::styled("│ ", Style::default().fg(rgb_to_color(&theme.dim))),
-                                Span::styled(
-                                    format!(
-                                        "Failed to generate preview for {}",
-                                        msg.file_name.as_deref().unwrap_or("image")
-                                    ),
-                                    Style::default()
-                                        .fg(rgb_to_color(&theme.error))
-                                        .add_modifier(Modifier::ITALIC),
-                                ),
-                            ]));
+                    if let Some(preview) = &msg.image_preview {
+                        let text = Text::from(preview.clone());
+                        for line in text.lines {
+                            let mut spans = vec![Span::styled(
+                                "│ ",
+                                Style::default().fg(rgb_to_color(&theme.dim)),
+                            )];
+                            spans.extend(line.spans);
+                            lines.push_back(Line::from(spans));
                         }
+                    } else {
+                        lines.push_back(Line::from(vec![
+                            Span::styled("│ ", Style::default().fg(rgb_to_color(&theme.dim))),
+                            Span::styled(
+                                format!(
+                                    "Image preview not available for {}",
+                                    msg.file_name.as_deref().unwrap_or("image")
+                                ),
+                                Style::default()
+                                    .fg(rgb_to_color(&theme.dim))
+                                    .add_modifier(Modifier::ITALIC),
+                            ),
+                        ]));
                     }
                 } else {
                     lines.push_back(Line::from(vec![
                         Span::styled("│ ", Style::default().fg(rgb_to_color(&theme.dim))),
                         Span::styled(
                             format!(
-                                "Failed to download image: {}",
+                                "Image not yet downloaded: {}",
                                 msg.file_name.as_deref().unwrap_or("image")
                             ),
                             Style::default()
-                                .fg(rgb_to_color(&theme.error))
+                                .fg(rgb_to_color(&theme.dim))
                                 .add_modifier(Modifier::ITALIC),
                         ),
                     ]));
@@ -503,7 +455,7 @@ pub fn format_message_lines(
                 lines.push_back(Line::from(vec![
                     Span::styled("│ ", Style::default().fg(rgb_to_color(&theme.dim))),
                     Span::styled(
-                        format!("Download with: /download {}", file_hash),
+                        format!("Download with: /download {} {}", file_hash, file_name),
                         Style::default()
                             .fg(rgb_to_color(&theme.dim))
                             .add_modifier(Modifier::ITALIC),
@@ -521,7 +473,8 @@ pub fn format_message_lines(
                         .add_modifier(Modifier::ITALIC),
                 ));
             }
-        } else {""
+        } else {
+            // This else is for non-image files within "file" type
             message_content_spans.push(Span::styled(
                 format!(
                     "📁 File: {} ({} MB)",
@@ -543,6 +496,7 @@ pub fn format_message_lines(
             }
         }
     } else {
+        // This else is for non-file messages (i.e., text messages)
         let mut current_text_slice = msg.content.as_str();
         while !current_text_slice.is_empty() {
             if let Some(mention_match) = mention_regex.find(current_text_slice) {

@@ -1,21 +1,19 @@
 use ratatui::{
+    Frame,
     layout::Alignment,
     layout::Rect,
     style::Style,
     text::Line,
     widgets::{Block, Paragraph},
-    Frame,
 };
 
 use crate::app::AppState;
 use crate::tui::themes::{get_theme, rgb_to_color};
 
 pub fn get_deconnection_popup_size() -> (u16, u16) {
-    let text1 = "Are you sure you want to disconnect?";
-    let text2 = "(Y)es / (N)o";
+    let text1 = "Ya really want to deconnect ??";
+    let text2 = "(Y)ep / (N)ah";
     let width = text1.len().max(text2.len()) as u16 + 4;
-    // content: text1(1) + empty_line(1) + text2(1) = 3
-    // layout: popup_border(2) + paragraph_margin(2) = 4
     let height = 1 + 1 + 1 + 2 + 2;
     (width, height)
 }

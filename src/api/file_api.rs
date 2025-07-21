@@ -1,10 +1,9 @@
-use reqwest::{Client, multipart, Body};
+use reqwest::{Client, multipart};
 use std::path::PathBuf;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 use tokio::sync::mpsc;
 use futures_util::StreamExt;
-use hyper;
 use std::fmt;
 
 const API_BASE_URL: &str = "https://back.reetui.hackclub.app";
@@ -73,7 +72,7 @@ pub async fn upload_file(
         Ok(response.text().await?)
     } else {
         let status = response.status();
-        let error_text = response.text().await?; // Keep error_text for potential future use or logging
+        let _error_text = response.text().await?; // Keep error_text for potential future use or logging
         Err(FileApiError::RequestFailedStatus(status))
     }
 }
@@ -81,7 +80,7 @@ pub async fn upload_file(
 pub async fn download_file(
     client: &Client,
     file_id: &str,
-    file_name: &str,
+    _file_name: &str,
     progress_sender: mpsc::UnboundedSender<u8>,
 ) -> Result<Vec<u8>, FileApiError> {
     let response = client

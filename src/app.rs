@@ -2,8 +2,23 @@ use crate::api::models::{BroadcastMessage, Channel};
 use crate::tui::themes::ThemeName;
 use ratatui::text::Line;
 use std::collections::{HashMap, VecDeque};
-use std::time::Duration;
 use std::time::Instant;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum NotificationType {
+    Info,
+    Warning,
+    Error,
+    Success,
+}
+
+#[derive(Debug, Clone)]
+pub struct Notification {
+    pub title: String,
+    pub message: String,
+    pub notification_type: NotificationType,
+    pub created_at: Instant,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PopupType {
@@ -16,7 +31,10 @@ pub enum PopupType {
     Mentions,
     Emojis,
     FileManager,
+    DownloadProgress,
+    DebugJson,
     None,
+    Notification,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -47,8 +65,6 @@ pub struct AppState {
     pub animation_frame_index: usize,
     pub last_frame_time: Instant,
     pub popup_state: PopupState,
-    pub error_message: Option<String>,
-    pub error_display_until: Option<Instant>,
     pub message_scroll_offset: usize,
     pub current_theme: ThemeName,
     pub selected_setting_index: usize,
@@ -58,6 +74,9 @@ pub struct AppState {
     pub mention_query: String,
     pub emoji_query: String,
     pub cursor_position: usize,
+    pub notification: Option<Notification>,
+    pub download_progress: u8,
+    pub debug_json_content: String,
 }
 
 impl Default for AppState {
@@ -74,8 +93,6 @@ impl Default for AppState {
             animation_frame_index: 0,
             last_frame_time: Instant::now(),
             popup_state: PopupState::default(),
-            error_message: None,
-            error_display_until: None,
             message_scroll_offset: 0,
             current_theme: ThemeName::Default,
             selected_setting_index: 0,
@@ -85,6 +102,9 @@ impl Default for AppState {
             mention_query: String::new(),
             emoji_query: String::new(),
             cursor_position: 0,
+            notification: None,
+            download_progress: 0,
+            debug_json_content: String::new(),
         }
     }
 }
@@ -100,6 +120,19 @@ impl AppState {
         self.user_icon = Some(icon);
     }
 
+    pub fn set_notification(&mut self, title: String, message: String, notification_type: NotificationType) {
+        self.notification = Some(Notification {
+            title,
+            message,
+            notification_type,
+            created_at: Instant::now(),
+        });
+    }
+
+    pub fn clear_notification(&mut self) {
+        self.notification = None;
+    }
+
     pub fn clear_user_auth(&mut self) {
         self.auth_token = None;
         self.username = None;
@@ -112,8 +145,7 @@ impl AppState {
         self.animation_frame_index = 0;
         self.last_frame_time = Instant::now();
         self.popup_state = PopupState::default();
-        self.error_message = None;
-        self.error_display_until = None;
+        self.notification = None; // Clear notification on logout
         self.message_scroll_offset = 0;
         self.current_theme = ThemeName::Default;
     }
@@ -183,25 +215,19 @@ impl AppState {
         self.channel_history_state.remove(channel_id);
     }
 
-    pub fn set_error_message(&mut self, message: String, duration_ms: u64) {
-        self.error_message = Some(message);
-        self.error_display_until = Some(Instant::now() + Duration::from_millis(duration_ms));
-    }
-
-    pub fn clear_expired_error(&mut self) {
-        if let Some(display_until) = self.error_display_until {
-            if Instant::now() >= display_until {
-                self.error_message = None;
-                self.error_display_until = None;
-            }
-        }
-    }
-
     pub fn scroll_messages_up(&mut self) {
         self.message_scroll_offset = self.message_scroll_offset.saturating_add(1);
     }
 
     pub fn scroll_messages_down(&mut self) {
         self.message_scroll_offset = self.message_scroll_offset.saturating_sub(1);
+    }
+
+    pub fn clear_expired_notification(&mut self) {
+        if let Some(notification) = &self.notification {
+            if notification.created_at.elapsed() > std::time::Duration::from_secs(5) {
+                self.notification = None;
+            }
+        }
     }
 }

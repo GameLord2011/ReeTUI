@@ -7,3 +7,5 @@ pub mod mentions;
 pub mod quit;
 pub mod set_theme;
 pub mod settings;
+pub mod download_progress;
+pub mod debug_json;
