@@ -4,7 +4,7 @@ use ratatui::text::Line;
 use std::collections::{HashMap, VecDeque};
 use std::time::Instant;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Deserialize)]
 pub enum NotificationType {
     Info,
     Warning,
@@ -164,8 +164,10 @@ impl AppState {
     }
 
     pub fn add_message(&mut self, message: BroadcastMessage) {
-        let channel_messages = self.messages.entry(message.channel_id.clone()).or_default();
+        let channel_id = message.channel_id.clone();
+        let channel_messages = self.messages.entry(channel_id.clone()).or_default();
         channel_messages.push_back(message);
+        self.rendered_messages.remove(&channel_id);
         self.message_scroll_offset = 0;
     }
 

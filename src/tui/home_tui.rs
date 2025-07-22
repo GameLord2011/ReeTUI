@@ -10,9 +10,9 @@ use ratatui::{
     widgets::{Block, Paragraph},
     Frame, Terminal,
 };
+use std::io;
 use std::{
-    io,
-    sync::{Arc, Mutex},
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -28,25 +28,25 @@ const ANIMATION_FRAMES: [&str; 7] = [
 "#,
     r#"
  ________  _______   _______  _________  ___  ___  ___     
-|\   __  \|\  ___ \ |\  ___ \|\___   ___\\  \|\  \|\  \    
-\ \  \|\  \ \   __/|\ \   __/\|___ \  \_\ \  \\\  \ \  \   
- \ \   _  _\ \  \_|/_\ \  \_|/__  \ \  \ \ \  \\\  \ \  \  
-  \ \  \\  \\ \  \_|\ \ \  \_|\ \  \ \  \ \ \  \\\  \ \  \ 
-   \ \__\\ _\\ \_______\ \_______\  \ \__\ \ \_______\ \__\
+|\   __  \|\  ___ \ ||\  ___ \ ||\___   ___\\  \||\  \||\  \    
+\ \  \||\  \\ \   __/|\\ \   __/|\|___ \  \_\\ \  \\\\  \\ \  \   
+ \ \   _  _\\ \  \\_|/_\\ \  \\_|/__  \ \  \\ \ \  \\\\  \\ \  \  
+  \ \  \\\\  \\\\ \  \\_|\\ \ \  \\_|\\ \  \\ \  \\ \ \  \\\\  \\ \  \ 
+   \ \__\\ _\\\ \_______\\ \_______\\  \ \__\\ \ \_______\\ \__\
     \|__|\|__|\|_______|\|_______|   \|__|  \|_______|\|__|
 "#,
     r#"
      ___           ___           ___           ___           ___                 
     /\  \         /\  \         /\  \         /\  \         /\__\          ___   
-   /::\  \       /::\  \       /::\  \        \:\  \       /:/  /         /\  \  
-  /:/\:\  \     /:/\:\  \     /:/\:\  \        \:\  \     /:/  /          \:\  \ 
- /::\~\:\  \   /::\~\:\  \   /::\~\:\  \       /::\  \   /:/  /  ___      /::\__\
-/:/\:\ \:\__\ /:/\:\ \:\__\ /:/\:\ \:\__\     /:/\:\__\ /:/__/  /\__\  __/:/\/__/
-\/_|::\/:/  / \:\~\:\ \/__/ \:\~\:\ \/__/    /:/  \/__/ \:\  \ /:/  / /\/:/  /   
-   |:|::/  /   \:\ \:\__\    \:\ \:\__\     /:/  /       \:\  /:/  /  \::/__/    
-   |:|\/__/     \:\ \/__/     \:\ \/__/     \/__/         \:\/:/  /    \:\__\    
-   |:|  |        \:\__\        \:\__\                      \::/  /      \/__/    
-    \|__|         \/__/         \/__/                       \/__/                
+   /::\  \       /::\  \       /::\  \        \::\  \       /:/  /         /\  \  
+  /:/\::\  \     /:/\::\  \     /:/\::\  \        \::\  \     /:/  /          \::\  \ 
+ /::\~\::\  \   /::\~\::\  \   /::\~\::\  \       /::\  \   /:/  /  ___      /::\__\
+/:/\::\ \::\__\ /:/\\::\ \::\__\ /:/\\::\ \::\__\     /:/\\::\__\ /:/__/  /\__\  __/:/\\/__/
+\/_|::\/:/  / \\:\~\::\ \/__/ \\:\~\::\ \/__/    /:/  \\/__/ \\:\  \ /:/  /  \::/__/    
+   |:|::/  /   \\:\ \::\__\    \\:\ \::\__\     /:/  /       \\:\  /:/  /    \\::__\    
+   |:|\\/__/     \\:\ \/__/     \\:\ \/__/     \\/__/         \\:\/:/  /    \\/__/    
+   |:|  |        \\:\__\        \\:\__\                      \\::/  /      \\/__/    
+    \|__|         \\/__/         \\/__/                       \\/__/                
 "#,
     r#"
    ▄████████    ▄████████    ▄████████     ███     ███    █▄   ▄█ 
@@ -91,50 +91,7 @@ const ANIMATION_FRAMES: [&str; 7] = [
 ];
 const FRAME_DURATION_MS: u64 = 600;
 
-pub async fn run_home_page<B: Backend>(
-    terminal: &mut Terminal<B>,
-    app_state: Arc<Mutex<AppState>>,
-) -> io::Result<TuiPage> {
-    let current_theme = get_theme(ThemeName::CatppuccinMocha);
-
-    loop {
-        terminal.draw(|f| {
-            draw_home_ui::<B>(f, app_state.clone(), &current_theme);
-        })?;
-
-        let mut state = app_state.lock().unwrap();
-        let now = Instant::now();
-        let wait_time = Duration::from_millis(0);
-        let elapsed_since_last_frame = now.duration_since(state.last_frame_time);
-        let required_duration_per_frame = Duration::from_millis(FRAME_DURATION_MS);
-
-        if elapsed_since_last_frame >= required_duration_per_frame {
-            state.animation_frame_index =
-                (state.animation_frame_index + 1) % ANIMATION_FRAMES.len();
-            state.last_frame_time = now;
-        } else {
-            tokio::time::sleep(
-                required_duration_per_frame.saturating_sub(elapsed_since_last_frame),
-            )
-            .await;
-        }
-
-        drop(state);
-
-        if event::poll(wait_time)? {
-            if let Event::Key(key) = event::read()? {
-                if key.kind == KeyEventKind::Press {
-                    match key.code {
-                        KeyCode::Char('q') => return Ok(TuiPage::Exit),
-                        _ => return Ok(TuiPage::Chat),
-                    }
-                }
-            }
-        }
-    }
-}
-
-fn draw_home_ui<B: Backend>(f: &mut Frame, app_state: Arc<Mutex<AppState>>, theme: &Theme) {
+fn draw_home_ui<B: Backend>(f: &mut Frame, app_state: &mut AppState, theme: &Theme) {
     let size = f.area();
 
     f.render_widget(Block::default().bg(rgb_to_color(&theme.background)), size);
@@ -153,7 +110,7 @@ fn draw_home_ui<B: Backend>(f: &mut Frame, app_state: Arc<Mutex<AppState>>, them
         )
         .split(size);
 
-    let current_frame_index = app_state.lock().unwrap().animation_frame_index;
+    let current_frame_index = app_state.animation_frame_index;
     let current_frame_str = ANIMATION_FRAMES[current_frame_index];
     let lines: Vec<&str> = current_frame_str.lines().collect();
 
@@ -213,4 +170,46 @@ fn draw_home_ui<B: Backend>(f: &mut Frame, app_state: Arc<Mutex<AppState>>, them
     .style(Style::default().fg(rgb_to_color(&theme.help_text)))
     .alignment(Alignment::Center);
     f.render_widget(gemini_notice, chunks[3]);
+}
+
+pub async fn run_home_page<B: Backend>(
+    terminal: &mut Terminal<B>,
+    app_state: Arc<tokio::sync::Mutex<AppState>>,
+) -> io::Result<TuiPage> {
+    let current_theme = get_theme(ThemeName::CatppuccinMocha);
+
+    loop {
+        let mut state_guard = app_state.lock().await;
+
+        terminal.draw(|f| {
+            draw_home_ui::<B>(f, &mut state_guard, &current_theme);
+        })?;
+
+        let now = Instant::now();
+        let wait_time = Duration::from_millis(0);
+        let elapsed_since_last_frame = now.duration_since(state_guard.last_frame_time);
+        let required_duration_per_frame = Duration::from_millis(FRAME_DURATION_MS);
+
+        if elapsed_since_last_frame >= required_duration_per_frame {
+            state_guard.animation_frame_index =
+                (state_guard.animation_frame_index + 1) % ANIMATION_FRAMES.len();
+            state_guard.last_frame_time = now;
+        } else {
+            tokio::time::sleep(
+                required_duration_per_frame.saturating_sub(elapsed_since_last_frame),
+            )
+            .await;
+        }
+
+        if event::poll(wait_time)? {
+            if let Event::Key(key) = event::read()? {
+                if key.kind == KeyEventKind::Press {
+                    match key.code {
+                        KeyCode::Char('q') => return Ok(TuiPage::Exit),
+                        _ => return Ok(TuiPage::Chat),
+                    }
+                }
+            }
+        }
+    }
 }

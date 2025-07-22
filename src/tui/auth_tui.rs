@@ -13,11 +13,9 @@ use ratatui::{
     Frame, Terminal,
 };
 use sha2::{Digest, Sha256};
-use std::{
-    io,
-    sync::{Arc, Mutex},
-    time::Duration,
-};
+use std::{io, time::Duration};
+use tokio::sync::Mutex;
+use std::sync::Arc;
 use tokio::time::sleep;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -39,7 +37,7 @@ const ICONS: [&str; 11] = ["󰱨", "󰱩", "󱃞", "󰱫", "󰱬", "󰱮", "󰱰
 
 pub async fn run_auth_page<B: Backend>(
     terminal: &mut Terminal<B>,
-    app_state: Arc<Mutex<AppState>>,
+    app_state: Arc<tokio::sync::Mutex<AppState>>,
 ) -> io::Result<TuiPage> {
     let mut username_input = String::new();
     let mut password_input = String::new();
@@ -56,7 +54,9 @@ pub async fn run_auth_page<B: Backend>(
             selected_icon_index = ICONS.len() - 1;
         }
 
-        let msg_to_draw = message_state.lock().unwrap().clone();
+        let msg_to_draw_guard = message_state.lock().await;
+        let msg_to_draw = msg_to_draw_guard.clone();
+        drop(msg_to_draw_guard); // Release the lock before drawing
 
         terminal.draw(|f| {
             draw_auth_ui(
@@ -107,7 +107,7 @@ pub async fn run_auth_page<B: Backend>(
                                 AuthMode::Login => AuthMode::Register,
                             };
                             selected_field = SelectedField::Username;
-                            *message_state.lock().unwrap() = String::new();
+                            *message_state.lock().await = String::new();
                         }
                         KeyCode::Up => {
                             selected_field = match (current_mode, selected_field) {
@@ -130,7 +130,7 @@ pub async fn run_auth_page<B: Backend>(
                                 }
                                 _ => selected_field,
                             };
-                            *message_state.lock().unwrap() = String::new();
+                            *message_state.lock().await = String::new();
                         }
                         KeyCode::Down => {
                             selected_field = match (current_mode, selected_field) {
@@ -153,23 +153,23 @@ pub async fn run_auth_page<B: Backend>(
                                 }
                                 _ => selected_field,
                             };
-                            *message_state.lock().unwrap() = String::new();
+                            *message_state.lock().await = String::new();
                         }
                         KeyCode::Left => {
                             if matches!(selected_field, SelectedField::Icon) {
                                 selected_icon_index =
                                     (selected_icon_index + ICONS.len() - 1) % ICONS.len();
                             }
-                            *message_state.lock().unwrap() = String::new();
+                            *message_state.lock().await = String::new();
                         }
                         KeyCode::Right => {
                             if matches!(selected_field, SelectedField::Icon) {
                                 selected_icon_index = (selected_icon_index + 1) % ICONS.len();
                             }
-                            *message_state.lock().unwrap() = String::new();
+                            *message_state.lock().await = String::new();
                         }
                         KeyCode::Enter => {
-                            *message_state.lock().unwrap() = String::new();
+                            *message_state.lock().await = String::new();
                             match selected_field {
                                 SelectedField::Username => selected_field = SelectedField::Password,
                                 SelectedField::Password => {
@@ -190,7 +190,7 @@ pub async fn run_auth_page<B: Backend>(
                                             &current_mode,
                                         );
                                         if let Some(err_msg) = validation_error {
-                                            *message_state.lock().unwrap() = err_msg;
+                                            *message_state.lock().await = err_msg;
                                             continue;
                                         }
 
@@ -198,7 +198,7 @@ pub async fn run_auth_page<B: Backend>(
                                             "{:x}",
                                             Sha256::digest(password_input.as_bytes())
                                         );
-                                        *message_state.lock().unwrap() =
+                                        *message_state.lock().await =
                                             "Registering...".to_string();
                                         terminal.draw(|f| {
                                             draw_auth_ui(
@@ -208,7 +208,7 @@ pub async fn run_auth_page<B: Backend>(
                                                 selected_icon_index,
                                                 &current_mode,
                                                 &selected_field,
-                                                &message_state.lock().unwrap(),
+                                                &msg_to_draw,
                                                 current_theme,
                                             );
                                         })?;
@@ -222,7 +222,7 @@ pub async fn run_auth_page<B: Backend>(
                                         .await
                                         {
                                             Ok(token_response) => {
-                                                let mut state = app_state.lock().unwrap();
+                                                let mut state = app_state.lock().await;
                                                 state.set_user_auth(
                                                     token_response.token,
                                                     username_input.clone(),
@@ -231,11 +231,11 @@ pub async fn run_auth_page<B: Backend>(
                                                 return Ok(TuiPage::Home);
                                             }
                                             Err(e) => {
-                                                *message_state.lock().unwrap() = e.to_string();
+                                                *message_state.lock().await = e.to_string();
                                                 let msg_clone = message_state.clone();
                                                 tokio::spawn(async move {
                                                     sleep(Duration::from_secs(3)).await;
-                                                    *msg_clone.lock().unwrap() = String::new();
+                                                    *msg_clone.lock().await = String::new();
                                                 });
                                             }
                                         }
@@ -249,11 +249,11 @@ pub async fn run_auth_page<B: Backend>(
                                             &current_mode,
                                         );
                                         if let Some(err_msg) = validation_error {
-                                            *message_state.lock().unwrap() = err_msg;
+                                            *message_state.lock().await = err_msg;
                                             continue;
                                         }
 
-                                        *message_state.lock().unwrap() =
+                                        *message_state.lock().await =
                                             "Logging in...".to_string();
                                         terminal.draw(|f| {
                                             draw_auth_ui(
@@ -263,7 +263,7 @@ pub async fn run_auth_page<B: Backend>(
                                                 selected_icon_index,
                                                 &current_mode,
                                                 &selected_field,
-                                                &message_state.lock().unwrap(),
+                                                &msg_to_draw,
                                                 current_theme,
                                             );
                                         })?;
@@ -280,7 +280,7 @@ pub async fn run_auth_page<B: Backend>(
                                         .await
                                         {
                                             Ok(token_response) => {
-                                                let mut state = app_state.lock().unwrap();
+                                                let mut state = app_state.lock().await;
                                                 state.set_user_auth(
                                                     token_response.token,
                                                     username_input.clone(),
@@ -289,11 +289,11 @@ pub async fn run_auth_page<B: Backend>(
                                                 return Ok(TuiPage::Home);
                                             }
                                             Err(e) => {
-                                                *message_state.lock().unwrap() = e.to_string();
+                                                *message_state.lock().await = e.to_string();
                                                 let msg_clone = message_state.clone();
                                                 tokio::spawn(async move {
                                                     sleep(Duration::from_secs(3)).await;
-                                                    *msg_clone.lock().unwrap() = String::new();
+                                                    *msg_clone.lock().await = String::new();
                                                 });
                                             }
                                         }
@@ -302,7 +302,7 @@ pub async fn run_auth_page<B: Backend>(
                             }
                         }
                         KeyCode::Backspace => {
-                            *message_state.lock().unwrap() = String::new();
+                            *message_state.lock().await = String::new();
                             match selected_field {
                                 SelectedField::Username => {
                                     username_input.pop();
@@ -319,7 +319,7 @@ pub async fn run_auth_page<B: Backend>(
                             {
                                 continue;
                             }
-                            *message_state.lock().unwrap() = String::new();
+                            *message_state.lock().await = String::new();
                             match selected_field {
                                 SelectedField::Username => {
                                     username_input.push(c);
@@ -331,7 +331,7 @@ pub async fn run_auth_page<B: Backend>(
                             }
                         }
                         _ => {
-                            *message_state.lock().unwrap() = String::new();
+                            *message_state.lock().await = String::new();
                         }
                     }
                 }

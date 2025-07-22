@@ -7,7 +7,7 @@ use ratatui::{
 };
 
 use crate::app::AppState;
-use crate::tui::chat::create_channel_form::ICONS;
+
 use crate::tui::chat::theme_settings_form::ThemeSettingsForm;
 use crate::tui::themes::{get_theme, rgb_to_color};
 
@@ -66,7 +66,13 @@ pub fn draw_set_theme_popup(
         .margin(1)
         .split(inner_area);
 
-    let theme_list_width = (ICONS.len() * 3) as u16;
+    let theme_list_width = theme_settings_form
+        .themes
+        .iter()
+        .map(|theme| format!("{} {:?}", theme.icon(), theme).len())
+        .max()
+        .unwrap_or(20) as u16
+        + 10; // +10 for padding and highlight symbol
     let list_area_h = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
@@ -92,7 +98,7 @@ pub fn draw_set_theme_popup(
                 .fg(rgb_to_color(&current_theme.button_text_active))
                 .bg(rgb_to_color(&current_theme.button_bg_active)),
         )
-        .highlight_symbol(" ");
+        .highlight_symbol(" ");
 
     f.render_stateful_widget(
         theme_list,
@@ -103,7 +109,7 @@ pub fn draw_set_theme_popup(
     let hint_paragraph = Paragraph::new(vec![
         Line::from(""),
         Line::from(Line::styled(
-            "(Up/Down) Navigate",
+            "(Up/Down) Explore Aesthetics ",
             Style::default().fg(rgb_to_color(&current_theme.accent)),
         )),
     ])

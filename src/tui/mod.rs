@@ -4,10 +4,9 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use ratatui::{backend::CrosstermBackend, Terminal};
-use std::{
-    io::{self},
-    sync::{Arc, Mutex},
-};
+use std::io::{self};
+use std::sync::Arc;
+
 
 pub mod auth_tui;
 pub mod chat;
@@ -25,7 +24,7 @@ pub enum TuiPage {
     Chat,
     Exit,
 }
-pub async fn run_tui(app_state: Arc<Mutex<AppState>>) -> io::Result<()> {
+pub async fn run_tui(app_state: Arc<tokio::sync::Mutex<AppState>>) -> io::Result<()> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen)?;

@@ -10,7 +10,11 @@ use crate::app::AppState;
 use crate::tui::themes::{get_theme, rgb_to_color};
 
 // Options defined once as a static constant
-static SETTINGS_OPTIONS: &[&str] = &[" Themes", "  Deconnection", "󰞋 Help"];
+static SETTINGS_OPTIONS: &[&str] = &[
+    " Themes",
+    "  Deconnection",
+    "󰞋 Help",
+];
 
 pub fn get_settings_popup_size() -> (u16, u16) {
     let width = SETTINGS_OPTIONS.iter().map(|s| s.len()).max().unwrap_or(0) as u16 + 10;
@@ -27,7 +31,6 @@ pub fn draw_settings_popup(f: &mut Frame, state: &mut AppState, area: Rect, popu
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Min(3),
-            Constraint::Length(1),
             Constraint::Length(1),
         ])
         .margin(1)
@@ -58,23 +61,16 @@ pub fn draw_settings_popup(f: &mut Frame, state: &mut AppState, area: Rect, popu
                 .fg(rgb_to_color(&current_theme.button_text_active))
                 .bg(rgb_to_color(&current_theme.button_bg_active)),
         )
-        .highlight_symbol(" ");
+        .highlight_symbol(" ");
 
     let mut list_state = ListState::default();
     list_state.select(Some(state.selected_setting_index));
     f.render_stateful_widget(options_list, settings_layout[0], &mut list_state);
 
-    let hint_paragraph_ig = Paragraph::new(Text::styled(
-        "",
-        Style::default().fg(rgb_to_color(&current_theme.accent)),
-    ))
-    .alignment(ratatui::layout::Alignment::Center);
-    f.render_widget(hint_paragraph_ig, settings_layout[1]);
-
     let hint_paragraph = Paragraph::new(Text::styled(
-        "(Esc) Cancel",
+        "(Esc) Retreat to Safety ",
         Style::default().fg(rgb_to_color(&current_theme.accent)),
     ))
     .alignment(ratatui::layout::Alignment::Center);
-    f.render_widget(hint_paragraph, settings_layout[2]);
+    f.render_widget(hint_paragraph, settings_layout[1]);
 }

@@ -28,12 +28,12 @@ pub fn draw_deconnection_popup(
     let popup_text = Paragraph::new(vec![
         Line::from(""),
         Line::from(Line::styled(
-            "Are you sure you want to disconnect?",
+            "Abandon Ship? ",
             Style::default().fg(rgb_to_color(&current_theme.popup_text)),
         )),
         Line::from(""),
         Line::from(Line::styled(
-            "(Y)es / (N)o",
+            "(Y)es, Beam Me Up!  / (N)o, Stay Awhile ",
             Style::default().fg(rgb_to_color(&current_theme.accent)),
         )),
     ])

@@ -1,4 +1,5 @@
-use crate::api::models::{ActiveUsersResponse, BroadcastMessage, ChannelBroadcast, ChannelCommand, HistoryResponse};
+use crate::api::models::{BroadcastMessage, Channel, ChannelCommand};
+use crate::app::NotificationType;
 use futures_util::{
     stream::{SplitSink, SplitStream},
     SinkExt, StreamExt,
@@ -36,43 +37,25 @@ pub async fn send_message(
     Ok(())
 }
 
+#[derive(serde::Deserialize)]
 pub enum ServerMessage {
-    ChatMessage(BroadcastMessage),
-    ChannelUpdate(ChannelBroadcast),
-    ChannelDelete(String),
-    History(Vec<BroadcastMessage>),
-    ActiveUsers(Vec<String>),
-    Unknown(String),
+    Broadcast(BroadcastMessage),
+    ChannelList(Vec<Channel>),
+    History {
+        channel_id: String,
+        messages: Vec<BroadcastMessage>,
+        offset: usize,
+        has_more: bool,
+    },
+    UserList(Vec<String>),
+    Notification {
+        title: String,
+        message: String,
+        notification_type: NotificationType,
+    },
+    Error { message: String },
+    Pong,
+    FileDownload { file_id: String, file_name: String },
 }
 
-pub fn parse_server_message(msg_text: &str) -> ServerMessage {
-    if let Ok(history_response) = serde_json::from_str::<HistoryResponse>(msg_text) {
-        return ServerMessage::History(history_response.history);
-    }
 
-    if let Some(json_str) = msg_text.strip_prefix("/channel_update ") {
-        if let Ok(channel) = serde_json::from_str(json_str) {
-            return ServerMessage::ChannelUpdate(channel);
-        }
-    }
-
-    if let Some(channel_id) = msg_text.strip_prefix("/channel_delete ") {
-        return ServerMessage::ChannelDelete(channel_id.to_string());
-    }
-
-    if let Ok(active_users_response) = serde_json::from_str::<ActiveUsersResponse>(msg_text) {
-        return ServerMessage::ActiveUsers(active_users_response.active_users);
-    }
-
-    // Try to parse as BroadcastMessage first, as it's the most common type
-    if let Ok(chat_msg) = serde_json::from_str::<BroadcastMessage>(msg_text) {
-        return ServerMessage::ChatMessage(chat_msg);
-    }
-
-    // Fallback for other types if BroadcastMessage parsing fails
-    if let Ok(channel_broadcast) = serde_json::from_str(msg_text) {
-        return ServerMessage::ChannelUpdate(channel_broadcast);
-    }
-
-    ServerMessage::Unknown(msg_text.to_string())
-}

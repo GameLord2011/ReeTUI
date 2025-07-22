@@ -4,7 +4,8 @@ mod tui;
 
 use app::AppState;
 use log::error;
-use std::sync::{Arc, Mutex};
+
+use std::sync::Arc;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -14,11 +15,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let log_file = std::fs::File::create("log.log").expect("Could not create log file");
     env_logger::builder()
         .target(env_logger::Target::Pipe(Box::new(log_file)))
-        .filter_level(log::LevelFilter::Debug)
+        .filter_level(log::LevelFilter::Trace)
         .init();
     log::debug!("ReeTUI application started.");
 
-    let app_state = Arc::new(Mutex::new(AppState::new()));
+    let app_state = Arc::new(tokio::sync::Mutex::new(AppState::new()));
 
     if let Err(e) = tui::run_tui(app_state.clone()).await {
         error!("TUI application error: {:?}", e);

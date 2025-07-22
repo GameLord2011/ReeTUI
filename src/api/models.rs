@@ -29,7 +29,9 @@ pub struct ChannelCommand<'a> {
     pub content: &'a str,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BroadcastMessage {
     pub user: String,
     pub icon: String,
@@ -40,6 +42,10 @@ pub struct BroadcastMessage {
     pub message_type: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub file_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_extension: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_icon: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub file_size_mb: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]

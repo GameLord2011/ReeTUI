@@ -59,8 +59,8 @@ impl FileManager {
     pub fn ui(&mut self, f: &mut Frame) {
         let popup_area = centered_rect_with_size(90, 90, f.area());
         let block_title = match self.mode {
-            FileManagerMode::LocalUpload => "Upload File",
-            FileManagerMode::RemoteDownload => "Download File",
+            FileManagerMode::LocalUpload => "Upload Your Treasures ",
+            FileManagerMode::RemoteDownload => "Download Your Loot ",
         };
         let block = Block::default()
             .title(block_title)

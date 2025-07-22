@@ -5,7 +5,7 @@ use ratatui::{
 
 pub fn draw_download_progress_popup(f: &mut Frame, area: Rect, progress: u8) {
     let block = Block::default()
-        .title("Downloading File")
+        .title("Downloading Awesomeness ")
         .borders(Borders::ALL);
     f.render_widget(block, area);
 

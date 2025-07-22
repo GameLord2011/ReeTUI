@@ -4,8 +4,12 @@ use crate::tui::chat::create_channel_form::CreateChannelForm;
 use crate::tui::chat::popups::create_channel::{
     draw_create_channel_popup, get_create_channel_popup_size,
 };
+use crate::tui::chat::popups::debug_json::{draw_debug_json_popup, get_debug_json_popup_size};
 use crate::tui::chat::popups::deconnection::{
     draw_deconnection_popup, get_deconnection_popup_size,
+};
+use crate::tui::chat::popups::download_progress::{
+    draw_download_progress_popup, get_download_progress_popup_size,
 };
 use crate::tui::chat::popups::emojis::{draw_emojis_popup, get_emojis_popup_size};
 use crate::tui::chat::popups::file_manager::FileManager;
@@ -14,8 +18,6 @@ use crate::tui::chat::popups::mentions::{draw_mentions_popup, get_mentions_popup
 use crate::tui::chat::popups::quit::{draw_quit_popup, get_quit_popup_size};
 use crate::tui::chat::popups::set_theme::{draw_set_theme_popup, get_set_theme_popup_size};
 use crate::tui::chat::popups::settings::{draw_settings_popup, get_settings_popup_size};
-use crate::tui::chat::popups::download_progress::{draw_download_progress_popup, get_download_progress_popup_size};
-use crate::tui::chat::popups::debug_json::{draw_debug_json_popup, get_debug_json_popup_size};
 use crate::tui::chat::theme_settings_form::ThemeSettingsForm;
 use crate::tui::chat::utils::{centered_rect, get_color_for_user};
 use crate::tui::themes::{get_contrasting_text_color, get_theme, rgb_to_color, Theme};
@@ -355,7 +357,6 @@ pub fn format_message_lines(
     let mut message_content_spans = Vec::new();
 
     if msg.message_type == "file" {
-        
         if msg.is_image.unwrap_or(false) {
             if let Some(download_url) = &msg.download_url {
                 let mut hasher = sha2::Sha256::new();
@@ -374,8 +375,6 @@ pub fn format_message_lines(
                     .unwrap_or("tmp");
                 let cached_image_path =
                     cache_dir.join(format!("{}.{}", &file_hash, file_extension));
-
-                
 
                 if last_user.as_ref() != Some(&msg.user) {
                     let header_spans = vec![
@@ -455,7 +454,10 @@ pub fn format_message_lines(
                 lines.push_back(Line::from(vec![
                     Span::styled("│ ", Style::default().fg(rgb_to_color(&theme.dim))),
                     Span::styled(
-                        format!("Download with: /download {} {}", file_hash, file_name),
+                        format!(
+                            "Download with: /download {}",
+                            msg.file_id.as_deref().unwrap_or("")
+                        ),
                         Style::default()
                             .fg(rgb_to_color(&theme.dim))
                             .add_modifier(Modifier::ITALIC),
@@ -477,8 +479,10 @@ pub fn format_message_lines(
             // This else is for non-image files within "file" type
             message_content_spans.push(Span::styled(
                 format!(
-                    "📁 File: {} ({} MB)",
+                    "{} {}.{} ({} MB)",
+                    msg.file_icon.as_deref().unwrap_or("📁"),
                     msg.file_name.as_deref().unwrap_or("Unknown"),
+                    msg.file_extension.as_deref().unwrap_or(""),
                     msg.file_size_mb.unwrap_or(0.0)
                 ),
                 Style::default()

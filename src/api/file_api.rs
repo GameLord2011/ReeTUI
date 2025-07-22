@@ -49,6 +49,7 @@ pub async fn upload_file(
     progress_sender: mpsc::UnboundedSender<u8>,
 ) -> Result<String, FileApiError> {
     let file_name = file_path.file_name().ok_or(FileApiError::Other("Invalid file name".to_string()))?.to_str().ok_or(FileApiError::Other("Invalid file name".to_string()))?.to_string();
+    let file_extension = file_path.extension().and_then(|ext| ext.to_str()).unwrap_or("").to_string(); // Extract extension
     let mut file = File::open(&file_path).await?;
     let mut buffer = Vec::new();
     file.read_to_end(&mut buffer).await?;
@@ -57,7 +58,8 @@ pub async fn upload_file(
     let _ = progress_sender.send(0);
 
     let form = multipart::Form::new()
-        .part("file", multipart::Part::bytes(buffer).file_name(file_name));
+        .part("file", multipart::Part::bytes(buffer).file_name(file_name))
+        .part("file_extension", multipart::Part::text(file_extension)); // Add file_extension part
 
     let response = client
         .post(&format!("{}/files/upload/{}", API_BASE_URL, channel_id))

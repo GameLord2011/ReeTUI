@@ -25,12 +25,12 @@ pub fn draw_quit_popup(f: &mut Frame, state: &mut AppState, area: Rect, popup_bl
     let popup_text = Paragraph::new(vec![
         Line::from(""),
         Line::from(Line::styled(
-            "Are you sure you want to quit?",
+            "Ready to Exit the Matrix? ",
             Style::default().fg(rgb_to_color(&current_theme.popup_text)),
         )),
         Line::from(""),
         Line::from(Line::styled(
-            "(Q)uit / (Esc) Cancel",
+            "(Q)uit and Chill  / (Esc) Not Yet! ",
             Style::default().fg(rgb_to_color(&current_theme.accent)),
         )),
     ])

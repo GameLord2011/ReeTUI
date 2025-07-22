@@ -9,7 +9,9 @@ pub mod ws_command;
 #[cfg(test)]
 pub mod tests;
 
-use crate::api::models::{BroadcastMessage, Channel};
+
+
+use crate::api::models::BroadcastMessage;
 use crate::api::websocket::{self, ServerMessage};
 use crate::app::{AppState, NotificationType, PopupType};
 use crate::tui::TuiPage;
@@ -17,14 +19,13 @@ use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifier
 use emojis;
 use futures_util::{SinkExt, StreamExt};
 
-use notify_rust::Notification;
+
 use ratatui::{prelude::Backend, widgets::ListState, Terminal};
 use regex::Regex;
 use std::{
     env, fs, io,
     path::{Path, PathBuf},
-    process::Command,
-    sync::{Arc, Mutex},
+    sync::Arc,
     time::Duration,
 };
 use tokio::io::AsyncWriteExt;
@@ -41,24 +42,25 @@ use crate::api::file_api;
 use crate::tui::chat::theme_settings_form::ThemeSettingsForm;
 use crate::tui::chat::ui::draw_chat_ui;
 use crate::tui::chat::ws_command::WsCommand;
+use serde_json;
 
 pub async fn run_chat_page<B: Backend>(
     terminal: &mut Terminal<B>,
-    app_state: Arc<Mutex<AppState>>,
+    app_state: Arc<tokio::sync::Mutex<AppState>>,
 ) -> io::Result<TuiPage> {
     let mut input_text = String::new();
     let mut channel_list_state = ListState::default();
     channel_list_state.select(Some(0));
 
     let mut create_channel_form = CreateChannelForm::new();
-    let mut theme_settings_form = ThemeSettingsForm::new(app_state.lock().unwrap().current_theme);
+    let mut theme_settings_form = ThemeSettingsForm::new(app_state.lock().await.current_theme);
     let mut file_manager = popups::file_manager::FileManager::new(
         popups::file_manager::FileManagerMode::LocalUpload,
         Vec::new(),
     );
 
     let (mut ws_writer, mut ws_reader) = {
-        let state = app_state.lock().unwrap();
+        let state = app_state.lock().await;
         let token = state
             .auth_token
             .clone()
@@ -115,7 +117,7 @@ pub async fn run_chat_page<B: Backend>(
                     file_path,
                 } => {
                     let token = {
-                        let state_guard = app_state_clone_for_file_commands.lock().unwrap();
+                        let state_guard = app_state_clone_for_file_commands.lock().await;
                         state_guard
                             .auth_token
                             .clone()
@@ -132,7 +134,7 @@ pub async fn run_chat_page<B: Backend>(
                     .await
                     {
                         Ok(file_id) => {
-                            let mut state_guard = app_state_clone_for_file_commands.lock().unwrap();
+                            let mut state_guard = app_state_clone_for_file_commands.lock().await;
                             state_guard.set_notification(
                                 "File Upload Success".to_string(),
                                 format!("File uploaded: {}", file_id),
@@ -140,7 +142,7 @@ pub async fn run_chat_page<B: Backend>(
                             );
                         }
                         Err(e) => {
-                            let mut state_guard = app_state_clone_for_file_commands.lock().unwrap();
+                            let mut state_guard = app_state_clone_for_file_commands.lock().await;
                             state_guard.set_notification(
                                 "File Upload Failed".to_string(),
                                 format!("File upload failed: {}", e.to_string()),
@@ -151,7 +153,7 @@ pub async fn run_chat_page<B: Backend>(
                 }
                 WsCommand::DownloadFile { file_id, file_name } => {
                     let _ = {
-                        let state_guard = app_state_clone_for_file_commands.lock().unwrap();
+                        let state_guard = app_state_clone_for_file_commands.lock().await;
                         state_guard
                             .current_channel
                             .as_ref()
@@ -177,7 +179,7 @@ pub async fn run_chat_page<B: Backend>(
                         Ok(bytes) => {
                             let mut file = tokio::fs::File::create(&download_path).await.unwrap();
                             file.write_all(&bytes).await.unwrap();
-                            let mut state_guard = app_state_clone_for_file_commands.lock().unwrap();
+                            let mut state_guard = app_state_clone_for_file_commands.lock().await;
                             state_guard.set_notification(
                                 "File Download Success".to_string(),
                                 format!("Downloaded {} to {:?}", file_name, download_path),
@@ -185,7 +187,7 @@ pub async fn run_chat_page<B: Backend>(
                             );
                         }
                         Err(e) => {
-                            let mut state_guard = app_state_clone_for_file_commands.lock().unwrap();
+                            let mut state_guard = app_state_clone_for_file_commands.lock().await;
                             state_guard.set_notification(
                                 "File Download Failed".to_string(),
                                 format!("Download failed: {}", e.to_string()),
@@ -202,7 +204,7 @@ pub async fn run_chat_page<B: Backend>(
     let app_state_clone_for_progress = app_state.clone();
     tokio::spawn(async move {
         while let Some(progress) = progress_rx.recv().await {
-            let mut state_guard = app_state_clone_for_progress.lock().unwrap();
+            let mut state_guard = app_state_clone_for_progress.lock().await;
             state_guard.download_progress = progress;
             if progress < 100 {
                 state_guard.popup_state.show = true;
@@ -211,7 +213,11 @@ pub async fn run_chat_page<B: Backend>(
                 state_guard.popup_state.show = false;
                 state_guard.popup_state.popup_type = PopupType::None;
             }
-            state_guard.set_notification("File Transfer Progress".to_string(), format!("File transfer progress: {}%", progress), NotificationType::Info);
+            state_guard.set_notification(
+                "File Transfer Progress".to_string(),
+                format!("File transfer progress: {}%", progress),
+                NotificationType::Info,
+            );
         }
     });
 
@@ -222,7 +228,11 @@ pub async fn run_chat_page<B: Backend>(
         })
         .is_err()
     {
-        app_state.lock().unwrap().set_notification("Command Error".to_string(), "Failed to send command".to_string(), NotificationType::Error);
+        app_state.lock().await.set_notification(
+            "Command Error".to_string(),
+            "Failed to send command".to_string(),
+            NotificationType::Error,
+        );
     }
 
     let mut last_rendered_width: u16 = 0;
@@ -231,7 +241,7 @@ pub async fn run_chat_page<B: Backend>(
     let emoji_regex = Regex::new(r":([a-zA-Z0-9_+-]+):").unwrap();
 
     loop {
-        let mut state_guard = app_state.lock().unwrap();
+        let mut state_guard = app_state.lock().await;
         state_guard.clear_expired_notification();
 
         let filtered_users: Vec<String> = state_guard
@@ -304,122 +314,36 @@ pub async fn run_chat_page<B: Backend>(
                     &command_tx,
                     &file_command_tx,
                 )
-                .await? {
+                .await?
+                {
                     return Ok(tui_page);
                 }
             }
         }
 
         if let Ok(Some(Ok(msg))) =
-                tokio::time::timeout(Duration::from_millis(10), ws_reader.next()).await
-            {
-                handle_websocket_message(
-                    msg,
-                    &mut state_guard,
-                    &http_client,
-                    &command_tx,
-                )
-                .await?;
-            }
+            tokio::time::timeout(Duration::from_millis(10), ws_reader.next()).await
+        {
+            handle_websocket_message(msg, app_state.clone(), &http_client, &command_tx, &file_command_tx).await?;
+        }
     }
 }
 
-async fn handle_websocket_message(
-    msg: tungstenite::Message,
-    state_guard: &mut std::sync::MutexGuard<'_, AppState>,
-    http_client: &reqwest::Client,
-    command_tx: &mpsc::UnboundedSender<WsCommand>,
-) -> io::Result<()> {
-    match msg {
-        tungstenite::Message::Text(text) => {
-            let server_message = websocket::parse_server_message(&text);
-            match server_message {
-                ServerMessage::ChatMessage(chat_msg) => {
-                    if chat_msg.message_type == "file" {
-                        handle_file_message(
-                            state_guard,
-                            chat_msg.clone(),
-                            http_client,
-                        )
-                        .await;
-                    }
-                    let current_username = state_guard.username.clone();
-                    let channel_name = state_guard
-                        .channels
-                        .iter()
-                        .find(|c| c.id == chat_msg.channel_id)
-                        .map(|c| c.name.clone())
-                        .unwrap_or_else(|| "Unknown Channel".to_string());
-                    state_guard.add_message(chat_msg.clone());
-                    if let Some(username) = current_username {
-                        if chat_msg.content.contains(&format!("@{}", username))
-                            || chat_msg.content.contains("@everyone")
-                        {
-                            let _ = Notification::new()
-                                .summary(&format!("New mention in {}", channel_name))
-                                .body(&format!("{}: {}", chat_msg.user, chat_msg.content))
-                                .show();
-                        }
-                    }
-                }
-                ServerMessage::History(history) => {
-                    if !history.is_empty() {
-                        state_guard
-                            .prepend_history(&history[0].channel_id, history.clone());
-                    }
-                }
-                ServerMessage::ChannelUpdate(channel_broadcast) => {
-                    let channel = Channel {
-                        id: channel_broadcast.id,
-                        name: channel_broadcast.name,
-                        icon: channel_broadcast.icon,
-                    };
-                    state_guard.add_or_update_channel(channel);
-                }
-                ServerMessage::ChannelDelete(channel_id) => {
-                    state_guard.remove_channel(&channel_id);
-                }
-                ServerMessage::ActiveUsers(active_users) => {
-                    state_guard.active_users = active_users;
-                }
-                ServerMessage::Unknown(_unknown_msg) => {
-                    state_guard.debug_json_content = text.to_string();
-                    state_guard.popup_state.show = true;
-                    state_guard.popup_state.popup_type = PopupType::DebugJson;
-                    state_guard.set_notification(
-                        "Unknown WebSocket Message".to_string(),
-                        "Received an unknown WebSocket message.".to_string(),
-                        NotificationType::Error,
-                    );
-                    log::error!("Received unknown WebSocket message.");
-                }
-            }
-        }
-        tungstenite::Message::Ping(_) => {
-            if command_tx.send(WsCommand::Pong).is_err() {
-                state_guard.set_notification(
-                    "Pong Error".to_string(),
-                    "Failed to send pong command".to_string(),
-                    NotificationType::Error,
-                );
-                log::error!("Failed to send pong command");
-            }
-        }
-        
-        _ => {}
-    }
-    Ok(())
-}
+
 
 async fn handle_file_message(
-    state: &mut AppState,
-    msg: BroadcastMessage,
+    app_state_arc: Arc<tokio::sync::Mutex<AppState>>,
+    msg: &mut BroadcastMessage,
     client: &reqwest::Client,
 ) {
+    log::debug!("handle_file_message called for msg: {:?}", msg);
     if msg.is_image.unwrap_or(false) {
+        log::debug!("Message is an image.");
         if let Some(download_url) = &msg.download_url {
+            log::debug!("Download URL found: {}", download_url);
             let cache_dir = env::temp_dir().join("ReeTUI_cache");
             if !cache_dir.exists() {
+                log::debug!("Cache directory does not exist, creating: {:?}", cache_dir);
                 fs::create_dir_all(&cache_dir).unwrap_or_default();
             }
             let file_name = msg.file_name.clone().unwrap_or_default();
@@ -434,36 +358,215 @@ async fn handle_file_message(
             ));
 
             if !cached_image_path.exists() {
+                log::debug!(
+                    "Cached image does not exist, downloading to: {:?}",
+                    cached_image_path
+                );
                 if let Ok(response) = client.get(download_url).send().await {
+                    log::debug!("Download response status: {}", response.status());
                     if let Ok(bytes) = response.bytes().await {
+                        log::debug!("Image bytes downloaded. Size: {}", bytes.len());
                         if let Ok(mut file) = tokio::fs::File::create(&cached_image_path).await {
                             let _ = file.write_all(&bytes).await;
+                            log::debug!("Image saved to cache: {:?}", cached_image_path);
+                        } else {
+                            log::error!(
+                                "Failed to create file for caching: {:?}",
+                                cached_image_path
+                            );
                         }
+                    } else {
+                        log::error!(
+                            "Failed to get bytes from response for download URL: {}",
+                            download_url
+                        );
                     }
+                } else {
+                    log::error!(
+                        "Failed to send GET request for download URL: {}",
+                        download_url
+                    );
                 }
+            } else {
+                log::debug!("Cached image already exists: {:?}", cached_image_path);
             }
 
             if cached_image_path.exists() {
-                if let Ok(output) = Command::new("chafa")
-                    .arg("--size=x7")
-                    .arg(&cached_image_path)
-                    .output()
-                {
-                    if output.status.success() {
-                        let preview = String::from_utf8_lossy(&output.stdout).to_string();
-                        let mut new_msg = msg.clone();
-                        new_msg.image_preview = Some(preview);
-                        state.add_message(new_msg);
+                let msg_clone_for_spawn = msg.clone(); // Clone msg for the spawned task
+                tokio::spawn(async move {
+                    log::debug!(
+                        "Attempting to generate chafa preview for: {:?}, for message: {:?}",
+                        cached_image_path,
+                        msg_clone_for_spawn
+                    );
+                    let chafa_command = tokio::process::Command::new("chafa")
+                        .arg("--size=x7")
+                        .arg(&cached_image_path)
+                        .output()
+                        .await;
+
+                    match chafa_command {
+                        Ok(output) => {
+                            if output.status.success() {
+                                let preview = String::from_utf8_lossy(&output.stdout).to_string();
+                                log::debug!("Chafa preview generated. Length: {}", preview.len());
+                                let mut msg_to_update = msg_clone_for_spawn;
+                                msg_to_update.image_preview = Some(preview);
+                                let mut state_guard = app_state_arc.lock().await; // Acquire lock here
+                                state_guard.add_message(msg_to_update.clone()); // Clone for add_message
+                                state_guard
+                                    .rendered_messages
+                                    .remove(&msg_to_update.channel_id);
+                                log::debug!("Message with image_preview added to state.");
+                            } else {
+                                log::error!(
+                                    "Chafa command failed. Stderr: {}",
+                                    String::from_utf8_lossy(&output.stderr)
+                                );
+                                log::error!(
+                                    "Chafa command failed. Stdout: {}",
+                                    String::from_utf8_lossy(&output.stdout)
+                                );
+                            }
+                        }
+                        Err(e) => {
+                            log::error!("Failed to execute chafa command: {}", e);
+                        }
+                    }
+                });
+            } else {
+                log::warn!("Cached image path does not exist after download attempt: {:?}, for message: {:?}", cached_image_path, msg);
+            }
+        } else {
+            log::warn!("Image message has no download_url: {:?}", msg);
+        }
+    } else {
+        log::debug!("Message is not an image, skipping chafa processing.");
+    }
+}
+
+async fn handle_websocket_message(
+    msg: tungstenite::Message,
+    app_state: Arc<tokio::sync::Mutex<AppState>>,
+    http_client: &reqwest::Client,
+    command_tx: &mpsc::UnboundedSender<WsCommand>,
+    file_command_tx: &mpsc::UnboundedSender<WsCommand>,
+) -> io::Result<()> {
+    match msg {
+        tungstenite::Message::Text(text) => {
+            log::debug!("Received text message: {}", text);
+            if let Ok(server_message) = serde_json::from_str::<ServerMessage>(&text) {
+                let mut state_guard = app_state.lock().await;
+                match server_message {
+                    ServerMessage::Broadcast(mut broadcast_msg) => {
+                        log::debug!("Received broadcast message: {:?}", broadcast_msg);
+                        if broadcast_msg.is_image.unwrap_or(false) {
+                            handle_file_message(app_state.clone(), &mut broadcast_msg, http_client).await;
+                        } else {
+                            state_guard.add_message(broadcast_msg.clone());
+                            state_guard.rendered_messages.remove(&broadcast_msg.channel_id);
+                        }
+                    }
+                    ServerMessage::ChannelList(channels) => {
+                        log::debug!("Received channel list: {:?}", channels);
+                        let new_channels = channels;
+                        let mut channel_to_set: Option<crate::api::models::Channel> = None;
+
+                        if state_guard.current_channel.is_none() && !new_channels.is_empty() {
+                            channel_to_set = Some(new_channels[0].clone());
+                        }
+
+                        state_guard.channels = new_channels;
+
+                        if let Some(channel) = channel_to_set {
+                            state_guard.set_current_channel(channel);
+                        }
+                    }
+                    ServerMessage::History { channel_id, messages, offset, has_more } => {
+                        log::debug!(
+                            "Received history for channel {}: {} messages, offset {}, has_more {}",
+                            channel_id,
+                            messages.len(),
+                            offset,
+                            has_more
+                        );
+                        let mut new_messages = messages;
+                        new_messages.extend(state_guard.messages.get(&channel_id).cloned().unwrap_or_default());
+                        state_guard.messages.insert(channel_id.clone(), new_messages.into());
+                        state_guard.channel_history_state.insert(channel_id.clone(), (offset, has_more));
+                        state_guard.rendered_messages.remove(&channel_id);
+                    }
+                    ServerMessage::UserList(users) => {
+                        log::debug!("Received user list: {:?}", users);
+                        state_guard.active_users = users;
+                    }
+                    ServerMessage::Notification {
+                        title,
+                        message,
+                        notification_type,
+                    } => {
+                        log::debug!(
+                            "Received notification: {} - {} ({:?})",
+                            title,
+                            message,
+                            notification_type
+                        );
+                        state_guard.set_notification(title, message, notification_type);
+                    }
+                    ServerMessage::Error { message } => {
+                        log::error!("Received error from server: {}", message);
+                        state_guard.set_notification(
+                            "Server Error".to_string(),
+                            message,
+                            NotificationType::Error,
+                        );
+                    }
+                    ServerMessage::Pong => {
+                        log::debug!("Received Pong from server");
+                    }
+                    ServerMessage::FileDownload { file_id, file_name } => {
+                        log::debug!("Received file download request: {} ({})", file_name, file_id);
+                        if file_command_tx
+                            .send(WsCommand::DownloadFile { file_id, file_name })
+                            .is_err()
+                        {
+                            state_guard.set_notification(
+                                "Download Error".to_string(),
+                                "Failed to send download command".to_string(),
+                                NotificationType::Error,
+                            );
+                        }
                     }
                 }
+            } else {
+                log::warn!("Failed to parse server message: {}", text);
             }
         }
+        tungstenite::Message::Ping(_) => {
+            log::debug!("Received Ping from server");
+            if command_tx.send(WsCommand::Pong).is_err() {
+                log::error!("Failed to send pong command");
+            }
+        }
+        tungstenite::Message::Close(close_frame) => {
+            log::info!("WebSocket connection closed: {:?}", close_frame);
+            app_state.lock().await.set_notification(
+                "Disconnected".to_string(),
+                "Disconnected from server.".to_string(),
+                NotificationType::Error,
+            );
+            return Ok(());
+        }
+        _ => {
+            log::warn!("Received unhandled WebSocket message type");
+        }
     }
+    Ok(())
 }
 
 async fn handle_key_event<B: Backend>(
     key: KeyEvent,
-    state_guard: &mut std::sync::MutexGuard<'_, AppState>,
+    state_guard: &mut tokio::sync::MutexGuard<'_, AppState>,
     input_text: &mut String,
     channel_list_state: &mut ListState,
     create_channel_form: &mut CreateChannelForm,
@@ -506,8 +609,7 @@ async fn handle_key_event<B: Backend>(
                                 ThemeSettingsForm::new(state_guard.current_theme);
                         }
                         1 => {
-                            state_guard.popup_state.popup_type =
-                                PopupType::Deconnection;
+                            state_guard.popup_state.popup_type = PopupType::Deconnection;
                         }
                         2 => {
                             state_guard.popup_state.popup_type = PopupType::Help;
@@ -549,14 +651,12 @@ async fn handle_key_event<B: Backend>(
                         _ => {}
                     },
                     KeyCode::Left => {
-                        if create_channel_form.input_focused == CreateChannelInput::Icon
-                        {
+                        if create_channel_form.input_focused == CreateChannelInput::Icon {
                             create_channel_form.previous_icon();
                         }
                     }
                     KeyCode::Right => {
-                        if create_channel_form.input_focused == CreateChannelInput::Icon
-                        {
+                        if create_channel_form.input_focused == CreateChannelInput::Icon {
                             create_channel_form.next_icon();
                         }
                     }
@@ -567,13 +667,10 @@ async fn handle_key_event<B: Backend>(
                         CreateChannelInput::CreateButton => {
                             if !create_channel_form.name.is_empty() {
                                 let channel_name = create_channel_form.name.clone();
-                                let channel_icon =
-                                    create_channel_form.get_selected_icon();
+                                let channel_icon = create_channel_form.get_selected_icon();
 
-                                let command = format!(
-                                    "/propose_channel {} {}",
-                                    channel_name, channel_icon
-                                );
+                                let command =
+                                    format!("/propose_channel {} {}", channel_name, channel_icon);
                                 if command_tx
                                     .send(WsCommand::Message {
                                         channel_id: "home".to_string(),
@@ -593,8 +690,7 @@ async fn handle_key_event<B: Backend>(
                                         NotificationType::Success,
                                     );
                                     state_guard.popup_state.show = false;
-                                    state_guard.popup_state.popup_type =
-                                        PopupType::None;
+                                    state_guard.popup_state.popup_type = PopupType::None;
                                     *create_channel_form = CreateChannelForm::new();
                                 }
                             } else {
@@ -611,13 +707,11 @@ async fn handle_key_event<B: Backend>(
                 PopupType::SetTheme => match key.code {
                     KeyCode::Up => {
                         theme_settings_form.previous_theme();
-                        state_guard.current_theme =
-                            theme_settings_form.get_selected_theme();
+                        state_guard.current_theme = theme_settings_form.get_selected_theme();
                     }
                     KeyCode::Down => {
                         theme_settings_form.next_theme();
-                        state_guard.current_theme =
-                            theme_settings_form.get_selected_theme();
+                        state_guard.current_theme = theme_settings_form.get_selected_theme();
                     }
                     KeyCode::Enter => {
                         state_guard.popup_state.show = false;
@@ -649,11 +743,9 @@ async fn handle_key_event<B: Backend>(
                 PopupType::Mentions => match key.code {
                     KeyCode::Up => {
                         if num_filtered_users > 0 {
-                            state_guard.selected_mention_index = (state_guard
-                                .selected_mention_index
-                                + num_filtered_users
-                                - 1)
-                                % num_filtered_users;
+                            state_guard.selected_mention_index =
+                                (state_guard.selected_mention_index + num_filtered_users - 1)
+                                    % num_filtered_users;
                         } else {
                             state_guard.selected_mention_index = 0;
                         }
@@ -661,20 +753,15 @@ async fn handle_key_event<B: Backend>(
                     KeyCode::Down => {
                         if num_filtered_users > 0 {
                             state_guard.selected_mention_index =
-                                (state_guard.selected_mention_index + 1)
-                                    % num_filtered_users;
+                                (state_guard.selected_mention_index + 1) % num_filtered_users;
                         } else {
                             state_guard.selected_mention_index = 0;
                         }
                     }
                     KeyCode::Enter => {
-                        if let Some(user) =
-                            filtered_users.get(state_guard.selected_mention_index)
-                        {
-                            let query_start =
-                                input_text.rfind('@').unwrap_or(input_text.len());
-                            input_text
-                                .replace_range(query_start.., &format!("@{} ", user));
+                        if let Some(user) = filtered_users.get(state_guard.selected_mention_index) {
+                            let query_start = input_text.rfind('@').unwrap_or(input_text.len());
+                            input_text.replace_range(query_start.., &format!("@{} ", user));
                             state_guard.cursor_position = input_text.len();
                         }
                         state_guard.popup_state.show = false;
@@ -701,8 +788,7 @@ async fn handle_key_event<B: Backend>(
                         }
 
                         if let Some(last_at_idx) = input_text.rfind('@') {
-                            state_guard.mention_query =
-                                input_text[last_at_idx + 1..].to_string();
+                            state_guard.mention_query = input_text[last_at_idx + 1..].to_string();
                         } else {
                             state_guard.mention_query.clear();
                         }
@@ -761,11 +847,9 @@ async fn handle_key_event<B: Backend>(
                     match key.code {
                         KeyCode::Up => {
                             if num_filtered_emojis > 0 {
-                                state_guard.selected_emoji_index = (state_guard
-                                    .selected_emoji_index
-                                    + num_filtered_emojis
-                                    - 1)
-                                    % num_filtered_emojis;
+                                state_guard.selected_emoji_index =
+                                    (state_guard.selected_emoji_index + num_filtered_emojis - 1)
+                                        % num_filtered_emojis;
                             } else {
                                 state_guard.selected_emoji_index = 0;
                             }
@@ -773,8 +857,7 @@ async fn handle_key_event<B: Backend>(
                         KeyCode::Down => {
                             if num_filtered_emojis > 0 {
                                 state_guard.selected_emoji_index =
-                                    (state_guard.selected_emoji_index + 1)
-                                        % num_filtered_emojis;
+                                    (state_guard.selected_emoji_index + 1) % num_filtered_emojis;
                             } else {
                                 state_guard.selected_emoji_index = 0;
                             }
@@ -785,8 +868,7 @@ async fn handle_key_event<B: Backend>(
                             {
                                 if let Some(query_start) = input_text.rfind(':') {
                                     input_text.replace_range(query_start.., emoji_str);
-                                    state_guard.cursor_position =
-                                        query_start + emoji_str.len();
+                                    state_guard.cursor_position = query_start + emoji_str.len();
                                 } else {
                                     input_text.push_str(emoji_str);
                                     state_guard.cursor_position = input_text.len();
@@ -848,8 +930,7 @@ async fn handle_key_event<B: Backend>(
                             }
 
                             if let Some(last_colon_idx) = input_text.rfind(':') {
-                                let potential_shortcode_with_colons =
-                                    &input_text[last_colon_idx..];
+                                let potential_shortcode_with_colons = &input_text[last_colon_idx..];
                                 if potential_shortcode_with_colons.ends_with(':')
                                     && potential_shortcode_with_colons.len() > 1
                                 {
@@ -857,18 +938,13 @@ async fn handle_key_event<B: Backend>(
                                         [1..potential_shortcode_with_colons.len() - 1];
 
                                     if !shortcode.contains(' ') {
-                                        if let Some(emoji) =
-                                            emojis::get_by_shortcode(shortcode)
-                                        {
-                                            input_text.replace_range(
-                                                last_colon_idx..,
-                                                emoji.as_str(),
-                                            );
+                                        if let Some(emoji) = emojis::get_by_shortcode(shortcode) {
+                                            input_text
+                                                .replace_range(last_colon_idx.., emoji.as_str());
                                             state_guard.cursor_position =
                                                 last_colon_idx + emoji.as_str().len();
                                             state_guard.popup_state.show = false;
-                                            state_guard.popup_state.popup_type =
-                                                PopupType::None;
+                                            state_guard.popup_state.popup_type = PopupType::None;
                                             state_guard.emoji_query.clear();
                                         }
                                     }
@@ -877,16 +953,20 @@ async fn handle_key_event<B: Backend>(
                         }
                         _ => {}
                     }
-                }
+                } // Added this closing brace
                 PopupType::DownloadProgress => {
                     // No specific key handling for download progress popup
                 }
                 PopupType::Notification => {
                     // No specific key handling for notification popup
                 }
-                PopupType::DebugJson => {
-                    // No specific key handling for debug json popup
-                }
+                PopupType::DebugJson => match key.code {
+                    KeyCode::Esc => {
+                        state_guard.popup_state.show = false;
+                        state_guard.popup_state.popup_type = PopupType::None;
+                    }
+                    _ => {}
+                },
                 PopupType::None => {
                     // No specific key handling for None popup type
                 }
@@ -924,12 +1004,12 @@ async fn handle_key_event<B: Backend>(
                                 state_guard.popup_state.show = false;
                                 state_guard.popup_state.popup_type = PopupType::None;
                             }
-                            popups::file_manager::FileManagerEvent::FileSelectedForDownload(file_id, file_name) => {
+                            popups::file_manager::FileManagerEvent::FileSelectedForDownload(
+                                file_id,
+                                file_name,
+                            ) => {
                                 if file_command_tx
-                                    .send(WsCommand::DownloadFile {
-                                        file_id,
-                                        file_name,
-                                    })
+                                    .send(WsCommand::DownloadFile { file_id, file_name })
                                     .is_err()
                                 {
                                     state_guard.set_notification(
@@ -948,7 +1028,7 @@ async fn handle_key_event<B: Backend>(
                             popups::file_manager::FileManagerEvent::None => {}
                         }
                     }
-                }
+                },
             }
         } else {
             // This else block handles when no popup is shown
@@ -1000,24 +1080,25 @@ async fn handle_key_event<B: Backend>(
                         Vec::new(),
                     );
                 }
-                KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    state_guard.popup_state.show = true;
-                    state_guard.popup_state.popup_type = PopupType::FileManager;
-                    // Mock data for downloadable files for now
-                    let downloadable_files = vec![
-                        popups::file_manager::DownloadableFile {
-                            id: "file1".to_string(),
-                            name: "document.pdf".to_string(),
-                        },
-                        popups::file_manager::DownloadableFile {
-                            id: "file2".to_string(),
-                            name: "image.png".to_string(),
-                        },
-                    ];
-                    *file_manager = popups::file_manager::FileManager::new(
-                        popups::file_manager::FileManagerMode::RemoteDownload,
-                        downloadable_files,
-                    );
+                KeyCode::Char('j') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    if let Some(current_channel) = &state_guard.current_channel {
+                        if let Some(messages) = state_guard.messages.get(&current_channel.id) {
+                            if let Some(last_message) = messages.back() {
+                                if let Ok(json_string) = serde_json::to_string_pretty(last_message)
+                                {
+                                    state_guard.debug_json_content = json_string;
+                                    state_guard.popup_state.show = true;
+                                    state_guard.popup_state.popup_type = PopupType::DebugJson;
+                                } else {
+                                    state_guard.set_notification(
+                                        "JSON Error".to_string(),
+                                        "Failed to serialize message to JSON".to_string(),
+                                        NotificationType::Error,
+                                    );
+                                }
+                            }
+                        }
+                    }
                 }
                 KeyCode::Tab => {
                     let i = match channel_list_state.selected() {
@@ -1031,16 +1112,13 @@ async fn handle_key_event<B: Backend>(
                         None => 0,
                     };
                     channel_list_state.select(Some(i));
-                    if let Some(selected_channel) =
-                        state_guard.channels.get(i).cloned()
-                    {
+                    if let Some(selected_channel) = state_guard.channels.get(i).cloned() {
                         let channel_id = selected_channel.id.clone();
                         let messages_loaded = state_guard
                             .messages
                             .get(&channel_id)
                             .map_or(false, |v| !v.is_empty());
                         state_guard.set_current_channel(selected_channel);
-
                         if !messages_loaded {
                             if command_tx
                                 .send(WsCommand::Message {
@@ -1060,16 +1138,10 @@ async fn handle_key_event<B: Backend>(
                 }
                 KeyCode::Up => {
                     if key.modifiers.contains(KeyModifiers::CONTROL) {
-                        let channel_id =
-                            state_guard.current_channel.as_ref().unwrap().id.clone();
-                        let rendered_count = state_guard
-                            .messages
-                            .get(&channel_id)
-                            .map_or(0, |v| v.len());
-
-                        if state_guard.message_scroll_offset
-                            >= rendered_count.saturating_sub(5)
-                        {
+                        let channel_id = state_guard.current_channel.as_ref().unwrap().id.clone();
+                        let rendered_count =
+                            state_guard.messages.get(&channel_id).map_or(0, |v| v.len());
+                        if state_guard.message_scroll_offset >= rendered_count.saturating_sub(5) {
                             if let Some((offset, has_more)) =
                                 state_guard.channel_history_state.get(&channel_id)
                             {
@@ -1106,24 +1178,18 @@ async fn handle_key_event<B: Backend>(
                             None => 0,
                         };
                         channel_list_state.select(Some(i));
-                        if let Some(selected_channel) =
-                            state_guard.channels.get(i).cloned()
-                        {
+                        if let Some(selected_channel) = state_guard.channels.get(i).cloned() {
                             let channel_id = selected_channel.id.clone();
                             let messages_loaded = state_guard
                                 .messages
                                 .get(&channel_id)
                                 .map_or(false, |v| !v.is_empty());
                             state_guard.set_current_channel(selected_channel);
-
                             if !messages_loaded {
                                 if command_tx
                                     .send(WsCommand::Message {
                                         channel_id: channel_id.clone(),
-                                        content: format!(
-                                            "/get_history {} 0",
-                                            channel_id
-                                        ),
+                                        content: format!("/get_history {} 0", channel_id),
                                     })
                                     .is_err()
                                 {
@@ -1152,24 +1218,18 @@ async fn handle_key_event<B: Backend>(
                             None => 0,
                         };
                         channel_list_state.select(Some(i));
-                        if let Some(selected_channel) =
-                            state_guard.channels.get(i).cloned()
-                        {
+                        if let Some(selected_channel) = state_guard.channels.get(i).cloned() {
                             let channel_id = selected_channel.id.clone();
                             let messages_loaded = state_guard
                                 .messages
                                 .get(&channel_id)
                                 .map_or(false, |v| !v.is_empty());
                             state_guard.set_current_channel(selected_channel);
-
                             if !messages_loaded {
                                 if command_tx
                                     .send(WsCommand::Message {
                                         channel_id: channel_id.clone(),
-                                        content: format!(
-                                            "/get_history {} 0",
-                                            channel_id
-                                        ),
+                                        content: format!("/get_history {} 0", channel_id),
                                     })
                                     .is_err()
                                 {
@@ -1191,9 +1251,7 @@ async fn handle_key_event<B: Backend>(
                                 let file_path_str = parts[1].trim();
                                 let file_path = PathBuf::from(file_path_str);
                                 if file_path.exists() && file_path.is_file() {
-                                    if let Some(current_channel) =
-                                        &state_guard.current_channel
-                                    {
+                                    if let Some(current_channel) = &state_guard.current_channel {
                                         let channel_id = current_channel.id.clone();
                                         if file_command_tx
                                             .send(WsCommand::UploadFile {
@@ -1209,7 +1267,6 @@ async fn handle_key_event<B: Backend>(
                                             );
                                         }
                                     } else {
-                                        // Corrected `else` block
                                         state_guard.set_notification(
                                             "No Channel Selected".to_string(),
                                             "No channel selected to upload file.".to_string(),
@@ -1225,30 +1282,61 @@ async fn handle_key_event<B: Backend>(
                                 }
                             }
                         } else if input_text.starts_with("/download ") {
-                            let parts: Vec<&str> = input_text.splitn(3, ' ').collect();
-                            if parts.len() == 3 {
-                                let file_id = parts[1].trim().to_string();
-                                let file_name = parts[2].trim().to_string();
-                                if file_command_tx
-                                    .send(WsCommand::DownloadFile {
-                                        file_id,
-                                        file_name,
-                                    })
-                                    .is_err()
-                                {
+                            let parts: Vec<&str> = input_text.splitn(2, ' ').collect();
+                            if parts.len() == 2 {
+                                let file_id_to_download = parts[1].trim().to_string();
+                                let mut file_to_download: Option<BroadcastMessage> = None;
+                                if let Some(current_channel) = &state_guard.current_channel {
+                                    if let Some(messages) =
+                                        state_guard.messages.get(&current_channel.id)
+                                    {
+                                        for msg in messages.iter().rev() {
+                                            if let Some(file_id) = &msg.file_id {
+                                                if file_id == &file_id_to_download {
+                                                    file_to_download = Some(msg.clone());
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                if let Some(file_info) = file_to_download {
+                                    if let Some(file_name) = file_info.file_name {
+                                        if file_command_tx
+                                            .send(WsCommand::DownloadFile {
+                                                file_id: file_id_to_download,
+                                                file_name,
+                                            })
+                                            .is_err()
+                                        {
+                                            state_guard.set_notification(
+                                                "Download Error".to_string(),
+                                                "Failed to send download command".to_string(),
+                                                NotificationType::Error,
+                                            );
+                                        }
+                                    } else {
+                                        state_guard.set_notification(
+                                            "File Info Error".to_string(),
+                                            "File name not found in message".to_string(),
+                                            NotificationType::Error,
+                                        );
+                                    }
+                                } else {
                                     state_guard.set_notification(
-                                        "Download Error".to_string(),
-                                        "Failed to send download command".to_string(),
+                                        "File Not Found".to_string(),
+                                        format!(
+                                            "File with ID '{}' not found in this channel.",
+                                            file_id_to_download
+                                        ),
                                         NotificationType::Error,
                                     );
                                 }
                             }
                         } else {
-                            if let Some(current_channel) = &state_guard.current_channel
-                            {
+                            if let Some(current_channel) = &state_guard.current_channel {
                                 let channel_id = current_channel.id.clone();
-                                let content =
-                                    replace_shortcodes_with_emojis(&input_text);
+                                let content = replace_shortcodes_with_emojis(&input_text);
                                 if command_tx
                                     .send(WsCommand::Message {
                                         channel_id,
@@ -1319,4 +1407,4 @@ async fn handle_key_event<B: Backend>(
     Ok(None)
 }
 
-
+                                    
