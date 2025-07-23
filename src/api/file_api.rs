@@ -46,16 +46,13 @@ pub async fn upload_file(
     token: &str,
     channel_id: &str,
     file_path: PathBuf,
-    progress_sender: mpsc::UnboundedSender<u8>,
+    progress_sender: mpsc::UnboundedSender<(String, u8)>,
 ) -> Result<String, FileApiError> {
     let file_name = file_path.file_name().ok_or(FileApiError::Other("Invalid file name".to_string()))?.to_str().ok_or(FileApiError::Other("Invalid file name".to_string()))?.to_string();
     let file_extension = file_path.extension().and_then(|ext| ext.to_str()).unwrap_or("").to_string(); // Extract extension
     let mut file = File::open(&file_path).await?;
     let mut buffer = Vec::new();
     file.read_to_end(&mut buffer).await?;
-
-    // Send 0% progress before starting the upload
-    let _ = progress_sender.send(0);
 
     let form = multipart::Form::new()
         .part("file", multipart::Part::bytes(buffer).file_name(file_name))
@@ -69,9 +66,10 @@ pub async fn upload_file(
         .await?;
 
     if response.status().is_success() {
+        let file_id = response.text().await?;
         // Send 100% progress on successful upload
-        let _ = progress_sender.send(100);
-        Ok(response.text().await?)
+        let _ = progress_sender.send((file_id.clone(), 100));
+        Ok(file_id)
     } else {
         let status = response.status();
         let _error_text = response.text().await?; // Keep error_text for potential future use or logging
@@ -83,7 +81,7 @@ pub async fn download_file(
     client: &Client,
     file_id: &str,
     _file_name: &str,
-    progress_sender: mpsc::UnboundedSender<u8>,
+    progress_sender: mpsc::UnboundedSender<(String, u8)>,
 ) -> Result<Vec<u8>, FileApiError> {
     let response = client
         .get(&format!("{}/files/download/{}", API_BASE_URL, file_id))
@@ -101,7 +99,7 @@ pub async fn download_file(
             buffer.extend_from_slice(&chunk);
             downloaded_size += chunk.len() as u64;
             let progress = ((downloaded_size as f64 / total_size as f64) * 100.0) as u8;
-            let _ = progress_sender.send(progress);
+        let _ = progress_sender.send((file_id.to_string(), progress));
         }
         Ok(buffer)
     } else {

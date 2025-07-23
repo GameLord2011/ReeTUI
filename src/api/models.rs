@@ -56,6 +56,8 @@ pub struct BroadcastMessage {
     pub file_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub download_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub download_progress: Option<u8>,
 }
 
 fn default_message_type() -> String {
@@ -63,6 +65,7 @@ fn default_message_type() -> String {
 }
 
 #[derive(Deserialize, Debug, Clone)]
+#[allow(dead_code)]
 pub struct ChannelBroadcast {
     pub id: String,
     pub name: String,
@@ -77,6 +80,7 @@ pub struct Channel {
 }
 
 #[derive(Deserialize, Debug, Clone)]
+#[allow(dead_code)]
 pub struct HistoryResponse {
     pub history: Vec<BroadcastMessage>,
 }
@@ -89,6 +93,7 @@ pub struct Notification {
 }
 
 #[derive(Deserialize, Debug, Clone)]
+#[allow(dead_code)]
 pub struct ActiveUsersResponse {
     pub active_users: Vec<String>,
 }

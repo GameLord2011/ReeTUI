@@ -37,25 +37,54 @@ pub async fn send_message(
     Ok(())
 }
 
-#[derive(serde::Deserialize)]
+
+
+#[derive(serde::Deserialize, Debug)]
+pub struct HistoryData {
+    pub channel_id: String,
+    pub messages: Vec<BroadcastMessage>,
+    pub offset: usize,
+    pub has_more: bool,
+}
+
+#[derive(serde::Deserialize, Debug)]
+pub struct HistoryWrapper {
+    #[serde(rename = "History")]
+    pub history: HistoryData,
+}
+
+#[derive(serde::Deserialize, Debug)]
+pub struct ChannelListWrapper {
+    #[serde(rename = "ChannelList")]
+    pub channels: Vec<Channel>,
+}
+
+#[derive(serde::Deserialize, Debug)]
+pub struct UserListWrapper {
+    #[serde(rename = "active_users")]
+    pub users: Vec<String>,
+}
+
+#[derive(serde::Deserialize, Debug)]
+#[serde(untagged)]
 pub enum ServerMessage {
+    History(HistoryWrapper),
+    ChannelList(ChannelListWrapper),
+    UserList(UserListWrapper),
+    ChannelUpdate(Channel),
     Broadcast(BroadcastMessage),
-    ChannelList(Vec<Channel>),
-    History {
-        channel_id: String,
-        messages: Vec<BroadcastMessage>,
-        offset: usize,
-        has_more: bool,
+    Error {
+        message: String,
     },
-    UserList(Vec<String>),
+    FileDownload {
+        file_id: String,
+        file_name: String,
+    },
     Notification {
         title: String,
         message: String,
         notification_type: NotificationType,
     },
-    Error { message: String },
-    Pong,
-    FileDownload { file_id: String, file_name: String },
 }
 
 

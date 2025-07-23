@@ -1,7 +1,4 @@
-use std::{
-    env,
-    path::PathBuf,
-};
+use std::{env, path::PathBuf};
 
 use crate::tui::chat::utils::{centered_rect_with_size, centered_rect_with_size_and_padding};
 use crossterm::event::{KeyCode, KeyEvent};
@@ -10,10 +7,7 @@ use ratatui::{
     widgets::{Block, Borders, Clear, List, ListItem, ListState},
 };
 
-pub enum FileManagerMode {
-    LocalUpload,
-    RemoteDownload,
-}
+
 
 pub enum FileManagerEvent {
     FileSelectedForUpload(PathBuf),
@@ -22,10 +16,16 @@ pub enum FileManagerEvent {
     None,
 }
 
-#[derive(Debug, Clone)]
+
+
 pub struct DownloadableFile {
     pub id: String,
     pub name: String,
+}
+
+pub enum FileManagerMode {
+    LocalUpload,
+    RemoteDownload,
 }
 
 pub struct FileManager {
@@ -133,7 +133,10 @@ impl FileManager {
                 FileManagerMode::RemoteDownload => {
                     if let Some(selected) = self.list_state.selected() {
                         let file = &self.remote_files[selected];
-                        FileManagerEvent::FileSelectedForDownload(file.id.clone(), file.name.clone())
+                        FileManagerEvent::FileSelectedForDownload(
+                            file.id.clone(),
+                            file.name.clone(),
+                        )
                     } else {
                         FileManagerEvent::None
                     }
@@ -200,5 +203,4 @@ impl FileManager {
         };
         self.list_state.select(Some(i));
     }
-
 }

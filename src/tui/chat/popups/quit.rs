@@ -12,7 +12,7 @@ use crate::tui::themes::{get_theme, rgb_to_color};
 
 pub fn get_quit_popup_size() -> (u16, u16) {
     let text1 = "Are you sure you want to quit?";
-    let text2 = "(Q)uit / (Esc) Cancel";
+    let text2 = "(Q)uit and Chill  / (Esc) Not Yet! ";
     let width = text1.len().max(text2.len()) as u16 + 4;
     // content: text1(1) + empty_line(1) + text2(1) = 3
     // layout: popup_border(2) + paragraph_margin(2) = 4

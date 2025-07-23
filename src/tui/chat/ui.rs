@@ -21,9 +21,8 @@ use crate::tui::chat::popups::settings::{draw_settings_popup, get_settings_popup
 use crate::tui::chat::theme_settings_form::ThemeSettingsForm;
 use crate::tui::chat::utils::{centered_rect, get_color_for_user};
 use crate::tui::themes::{get_contrasting_text_color, get_theme, rgb_to_color, Theme};
+use ansi_to_tui::IntoText as _;
 use chrono::{TimeZone, Utc};
-use sha2::Digest;
-
 use ratatui::{
     backend::Backend,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -33,7 +32,7 @@ use ratatui::{
     Frame,
 };
 use regex::Regex;
-use std::collections::VecDeque;
+use sha2::Digest;
 
 pub fn draw_chat_ui<B: Backend>(
     f: &mut Frame,
@@ -43,8 +42,8 @@ pub fn draw_chat_ui<B: Backend>(
     create_channel_form: &mut CreateChannelForm,
     theme_settings_form: &mut ThemeSettingsForm,
     file_manager: &mut FileManager,
-    filtered_users: &Vec<String>,
-    filtered_emojis: &Vec<String>,
+    _filtered_users: &Vec<String>,
+    _filtered_emojis: &Vec<String>,
     mention_regex: &Regex,
     emoji_regex: &Regex,
 ) {
@@ -152,29 +151,28 @@ pub fn draw_chat_ui<B: Backend>(
     f.render_widget(messages_block, chat_chunks[0]);
     if let Some(current_channel) = &state.current_channel {
         let channel_id = &current_channel.id;
-        if state.rendered_messages.get(channel_id).is_none()
-            || state.rendered_messages.get(channel_id).unwrap().len()
-                != state.messages.get(channel_id).unwrap().len()
-        {
-            let messages = state.get_messages_for_channel(channel_id).unwrap();
-            let mut new_rendered_messages = VecDeque::new();
-            let mut last_user: Option<String> = None;
-            for msg in messages.iter() {
-                format_message_lines(
+        let mut new_rendered_messages_vec = Vec::new();
+        let mut last_user: Option<String> = None;
+
+        // Fix for E0716: Directly get the messages deque and iterate over it if it exists.
+        if let Some(messages_deque) = state.messages.get(channel_id) {
+            for msg in messages_deque.iter() {
+                let formatted_lines = format_message_lines(
                     msg,
                     &current_theme,
                     inner_messages_area.width,
                     &last_user,
-                    &mut new_rendered_messages,
                     &mention_regex,
                     &emoji_regex,
                 );
+                new_rendered_messages_vec.extend(formatted_lines);
                 last_user = Some(msg.user.clone());
             }
-            state
-                .rendered_messages
-                .insert(channel_id.clone(), new_rendered_messages.into());
         }
+        state
+            .rendered_messages
+            .insert(channel_id.clone(), new_rendered_messages_vec);
+
         let rendered_lines = state.rendered_messages.get(channel_id).unwrap();
         let messages_to_render = {
             let message_count = rendered_lines.len();
@@ -212,6 +210,12 @@ pub fn draw_chat_ui<B: Backend>(
         .style(Style::default().fg(rgb_to_color(&current_theme.input_text_active)));
     f.render_widget(input_paragraph, input_area);
 
+    // Set cursor position
+    f.set_cursor_position((
+        input_area.x + state.cursor_position as u16 + 1,
+        input_area.y + 1,
+    ));
+
     if state.popup_state.show {
         let popup_title = match state.popup_state.popup_type {
             PopupType::Quit => "Quit",
@@ -245,28 +249,8 @@ pub fn draw_chat_ui<B: Backend>(
             PopupType::CreateChannel => get_create_channel_popup_size(),
             PopupType::SetTheme => get_set_theme_popup_size(theme_settings_form),
             PopupType::Help => get_help_popup_size(),
-            PopupType::Mentions => {
-                let (_, height) = get_mentions_popup_size(state); // Get height from mentions module
-                let max_width = filtered_users
-                    .iter()
-                    .map(|user| user.len() as u16 + 4)
-                    .max()
-                    .unwrap_or(0)
-                    .min(size.width - 4);
-                let width = max_width.max(20);
-                (width, height)
-            }
-            PopupType::Emojis => {
-                let (_, height) = get_emojis_popup_size(state); // Get height from emojis module
-                let max_width = filtered_emojis
-                    .iter()
-                    .map(|emoji_str| (emoji_str.len() + 3) as u16)
-                    .max()
-                    .unwrap_or(0)
-                    .min(size.width - 4);
-                let width = max_width.max(20);
-                (width, height)
-            }
+            PopupType::Mentions => get_mentions_popup_size(state),
+            PopupType::Emojis => get_emojis_popup_size(state),
             PopupType::FileManager => (90, 90),
             PopupType::DownloadProgress => get_download_progress_popup_size(),
             PopupType::DebugJson => get_debug_json_popup_size(),
@@ -343,10 +327,9 @@ pub fn format_message_lines(
     theme: &Theme,
     width: u16,
     last_user: &Option<String>,
-    lines: &mut VecDeque<Line<'static>>,
     mention_regex: &Regex,
     emoji_regex: &Regex,
-) {
+) -> Vec<Line<'static>> {
     let timestamp_str = Utc
         .timestamp_opt(msg.timestamp, 0)
         .unwrap()
@@ -354,7 +337,8 @@ pub fn format_message_lines(
         .to_string();
     let user_color = get_color_for_user(&msg.user);
 
-    let mut message_content_spans = Vec::new();
+    let mut new_lines = Vec::new();
+    let mut message_content_spans = Vec::new(); // Initialize here for broader scope
 
     if msg.message_type == "file" {
         if msg.is_image.unwrap_or(false) {
@@ -408,62 +392,76 @@ pub fn format_message_lines(
                             Style::default().fg(rgb_to_color(&theme.dim)),
                         ));
                     }
-                    lines.push_back(Line::from(header_line_spans));
+                    new_lines.push(Line::from(header_line_spans).to_owned());
                 }
 
-                if cached_image_path.exists() {
+                if cached_image_path.exists() || msg.file_id.is_none() {
+                    // If it's a local image (no file_id) or a cached downloaded image
                     if let Some(preview) = &msg.image_preview {
-                        let text = Text::from(preview.clone());
-                        for line in text.lines {
-                            let mut spans = vec![Span::styled(
-                                "│ ",
-                                Style::default().fg(rgb_to_color(&theme.dim)),
-                            )];
-                            spans.extend(line.spans);
-                            lines.push_back(Line::from(spans));
+                        log::debug!("Processing image preview for display.");
+                        let chafa_text: Text = preview
+                            .clone()
+                            .into_text()
+                            .expect("Failed to convert ANSI to Text");
+                        let num_lines = chafa_text.lines.len();
+                        for mut line in chafa_text.lines.into_iter() { // Consume the lines
+                            let prefix_span =
+                                Span::styled("│ ", Style::default().fg(rgb_to_color(&theme.dim)));
+                            line.spans.insert(0, prefix_span);
+                            new_lines.push(line); // Push the owned line
                         }
-                    } else {
-                        lines.push_back(Line::from(vec![
-                            Span::styled("│ ", Style::default().fg(rgb_to_color(&theme.dim))),
-                            Span::styled(
-                                format!(
-                                    "Image preview not available for {}",
-                                    msg.file_name.as_deref().unwrap_or("image")
+                        log::debug!("Added {} lines from image preview.", num_lines);
+                    } else if let Some(progress) = msg.download_progress {
+                        new_lines.push(
+                            Line::from(vec![
+                                Span::styled("│ ", Style::default().fg(rgb_to_color(&theme.dim))),
+                                Span::styled(
+                                    format!(
+                                        "Downloading {}: {}%",
+                                        msg.file_name.as_deref().unwrap_or("image"),
+                                        progress
+                                    ),
+                                    Style::default()
+                                        .fg(rgb_to_color(&theme.accent))
+                                        .add_modifier(Modifier::ITALIC),
                                 ),
-                                Style::default()
-                                    .fg(rgb_to_color(&theme.dim))
-                                    .add_modifier(Modifier::ITALIC),
-                            ),
-                        ]));
+                            ])
+                            .to_owned(),
+                        );
+                    } else if msg.file_id.is_some() {
+                        // Only show download prompt for remote images
+                        new_lines.push(
+                            Line::from(vec![
+                                Span::styled("│ ", Style::default().fg(rgb_to_color(&theme.dim))),
+                                Span::styled(
+                                    format!(
+                                        "Image not yet downloaded: {}",
+                                        msg.file_name.as_deref().unwrap_or("image")
+                                    ),
+                                    Style::default()
+                                        .fg(rgb_to_color(&theme.dim))
+                                        .add_modifier(Modifier::ITALIC),
+                                ),
+                            ])
+                            .to_owned(),
+                        );
+                        new_lines.push(
+                            Line::from(vec![
+                                Span::styled("│ ", Style::default().fg(rgb_to_color(&theme.dim))),
+                                Span::styled(
+                                    format!(
+                                        "Download with: /download {}",
+                                        msg.file_id.as_deref().unwrap_or("")
+                                    ),
+                                    Style::default()
+                                        .fg(rgb_to_color(&theme.dim))
+                                        .add_modifier(Modifier::ITALIC),
+                                ),
+                            ])
+                            .to_owned(),
+                        );
                     }
-                } else {
-                    lines.push_back(Line::from(vec![
-                        Span::styled("│ ", Style::default().fg(rgb_to_color(&theme.dim))),
-                        Span::styled(
-                            format!(
-                                "Image not yet downloaded: {}",
-                                msg.file_name.as_deref().unwrap_or("image")
-                            ),
-                            Style::default()
-                                .fg(rgb_to_color(&theme.dim))
-                                .add_modifier(Modifier::ITALIC),
-                        ),
-                    ]));
                 }
-
-                lines.push_back(Line::from(vec![
-                    Span::styled("│ ", Style::default().fg(rgb_to_color(&theme.dim))),
-                    Span::styled(
-                        format!(
-                            "Download with: /download {}",
-                            msg.file_id.as_deref().unwrap_or("")
-                        ),
-                        Style::default()
-                            .fg(rgb_to_color(&theme.dim))
-                            .add_modifier(Modifier::ITALIC),
-                    ),
-                ]));
-                return;
             } else {
                 message_content_spans.push(Span::styled(
                     format!(
@@ -498,9 +496,18 @@ pub fn format_message_lines(
                         .add_modifier(Modifier::ITALIC),
                 ));
             }
+            message_content_spans.push(Span::raw("\n"));
+            message_content_spans.push(Span::styled(
+                format!(
+                    "Download with: /download {}",
+                    msg.file_id.as_deref().unwrap_or("")
+                ),
+                Style::default()
+                    .fg(rgb_to_color(&theme.dim))
+                    .add_modifier(Modifier::ITALIC),
+            ));
         }
     } else {
-        // This else is for non-file messages (i.e., text messages)
         let mut current_text_slice = msg.content.as_str();
         while !current_text_slice.is_empty() {
             if let Some(mention_match) = mention_regex.find(current_text_slice) {
@@ -568,14 +575,17 @@ pub fn format_message_lines(
     }
 
     if last_user.as_ref() == Some(&msg.user) {
-        lines.push_back(Line::from(
-            std::iter::once(Span::styled(
-                "│ ",
-                Style::default().fg(rgb_to_color(&theme.dim)),
-            ))
-            .chain(message_content_spans.into_iter())
-            .collect::<Vec<Span>>(),
-        ));
+        new_lines.push(
+            Line::from(
+                std::iter::once(Span::styled(
+                    "│ ",
+                    Style::default().fg(rgb_to_color(&theme.dim)),
+                ))
+                .chain(message_content_spans.into_iter())
+                .collect::<Vec<Span>>(),
+            )
+            .to_owned(),
+        );
     } else {
         let header_spans = vec![
             Span::styled("╭ ", Style::default().fg(user_color)),
@@ -608,14 +618,18 @@ pub fn format_message_lines(
                 Style::default().fg(rgb_to_color(&theme.dim)),
             ));
         }
-        lines.push_back(Line::from(header_line_spans));
-        lines.push_back(Line::from(
-            std::iter::once(Span::styled(
-                "│ ",
-                Style::default().fg(rgb_to_color(&theme.dim)),
-            ))
-            .chain(message_content_spans.into_iter())
-            .collect::<Vec<Span>>(),
-        ));
+        new_lines.push(Line::from(header_line_spans).to_owned());
+        new_lines.push(
+            Line::from(
+                std::iter::once(Span::styled(
+                    "│ ",
+                    Style::default().fg(rgb_to_color(&theme.dim)),
+                ))
+                .chain(message_content_spans.into_iter())
+                .collect::<Vec<Span>>(),
+            )
+            .to_owned(),
+        );
     }
+    new_lines
 }

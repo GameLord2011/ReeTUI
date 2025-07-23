@@ -13,6 +13,7 @@ pub enum NotificationType {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct Notification {
     pub title: String,
     pub message: String,
@@ -22,6 +23,7 @@ pub struct Notification {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PopupType {
+    #[allow(dead_code)]
     Quit, // Do not remove this variant, it is used in other parts of the code.
     Settings,
     CreateChannel,
@@ -34,6 +36,7 @@ pub enum PopupType {
     DownloadProgress,
     DebugJson,
     None,
+    #[allow(dead_code)]
     Notification,
 }
 
@@ -129,6 +132,7 @@ impl AppState {
         });
     }
 
+    #[allow(dead_code)]
     pub fn clear_notification(&mut self) {
         self.notification = None;
     }
@@ -171,6 +175,7 @@ impl AppState {
         self.message_scroll_offset = 0;
     }
 
+    #[allow(dead_code)]
     pub fn prepend_history(&mut self, channel_id: &str, history: Vec<BroadcastMessage>) {
         if history.is_empty() {
             if let Some(state) = self.channel_history_state.get_mut(channel_id) {
@@ -196,6 +201,7 @@ impl AppState {
         self.messages.get(channel_id)
     }
 
+    #[allow(dead_code)]
     pub fn add_or_update_channel(&mut self, new_channel: Channel) {
         if let Some(pos) = self.channels.iter().position(|c| c.id == new_channel.id) {
             self.channels[pos] = new_channel;
@@ -205,6 +211,7 @@ impl AppState {
         }
     }
 
+    #[allow(dead_code)]
     pub fn remove_channel(&mut self, channel_id: &str) {
         self.channels.retain(|c| c.id != channel_id);
         if let Some(current) = &self.current_channel {
@@ -229,6 +236,18 @@ impl AppState {
         if let Some(notification) = &self.notification {
             if notification.created_at.elapsed() > std::time::Duration::from_secs(5) {
                 self.notification = None;
+            }
+        }
+    }
+
+    pub fn update_message(&mut self, updated_message: BroadcastMessage) {
+        if let Some(channel_messages) = self.messages.get_mut(&updated_message.channel_id) {
+            // Find and update the message
+            if let Some(pos) = channel_messages.iter().position(|msg| {
+                msg.file_id == updated_message.file_id && msg.timestamp == updated_message.timestamp
+            }) {
+                channel_messages[pos] = updated_message;
+                self.rendered_messages.remove(&channel_messages[pos].channel_id);
             }
         }
     }

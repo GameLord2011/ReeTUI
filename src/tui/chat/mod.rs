@@ -5,6 +5,7 @@ pub mod theme_settings_form;
 pub mod ui;
 pub mod utils;
 pub mod ws_command;
+pub mod image_handler;
 
 #[cfg(test)]
 pub mod tests;
@@ -32,6 +33,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite;
 use unicode_segmentation::UnicodeSegmentation;
+use chrono::Utc;
 
 use crate::tui::chat::create_channel_form::{CreateChannelForm, CreateChannelInput};
 use crate::tui::chat::message_parsing::{
@@ -42,6 +44,7 @@ use crate::api::file_api;
 use crate::tui::chat::theme_settings_form::ThemeSettingsForm;
 use crate::tui::chat::ui::draw_chat_ui;
 use crate::tui::chat::ws_command::WsCommand;
+use crate::tui::chat::image_handler::{handle_file_message, handle_show_image_command};
 use serde_json;
 
 pub async fn run_chat_page<B: Backend>(
@@ -72,7 +75,7 @@ pub async fn run_chat_page<B: Backend>(
 
     let (command_tx, mut command_rx) = mpsc::unbounded_channel::<WsCommand>();
     let (file_command_tx, mut file_command_rx) = mpsc::unbounded_channel::<WsCommand>();
-    let (progress_tx, mut progress_rx) = mpsc::unbounded_channel::<u8>();
+    let (progress_tx, mut progress_rx) = mpsc::unbounded_channel::<(String, u8)>();
 
     let http_client = reqwest::Client::new();
 
@@ -101,6 +104,7 @@ pub async fn run_chat_page<B: Backend>(
                         break;
                     }
                 }
+                
                 _ => {}
             }
         }
@@ -196,6 +200,9 @@ pub async fn run_chat_page<B: Backend>(
                         }
                     }
                 }
+                WsCommand::ShowLocalImage { file_path } => {
+                    handle_show_image_command(app_state_clone_for_file_commands.clone(), file_path).await;
+                }
                 _ => {}
             }
         }
@@ -203,9 +210,18 @@ pub async fn run_chat_page<B: Backend>(
 
     let app_state_clone_for_progress = app_state.clone();
     tokio::spawn(async move {
-        while let Some(progress) = progress_rx.recv().await {
+        while let Some((file_id, progress)) = progress_rx.recv().await {
             let mut state_guard = app_state_clone_for_progress.lock().await;
-            state_guard.download_progress = progress;
+            // Find the message and update its progress
+            if let Some(channel_id) = state_guard.current_channel.as_ref().map(|c| c.id.clone()) {
+                if let Some(messages) = state_guard.messages.get_mut(&channel_id) {
+                    if let Some(msg) = messages.iter_mut().find(|m| m.file_id.as_deref() == Some(&file_id)) {
+                        msg.download_progress = Some(progress);
+                        state_guard.rendered_messages.remove(&channel_id);
+                    }
+                }
+            }
+
             if progress < 100 {
                 state_guard.popup_state.show = true;
                 state_guard.popup_state.popup_type = PopupType::DownloadProgress;
@@ -221,6 +237,8 @@ pub async fn run_chat_page<B: Backend>(
         }
     });
 
+    
+
     if command_tx
         .send(WsCommand::Message {
             channel_id: "home".to_string(),
@@ -230,7 +248,7 @@ pub async fn run_chat_page<B: Backend>(
     {
         app_state.lock().await.set_notification(
             "Command Error".to_string(),
-            "Failed to send command".to_string(),
+            "Failed to send command to get history".to_string(),
             NotificationType::Error,
         );
     }
@@ -241,6 +259,7 @@ pub async fn run_chat_page<B: Backend>(
     let emoji_regex = Regex::new(r":([a-zA-Z0-9_+-]+):").unwrap();
 
     loop {
+        // Draw UI
         let mut state_guard = app_state.lock().await;
         state_guard.clear_expired_notification();
 
@@ -286,6 +305,15 @@ pub async fn run_chat_page<B: Backend>(
             );
         })?;
 
+        // Ensure channel_list_state is in sync with actual channels
+        if state_guard.channels.is_empty() {
+            channel_list_state.select(None);
+        } else if channel_list_state.selected().is_none()
+            || channel_list_state.selected().unwrap() >= state_guard.channels.len()
+        {
+            channel_list_state.select(Some(0));
+        }
+
         let current_popup_type = state_guard.popup_state.popup_type;
         if state_guard.popup_state.show
             && current_popup_type != PopupType::Emojis
@@ -296,8 +324,12 @@ pub async fn run_chat_page<B: Backend>(
             terminal.show_cursor()?;
         }
 
+        drop(state_guard); // Release the lock before await
+
+        // Event handling
         if event::poll(Duration::from_millis(50))? {
             let event = event::read()?;
+            let mut state_guard = app_state.lock().await;
             if let Event::Resize(_, _) = event {
                 state_guard.rendered_messages.clear();
             } else if let Event::Key(key) = event {
@@ -313,137 +345,26 @@ pub async fn run_chat_page<B: Backend>(
                     &filtered_emojis,
                     &command_tx,
                     &file_command_tx,
-                )
-                .await?
+                )?
                 {
                     return Ok(tui_page);
                 }
             }
-        }
-
-        if let Ok(Some(Ok(msg))) =
-            tokio::time::timeout(Duration::from_millis(10), ws_reader.next()).await
-        {
-            handle_websocket_message(msg, app_state.clone(), &http_client, &command_tx, &file_command_tx).await?;
-        }
-    }
-}
-
-
-
-async fn handle_file_message(
-    app_state_arc: Arc<tokio::sync::Mutex<AppState>>,
-    msg: &mut BroadcastMessage,
-    client: &reqwest::Client,
-) {
-    log::debug!("handle_file_message called for msg: {:?}", msg);
-    if msg.is_image.unwrap_or(false) {
-        log::debug!("Message is an image.");
-        if let Some(download_url) = &msg.download_url {
-            log::debug!("Download URL found: {}", download_url);
-            let cache_dir = env::temp_dir().join("ReeTUI_cache");
-            if !cache_dir.exists() {
-                log::debug!("Cache directory does not exist, creating: {:?}", cache_dir);
-                fs::create_dir_all(&cache_dir).unwrap_or_default();
-            }
-            let file_name = msg.file_name.clone().unwrap_or_default();
-            let file_extension = Path::new(&file_name)
-                .extension()
-                .and_then(|s| s.to_str())
-                .unwrap_or("tmp");
-            let cached_image_path = cache_dir.join(format!(
-                "{}.{}",
-                &msg.file_id.clone().unwrap(),
-                file_extension
-            ));
-
-            if !cached_image_path.exists() {
-                log::debug!(
-                    "Cached image does not exist, downloading to: {:?}",
-                    cached_image_path
-                );
-                if let Ok(response) = client.get(download_url).send().await {
-                    log::debug!("Download response status: {}", response.status());
-                    if let Ok(bytes) = response.bytes().await {
-                        log::debug!("Image bytes downloaded. Size: {}", bytes.len());
-                        if let Ok(mut file) = tokio::fs::File::create(&cached_image_path).await {
-                            let _ = file.write_all(&bytes).await;
-                            log::debug!("Image saved to cache: {:?}", cached_image_path);
-                        } else {
-                            log::error!(
-                                "Failed to create file for caching: {:?}",
-                                cached_image_path
-                            );
-                        }
-                    } else {
-                        log::error!(
-                            "Failed to get bytes from response for download URL: {}",
-                            download_url
-                        );
-                    }
-                } else {
-                    log::error!(
-                        "Failed to send GET request for download URL: {}",
-                        download_url
-                    );
-                }
-            } else {
-                log::debug!("Cached image already exists: {:?}", cached_image_path);
-            }
-
-            if cached_image_path.exists() {
-                let msg_clone_for_spawn = msg.clone(); // Clone msg for the spawned task
-                tokio::spawn(async move {
-                    log::debug!(
-                        "Attempting to generate chafa preview for: {:?}, for message: {:?}",
-                        cached_image_path,
-                        msg_clone_for_spawn
-                    );
-                    let chafa_command = tokio::process::Command::new("chafa")
-                        .arg("--size=x7")
-                        .arg(&cached_image_path)
-                        .output()
-                        .await;
-
-                    match chafa_command {
-                        Ok(output) => {
-                            if output.status.success() {
-                                let preview = String::from_utf8_lossy(&output.stdout).to_string();
-                                log::debug!("Chafa preview generated. Length: {}", preview.len());
-                                let mut msg_to_update = msg_clone_for_spawn;
-                                msg_to_update.image_preview = Some(preview);
-                                let mut state_guard = app_state_arc.lock().await; // Acquire lock here
-                                state_guard.add_message(msg_to_update.clone()); // Clone for add_message
-                                state_guard
-                                    .rendered_messages
-                                    .remove(&msg_to_update.channel_id);
-                                log::debug!("Message with image_preview added to state.");
-                            } else {
-                                log::error!(
-                                    "Chafa command failed. Stderr: {}",
-                                    String::from_utf8_lossy(&output.stderr)
-                                );
-                                log::error!(
-                                    "Chafa command failed. Stdout: {}",
-                                    String::from_utf8_lossy(&output.stdout)
-                                );
-                            }
-                        }
-                        Err(e) => {
-                            log::error!("Failed to execute chafa command: {}", e);
-                        }
-                    }
-                });
-            } else {
-                log::warn!("Cached image path does not exist after download attempt: {:?}, for message: {:?}", cached_image_path, msg);
-            }
         } else {
-            log::warn!("Image message has no download_url: {:?}", msg);
+            if let Ok(Some(Ok(msg))) =
+                tokio::time::timeout(Duration::from_millis(10), ws_reader.next()).await
+            {
+                handle_websocket_message(msg, app_state.clone(), &http_client, &command_tx, &file_command_tx).await?;
+            }
         }
-    } else {
-        log::debug!("Message is not an image, skipping chafa processing.");
     }
 }
+
+
+
+
+
+
 
 async fn handle_websocket_message(
     msg: tungstenite::Message,
@@ -452,65 +373,75 @@ async fn handle_websocket_message(
     command_tx: &mpsc::UnboundedSender<WsCommand>,
     file_command_tx: &mpsc::UnboundedSender<WsCommand>,
 ) -> io::Result<()> {
+    log::debug!("Received WebSocket message: {:?}", msg);
     match msg {
         tungstenite::Message::Text(text) => {
-            log::debug!("Received text message: {}", text);
+            
             if let Ok(server_message) = serde_json::from_str::<ServerMessage>(&text) {
+                log::debug!("Successfully parsed server message: {:?}", server_message);
                 let mut state_guard = app_state.lock().await;
                 match server_message {
                     ServerMessage::Broadcast(mut broadcast_msg) => {
-                        log::debug!("Received broadcast message: {:?}", broadcast_msg);
+                        log::debug!("Received Broadcast message: {:?}", broadcast_msg);
                         if broadcast_msg.is_image.unwrap_or(false) {
-                            handle_file_message(app_state.clone(), &mut broadcast_msg, http_client).await;
+                            image_handler::handle_file_message(app_state.clone(), &mut broadcast_msg, http_client).await;
                         } else {
+                            // Check for mentions
+                            if let Some(username) = state_guard.username.clone() {
+                                let mention_pattern = format!("@{}", username);
+                                if broadcast_msg.content.contains(&mention_pattern) {
+                                    let channel_name = state_guard.current_channel.as_ref().map_or("unknown".to_string(), |c| c.name.clone());
+                                    state_guard.set_notification(
+                                        "New Mention!".to_string(),
+                                        format!("You were mentioned by {} in #{}", broadcast_msg.user, channel_name),
+                                        NotificationType::Info,
+                                    );
+                                }
+                            }
                             state_guard.add_message(broadcast_msg.clone());
                             state_guard.rendered_messages.remove(&broadcast_msg.channel_id);
                         }
                     }
-                    ServerMessage::ChannelList(channels) => {
-                        log::debug!("Received channel list: {:?}", channels);
-                        let new_channels = channels;
+                    ServerMessage::ChannelList(channel_list) => {
                         let mut channel_to_set: Option<crate::api::models::Channel> = None;
 
-                        if state_guard.current_channel.is_none() && !new_channels.is_empty() {
-                            channel_to_set = Some(new_channels[0].clone());
-                        }
+                        // Clear existing channels to ensure a fresh list from the server
+                        state_guard.channels.clear();
 
-                        state_guard.channels = new_channels;
+                        for channel in channel_list.channels {
+                            state_guard.add_or_update_channel(channel.clone());
+                            if channel_to_set.is_none() && state_guard.current_channel.is_none() {
+                                channel_to_set = Some(channel);
+                            }
+                        }
 
                         if let Some(channel) = channel_to_set {
                             state_guard.set_current_channel(channel);
                         }
                     }
-                    ServerMessage::History { channel_id, messages, offset, has_more } => {
-                        log::debug!(
-                            "Received history for channel {}: {} messages, offset {}, has_more {}",
-                            channel_id,
-                            messages.len(),
-                            offset,
-                            has_more
-                        );
-                        let mut new_messages = messages;
-                        new_messages.extend(state_guard.messages.get(&channel_id).cloned().unwrap_or_default());
-                        state_guard.messages.insert(channel_id.clone(), new_messages.into());
-                        state_guard.channel_history_state.insert(channel_id.clone(), (offset, has_more));
-                        state_guard.rendered_messages.remove(&channel_id);
+                    ServerMessage::ChannelUpdate(channel) => {
+                        
+                        state_guard.add_or_update_channel(channel);
                     }
-                    ServerMessage::UserList(users) => {
-                        log::debug!("Received user list: {:?}", users);
-                        state_guard.active_users = users;
+                    ServerMessage::History(history_wrapper) => {
+                        let history = history_wrapper.history;
+                        
+                        let mut new_messages = history.messages;
+                        new_messages.extend(state_guard.messages.get(&history.channel_id).cloned().unwrap_or_default());
+                        state_guard.messages.insert(history.channel_id.clone(), new_messages.into());
+                        state_guard.channel_history_state.insert(history.channel_id.clone(), (history.offset, history.has_more));
+                        state_guard.rendered_messages.remove(&history.channel_id);
+                    }
+                    ServerMessage::UserList(user_list) => {
+                        
+                        state_guard.active_users = user_list.users;
                     }
                     ServerMessage::Notification {
                         title,
                         message,
                         notification_type,
                     } => {
-                        log::debug!(
-                            "Received notification: {} - {} ({:?})",
-                            title,
-                            message,
-                            notification_type
-                        );
+                        
                         state_guard.set_notification(title, message, notification_type);
                     }
                     ServerMessage::Error { message } => {
@@ -521,11 +452,9 @@ async fn handle_websocket_message(
                             NotificationType::Error,
                         );
                     }
-                    ServerMessage::Pong => {
-                        log::debug!("Received Pong from server");
-                    }
+                    
                     ServerMessage::FileDownload { file_id, file_name } => {
-                        log::debug!("Received file download request: {} ({})", file_name, file_id);
+                        
                         if file_command_tx
                             .send(WsCommand::DownloadFile { file_id, file_name })
                             .is_err()
@@ -543,7 +472,7 @@ async fn handle_websocket_message(
             }
         }
         tungstenite::Message::Ping(_) => {
-            log::debug!("Received Ping from server");
+            
             if command_tx.send(WsCommand::Pong).is_err() {
                 log::error!("Failed to send pong command");
             }
@@ -564,7 +493,7 @@ async fn handle_websocket_message(
     Ok(())
 }
 
-async fn handle_key_event<B: Backend>(
+fn handle_key_event<B: Backend>(
     key: KeyEvent,
     state_guard: &mut tokio::sync::MutexGuard<'_, AppState>,
     input_text: &mut String,
@@ -726,6 +655,7 @@ async fn handle_key_event<B: Backend>(
                 },
                 PopupType::Deconnection => match key.code {
                     KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
+                        state_guard.clear_user_auth();
                         return Ok(Some(TuiPage::Auth));
                     }
                     KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
@@ -1004,16 +934,15 @@ async fn handle_key_event<B: Backend>(
                                 state_guard.popup_state.show = false;
                                 state_guard.popup_state.popup_type = PopupType::None;
                             }
-                            popups::file_manager::FileManagerEvent::FileSelectedForDownload(
-                                file_id,
-                                file_name,
-                            ) => {
+                            
+                            
+                            popups::file_manager::FileManagerEvent::FileSelectedForDownload(file_id, file_name) => {
                                 if file_command_tx
                                     .send(WsCommand::DownloadFile { file_id, file_name })
                                     .is_err()
                                 {
                                     state_guard.set_notification(
-                                        "Download Error".to_string(),
+                                        "File Download Error".to_string(),
                                         "Failed to send download command".to_string(),
                                         NotificationType::Error,
                                     );
@@ -1329,6 +1258,22 @@ async fn handle_key_event<B: Backend>(
                                             "File with ID '{}' not found in this channel.",
                                             file_id_to_download
                                         ),
+                                        NotificationType::Error,
+                                    );
+                                }
+                            }
+                        } else if input_text.starts_with("/show ") {
+                            let parts: Vec<&str> = input_text.splitn(2, ' ').collect();
+                            if parts.len() == 2 {
+                                let file_path_str = parts[1].trim();
+                                let file_path = PathBuf::from(file_path_str);
+                                if file_command_tx
+                                    .send(WsCommand::ShowLocalImage { file_path: file_path.clone() })
+                                    .is_err()
+                                {
+                                    state_guard.set_notification(
+                                        "Image Display Error".to_string(),
+                                        "Failed to send local image display command".to_string(),
                                         NotificationType::Error,
                                     );
                                 }

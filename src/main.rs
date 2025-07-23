@@ -13,9 +13,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Initialize logger
     let log_file = std::fs::File::create("log.log").expect("Could not create log file");
-    env_logger::builder()
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("trace"))
         .target(env_logger::Target::Pipe(Box::new(log_file)))
-        .filter_level(log::LevelFilter::Trace)
+        .filter_module("tokio_tungstenite", log::LevelFilter::Off)
+        .filter_module("tungstenite", log::LevelFilter::Off)
         .init();
     log::debug!("ReeTUI application started.");
 
