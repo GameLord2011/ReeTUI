@@ -7,7 +7,6 @@ use ratatui::{backend::CrosstermBackend, Terminal};
 use std::io::{self};
 use std::sync::Arc;
 
-
 pub mod auth_tui;
 pub mod chat;
 pub mod home_tui;
@@ -16,6 +15,8 @@ pub mod themes;
 // SIMPLE
 // BUT BEHIND THIS SIMPLICITY
 // HIDE A BUNCH OF SPAGHETI CODE
+// AND DON4T CHECK THE CODE FOR THE CHAT PAGE
+// BC ITS JUST MORE PSAGHETTI CODE THAT NEED REFACTORS
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum TuiPage {
@@ -43,7 +44,7 @@ pub async fn run_tui(app_state: Arc<tokio::sync::Mutex<AppState>>) -> io::Result
                 current_page = home_tui::run_home_page(&mut terminal, app_state.clone()).await?;
             }
             TuiPage::Chat => {
-                current_page = chat::run_chat_page(&mut terminal, app_state.clone()).await?;
+                current_page = chat::run_chat_page(&mut terminal, app_state.clone()).await?.unwrap_or(TuiPage::Exit);
             }
             TuiPage::Exit => break,
         }

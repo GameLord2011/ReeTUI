@@ -1,7 +1,6 @@
 use crate::tui::chat::message_parsing::{
     replace_shortcodes_with_emojis, should_show_emoji_popup, should_show_mention_popup,
 };
-
 #[test]
 fn test_replace_shortcodes_with_emojis() {
     assert_eq!(

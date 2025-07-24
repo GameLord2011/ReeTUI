@@ -77,7 +77,7 @@ pub enum ServerMessage {
         message: String,
     },
     FileDownload {
-        file_id: String,
+        file_id: String, // field never read
         file_name: String,
     },
     Notification {

@@ -9,3 +9,4 @@ pub mod set_theme;
 pub mod settings;
 pub mod download_progress;
 pub mod debug_json;
+pub mod notification;

@@ -24,7 +24,7 @@ pub struct Notification {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PopupType {
     #[allow(dead_code)]
-    Quit, // Do not remove this variant, it is used in other parts of the code.
+    Quit,
     Settings,
     CreateChannel,
     SetTheme,
@@ -33,7 +33,7 @@ pub enum PopupType {
     Mentions,
     Emojis,
     FileManager,
-    DownloadProgress,
+    DownloadProgress, // variant never constructed
     DebugJson,
     None,
     #[allow(dead_code)]
@@ -55,6 +55,15 @@ impl Default for PopupState {
     }
 }
 
+/// Holds the state for an animated GIF.
+#[derive(Debug, Clone)]
+pub struct GifAnimationState {
+    pub frames: Vec<String>,
+    pub delays: Vec<u16>, // delay in ms for each frame
+    pub current_frame: usize,
+    pub last_frame_time: Option<std::time::Instant>,
+}
+
 #[derive(Debug, Clone)]
 pub struct AppState {
     pub auth_token: Option<String>,
@@ -65,8 +74,7 @@ pub struct AppState {
     pub messages: HashMap<String, VecDeque<BroadcastMessage>>,
     pub rendered_messages: HashMap<String, Vec<Line<'static>>>,
     pub channel_history_state: HashMap<String, (usize, bool)>,
-    pub animation_frame_index: usize,
-    pub last_frame_time: Instant,
+    pub active_animations: HashMap<String, GifAnimationState>, // Replaces old animation fields
     pub popup_state: PopupState,
     pub message_scroll_offset: usize,
     pub current_theme: ThemeName,
@@ -80,6 +88,8 @@ pub struct AppState {
     pub notification: Option<Notification>,
     pub download_progress: u8,
     pub debug_json_content: String,
+    pub terminal_width: u16,
+    pub last_chat_view_height: usize, // stores the last known chat area height for scroll logic
 }
 
 impl Default for AppState {
@@ -93,8 +103,7 @@ impl Default for AppState {
             messages: HashMap::new(),
             rendered_messages: HashMap::new(),
             channel_history_state: HashMap::new(),
-            animation_frame_index: 0,
-            last_frame_time: Instant::now(),
+            active_animations: HashMap::new(), // New
             popup_state: PopupState::default(),
             message_scroll_offset: 0,
             current_theme: ThemeName::Default,
@@ -108,6 +117,8 @@ impl Default for AppState {
             notification: None,
             download_progress: 0,
             debug_json_content: String::new(),
+            terminal_width: 0,
+            last_chat_view_height: 10, // default to 10, will be set by UI
         }
     }
 }
@@ -123,7 +134,12 @@ impl AppState {
         self.user_icon = Some(icon);
     }
 
-    pub fn set_notification(&mut self, title: String, message: String, notification_type: NotificationType) {
+    pub fn set_notification(
+        &mut self,
+        title: String,
+        message: String,
+        notification_type: NotificationType,
+    ) {
         self.notification = Some(Notification {
             title,
             message,
@@ -146,10 +162,9 @@ impl AppState {
         self.messages.clear();
         self.rendered_messages.clear();
         self.channel_history_state.clear();
-        self.animation_frame_index = 0;
-        self.last_frame_time = Instant::now();
+        self.active_animations.clear(); // New
         self.popup_state = PopupState::default();
-        self.notification = None; // Clear notification on logout
+        self.notification = None;
         self.message_scroll_offset = 0;
         self.current_theme = ThemeName::Default;
     }
@@ -158,9 +173,7 @@ impl AppState {
         let channel_id = channel.id.clone();
         self.current_channel = Some(channel);
         self.messages.entry(channel_id.clone()).or_default();
-        self.rendered_messages
-            .entry(channel_id.clone())
-            .or_default();
+        self.rendered_messages.entry(channel_id.clone()).or_default();
         self.channel_history_state
             .entry(channel_id)
             .or_insert((0, true));
@@ -194,10 +207,8 @@ impl AppState {
         }
     }
 
-    pub fn get_messages_for_channel(
-        &self,
-        channel_id: &str,
-    ) -> Option<&VecDeque<BroadcastMessage>> {
+    #[allow(dead_code)]
+    pub fn get_messages_for_channel(&self, channel_id: &str) -> Option<&VecDeque<BroadcastMessage>> {
         self.messages.get(channel_id)
     }
 
@@ -224,14 +235,25 @@ impl AppState {
         self.channel_history_state.remove(channel_id);
     }
 
-    pub fn scroll_messages_up(&mut self) {
-        self.message_scroll_offset = self.message_scroll_offset.saturating_add(1);
+    pub fn scroll_messages_up(&mut self, message_count: usize, view_height: usize) {
+        let max_offset = message_count.saturating_sub(view_height).max(0);
+        if self.message_scroll_offset < max_offset {
+            self.message_scroll_offset += 1;
+        }
+        if self.message_scroll_offset > max_offset {
+            self.message_scroll_offset = max_offset;
+        }
+        log::debug!("scroll up: offset={}, max_offset={}, message_count={}, view_height={}", self.message_scroll_offset, max_offset, message_count, view_height);
     }
 
     pub fn scroll_messages_down(&mut self) {
-        self.message_scroll_offset = self.message_scroll_offset.saturating_sub(1);
+        if self.message_scroll_offset > 0 {
+            self.message_scroll_offset -= 1;
+        }
+        log::debug!("scroll down: offset={}", self.message_scroll_offset);
     }
 
+    #[allow(dead_code)]
     pub fn clear_expired_notification(&mut self) {
         if let Some(notification) = &self.notification {
             if notification.created_at.elapsed() > std::time::Duration::from_secs(5) {
@@ -240,15 +262,37 @@ impl AppState {
         }
     }
 
+    #[allow(dead_code)]
     pub fn update_message(&mut self, updated_message: BroadcastMessage) {
         if let Some(channel_messages) = self.messages.get_mut(&updated_message.channel_id) {
-            // Find and update the message
-            if let Some(pos) = channel_messages.iter().position(|msg| {
-                msg.file_id == updated_message.file_id && msg.timestamp == updated_message.timestamp
-            }) {
-                channel_messages[pos] = updated_message;
-                self.rendered_messages.remove(&channel_messages[pos].channel_id);
+            // Try to match by file_id and timestamp
+            for (i, msg) in channel_messages.iter().enumerate() {
+                log::debug!("Checking message for update: idx={} file_id={:?} timestamp={} file_name={:?}", i, msg.file_id, msg.timestamp, msg.file_name);
+                // 1. Prefer file_id if both present
+                if msg.file_id.is_some() && updated_message.file_id.is_some() {
+                    if msg.file_id == updated_message.file_id {
+                        log::debug!("Matched by file_id at idx={}!", i);
+                        channel_messages[i] = updated_message;
+                        self.rendered_messages.remove(&channel_messages[i].channel_id);
+                        return;
+                    } else {
+                        continue;
+                    }
+                // 2. Else, match by timestamp if both present
+                } else if msg.timestamp == updated_message.timestamp {
+                    log::debug!("Matched by timestamp at idx={}!", i);
+                    channel_messages[i] = updated_message;
+                    self.rendered_messages.remove(&channel_messages[i].channel_id);
+                    return;
+                // 3. Else, match by file_name if both present and neither file_id nor timestamp is present
+                } else if msg.file_name.is_some() && updated_message.file_name.is_some() && msg.file_name == updated_message.file_name {
+                    log::debug!("Matched by file_name at idx={} (no file_id/timestamp)!", i);
+                    channel_messages[i] = updated_message;
+                    self.rendered_messages.remove(&channel_messages[i].channel_id);
+                    return;
+                }
             }
+            log::warn!("No matching message found to update: file_id={:?} timestamp={:?} file_name={:?}", updated_message.file_id, updated_message.timestamp, updated_message.file_name);
         }
     }
 }

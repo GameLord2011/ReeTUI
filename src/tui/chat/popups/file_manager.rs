@@ -25,6 +25,7 @@ pub struct DownloadableFile {
 
 pub enum FileManagerMode {
     LocalUpload,
+    #[allow(dead_code)]
     RemoteDownload,
 }
 

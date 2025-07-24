@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 
 // its more undertsanble without comments
 // gonna comments about it
@@ -58,6 +59,8 @@ pub struct BroadcastMessage {
     pub download_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub download_progress: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gif_frames: Option<Vec<(String, Duration)>>,
 }
 
 fn default_message_type() -> String {

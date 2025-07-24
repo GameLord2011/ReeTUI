@@ -8,13 +8,8 @@ use ratatui::{
 
 use crate::app::AppState;
 use crate::tui::themes::{get_theme, rgb_to_color};
-
 // Options defined once as a static constant
-static SETTINGS_OPTIONS: &[&str] = &[
-    " Themes",
-    "  Deconnection",
-    "󰞋 Help",
-];
+static SETTINGS_OPTIONS: &[&str] = &[" Themes", "  Deconnection", "󰞋 Help"];
 
 pub fn get_settings_popup_size() -> (u16, u16) {
     let width = SETTINGS_OPTIONS.iter().map(|s| s.len()).max().unwrap_or(0) as u16 + 10;
@@ -29,10 +24,7 @@ pub fn draw_settings_popup(f: &mut Frame, state: &mut AppState, area: Rect, popu
 
     let settings_layout = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Min(3),
-            Constraint::Length(1),
-        ])
+        .constraints([Constraint::Min(3), Constraint::Length(1)])
         .margin(1)
         .split(inner_area);
 

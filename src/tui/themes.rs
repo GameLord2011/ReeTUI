@@ -1,6 +1,6 @@
 use ratatui::style::Color;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Copy)]
 pub struct Rgb(pub u8, pub u8, pub u8);
 
 pub fn interpolate_rgb(start: &Rgb, end: &Rgb, fraction: f32) -> Rgb {
@@ -217,7 +217,6 @@ pub fn get_theme(theme_name: ThemeName) -> Theme {
             border: Rgb(146, 122, 97),
             border_focus: Rgb(250, 184, 100),
             button: Rgb(184, 187, 38),
-            // AI GENERATED OFC
             text: Rgb(235, 219, 178),
             error: Rgb(251, 73, 52),
             dim: Rgb(102, 92, 84),

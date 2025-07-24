@@ -20,7 +20,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init();
     log::debug!("ReeTUI application started.");
 
-    let app_state = Arc::new(tokio::sync::Mutex::new(AppState::new()));
+    let mut app_state = AppState::new();
+    let (width, _height) = crossterm::terminal::size()?;
+    app_state.terminal_width = width;
+    let app_state = Arc::new(tokio::sync::Mutex::new(app_state));
 
     if let Err(e) = tui::run_tui(app_state.clone()).await {
         error!("TUI application error: {:?}", e);
