@@ -7,16 +7,12 @@ use ratatui::{
     widgets::{Block, Borders, Clear, List, ListItem, ListState},
 };
 
-
-
 pub enum FileManagerEvent {
     FileSelectedForUpload(PathBuf),
     FileSelectedForDownload(String, String),
     CloseFileManager,
     None,
 }
-
-
 
 pub struct DownloadableFile {
     pub id: String,
@@ -50,7 +46,7 @@ impl FileManager {
 
         match file_manager.mode {
             FileManagerMode::LocalUpload => file_manager.read_current_dir(),
-            FileManagerMode::RemoteDownload => { /* remote files are passed in */ }
+            FileManagerMode::RemoteDownload => { /* funny */ }
         }
 
         file_manager.list_state.select(Some(0));
@@ -60,8 +56,8 @@ impl FileManager {
     pub fn ui(&mut self, f: &mut Frame) {
         let popup_area = centered_rect_with_size(90, 90, f.area());
         let block_title = match self.mode {
-            FileManagerMode::LocalUpload => "Upload Your Treasures ",
-            FileManagerMode::RemoteDownload => "Download Your Loot ",
+            FileManagerMode::LocalUpload => "Upload Your Treasures  (or whatever ඞ)",
+            FileManagerMode::RemoteDownload => "Download Your Loot ",
         };
         let block = Block::default()
             .title(block_title)

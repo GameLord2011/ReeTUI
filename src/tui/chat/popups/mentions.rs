@@ -8,7 +8,7 @@ use ratatui::{
 use crate::app::AppState;
 use crate::tui::themes::{get_theme, rgb_to_color};
 
-// Helper function to get filtered users, to avoid redundancy
+// funny
 fn get_filtered_users<'a>(state: &'a AppState) -> Vec<&'a String> {
     let username = state.username.as_ref().map(|s| s.to_lowercase()); // Get lowercase username once
     state

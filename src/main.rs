@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let _ = rustls::crypto::ring::default_provider().install_default();
+    let _ = rustls::crypto::ring::default_provider().install_default(); // funny
 
     // Initialize logger
     let log_file = std::fs::File::create("log.log").expect("Could not create log file");

@@ -11,7 +11,7 @@ use tokio_tungstenite::{tungstenite::protocol::Message, MaybeTlsStream, WebSocke
 pub type WsWriter = SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>;
 pub type WsReader = SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>;
 
-const WS_URL: &str = "wss://isock.reetui.hackclub.app"; // i suck
+const WS_URL: &str = "wss://isock.reetui.hackclub.app"; // funny
 
 pub async fn connect(token: &str) -> Result<(WsWriter, WsReader), Box<dyn std::error::Error>> {
     let (ws_stream, _) = connect_async(WS_URL).await?;
@@ -74,10 +74,13 @@ pub enum ServerMessage {
     ChannelUpdate(Channel),
     Broadcast(BroadcastMessage),
     Error {
+        #[allow(dead_code)]
         message: String,
     },
     FileDownload {
-        file_id: String, // field never read
+        #[allow(dead_code)]
+        file_id: String,
+        #[allow(dead_code)]
         file_name: String,
     },
     Notification {

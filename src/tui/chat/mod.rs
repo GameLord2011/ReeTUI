@@ -1,5 +1,6 @@
 pub mod create_channel_form;
 pub mod image_handler;
+pub mod gif_renderer;
 pub mod message_parsing;
 pub mod popups;
 pub mod theme_settings_form;
@@ -16,18 +17,18 @@ use crate::api::websocket; // ServerMessage unused
 use crate::app::{AppState, NotificationType, PopupType};
 use crate::tui::chat::create_channel_form::{CreateChannelForm, CreateChannelInput};
 // use crate::tui::chat::image_handler::handle_show_image_command; // Unused, commented out
+use crate::tui::TuiPage;
 use crate::tui::chat::message_parsing::{
     replace_shortcodes_with_emojis, should_show_emoji_popup, should_show_mention_popup,
 };
 use crate::tui::chat::theme_settings_form::ThemeSettingsForm;
 use crate::tui::chat::ui::draw_chat_ui;
 use crate::tui::chat::ws_command::WsCommand;
-use crate::tui::TuiPage;
-use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers}; // KeyEvent unused
+use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers, MouseEventKind};
 use emojis;
 // use futures_util::{SinkExt, StreamExt}; // Unused, commented out
 // use log::debug; // Already imported elsewhere or unused
-use ratatui::{prelude::Backend, widgets::ListState, Terminal}; // All used
+use ratatui::{Terminal, prelude::Backend, widgets::ListState}; // All used
 use regex::Regex; // Used for mention/emoji regex
 use serde_json; // Used for debug JSON
 use std::{io, path::PathBuf, sync::Arc, time::Duration}; // All used
@@ -67,7 +68,7 @@ pub async fn run_chat_page<B: Backend>(
 
     let (command_tx, mut command_rx) = mpsc::unbounded_channel::<WsCommand>();
     let (filecommand_tx, mut file_command_rx) = mpsc::unbounded_channel::<WsCommand>();
-    let (progress_tx, _progress_rx) = mpsc::unbounded_channel::<(String, u8)>();
+    let (progress_tx, mut progress_rx) = mpsc::unbounded_channel::<(String, u8)>();
     let http_client = reqwest::Client::new();
 
     // --- WebSocket and File Command Handling Tasks (Unchanged) ---
@@ -94,19 +95,30 @@ pub async fn run_chat_page<B: Backend>(
 
     // --- File Command Handling Task: handle file uploads/downloads ---
     let app_state_clone2 = app_state.clone();
-    let http_client2 = http_client.clone();
+    let http_client_for_file_commands = http_client.clone();
     let progress_tx2 = progress_tx.clone();
     tokio::spawn(async move {
         use crate::api::file_api;
         while let Some(command) = file_command_rx.recv().await {
             match command {
-                WsCommand::UploadFile { channel_id, file_path } => {
+                WsCommand::UploadFile {
+                    channel_id,
+                    file_path,
+                } => {
                     let token = {
                         let state = app_state_clone2.lock().await;
                         state.auth_token.clone()
                     };
                     if let Some(token) = token {
-                        match file_api::upload_file(&http_client2, &token, &channel_id, file_path, progress_tx2.clone()).await {
+                        match file_api::upload_file(
+                            &http_client_for_file_commands,
+                            &token,
+                            &channel_id,
+                            file_path,
+                            progress_tx2.clone(),
+                        )
+                        .await
+                        {
                             Ok(_file_id) => {
                                 let mut state = app_state_clone2.lock().await;
                                 state.set_notification(
@@ -127,7 +139,52 @@ pub async fn run_chat_page<B: Backend>(
                         }
                     }
                 }
+                WsCommand::DownloadFile { file_id, file_name } => {
+                    let app_state_clone3 = app_state_clone2.clone();
+                    let progress_tx3 = progress_tx2.clone();
+                    let http_client_clone = http_client_for_file_commands.clone();
+                    tokio::spawn(async move {
+                        match file_api::download_file(
+                            &http_client_clone,
+                            &file_id,
+                            &file_name,
+                            progress_tx3.clone(),
+                        )
+                        .await
+                        {
+                            Ok(_) => {
+                                let mut state = app_state_clone3.lock().await;
+                                state.set_notification(
+                                    "File Download Success".to_string(),
+                                    format!("File '{}' downloaded successfully!", file_name),
+                                    NotificationType::Success,
+                                );
+                            }
+                            Err(e) => {
+                                let mut state = app_state_clone3.lock().await;
+                                state.set_notification(
+                                    "File Download Error".to_string(),
+                                    format!("Failed to download file: {}", e),
+                                    NotificationType::Error,
+                                );
+                            }
+                        }
+                    });
+                }
                 _ => {}
+            }
+        }
+    });
+
+    // Handle download progress updates
+    let app_state_clone_for_progress = app_state.clone();
+    tokio::spawn(async move {
+        while let Some((_file_id, progress)) = progress_rx.recv().await {
+            let mut state = app_state_clone_for_progress.lock().await;
+            state.set_download_progress_popup(progress);
+            if progress == 100 {
+                state.popup_state.show = false;
+                state.popup_state.popup_type = PopupType::None;
             }
         }
     });
@@ -135,6 +192,7 @@ pub async fn run_chat_page<B: Backend>(
     // --- WebSocket Reader Task: handle incoming messages (including ChannelList) ---
     let app_state_clone = app_state.clone();
     let command_tx_bg = command_tx.clone();
+    let http_client_for_websocket_reader = http_client.clone();
     tokio::spawn(async move {
         use crate::api::websocket::ServerMessage;
         use futures_util::StreamExt;
@@ -151,10 +209,12 @@ pub async fn run_chat_page<B: Backend>(
                                 let channel_id = first_channel.id.clone();
                                 state.set_current_channel(first_channel);
                                 // Send a history request for the first channel
-                                let _ = command_tx_bg.send(crate::tui::chat::ws_command::WsCommand::Message {
-                                    channel_id: channel_id.clone(),
-                                    content: format!("/get_history {} 0", channel_id),
-                                });
+                                let _ = command_tx_bg.send(
+                                    crate::tui::chat::ws_command::WsCommand::Message {
+                                        channel_id: channel_id.clone(),
+                                        content: format!("/get_history {} 0", channel_id),
+                                    },
+                                );
                             }
                         }
                         ServerMessage::Broadcast(message) => {
@@ -162,11 +222,17 @@ pub async fn run_chat_page<B: Backend>(
                             state.add_message(message.clone());
                             if is_image {
                                 let app_state_clone = app_state_clone.clone();
-                                let http_client = reqwest::Client::new();
+                                let http_client = http_client_for_websocket_reader.clone();
                                 let msg = message.clone();
                                 tokio::spawn(async move {
                                     // Use a default height, e.g., 20 lines
-                                    crate::tui::chat::image_handler::process_image_message(app_state_clone, msg, &http_client, 20).await;
+                                    crate::tui::chat::image_handler::process_image_message(
+                                        app_state_clone,
+                                        msg,
+                                        &http_client,
+                                        20,
+                                    )
+                                    .await;
                                 });
                             }
                         }
@@ -175,15 +241,23 @@ pub async fn run_chat_page<B: Backend>(
                             let channel_id = history.channel_id.clone();
                             let messages = history.messages.clone();
                             state.prepend_history(&channel_id, messages.clone());
-                            state.channel_history_state.insert(channel_id, (history.offset, history.has_more));
+                            state
+                                .channel_history_state
+                                .insert(channel_id, (history.offset, history.has_more));
                             // For each image message in history, spawn a chafa conversion
                             for message in messages {
                                 if message.is_image.unwrap_or(false) {
                                     let app_state_clone = app_state_clone.clone();
-                                    let http_client = reqwest::Client::new();
+                                    let http_client = http_client_for_websocket_reader.clone();
                                     let msg = message.clone();
                                     tokio::spawn(async move {
-                                        crate::tui::chat::image_handler::process_image_message(app_state_clone, msg, &http_client, 20).await;
+                                        crate::tui::chat::image_handler::process_image_message(
+                                            app_state_clone,
+                                            msg,
+                                            &http_client,
+                                            20,
+                                        )
+                                        .await;
                                     });
                                 }
                             }
@@ -194,7 +268,11 @@ pub async fn run_chat_page<B: Backend>(
                         ServerMessage::ChannelUpdate(channel) => {
                             state.add_or_update_channel(channel);
                         }
-                        ServerMessage::Notification { title, message, notification_type } => {
+                        ServerMessage::Notification {
+                            title,
+                            message,
+                            notification_type,
+                        } => {
                             state.set_notification(title, message, notification_type);
                         }
                         _ => {}
@@ -233,17 +311,21 @@ pub async fn run_chat_page<B: Backend>(
         // --- GIF Animation Frame Advancement ---
         let now = std::time::Instant::now();
         let mut needs_redraw = false;
-        for (file_id, anim) in state_guard.active_animations.iter_mut() {
-            if anim.frames.len() > 1 {
-                let delays = &anim.delays;
-                let current = anim.current_frame;
-                let delay = delays.get(current).copied().unwrap_or(200);
-                let last = anim.last_frame_time.unwrap_or(now);
-                if now.duration_since(last).as_millis() as u64 >= delay as u64 {
-                    anim.current_frame = (anim.current_frame + 1) % anim.frames.len();
-                    anim.last_frame_time = Some(now);
-                    log::debug!("GIF tick: file_id={:?} advanced to frame {} of {} (delay={}ms)", file_id, anim.current_frame, anim.frames.len(), delay);
-                    needs_redraw = true;
+        for (_file_id, anim_arc) in state_guard.active_animations.iter_mut() {
+            if let Ok(mut anim) = anim_arc.lock() {
+                if anim.frames.len() > 1 {
+                    if anim.last_frame_time.is_none() {
+                        anim.last_frame_time = Some(now);
+                    }
+
+                    let last = anim.last_frame_time.unwrap();
+                    let delay = anim.delays.get(anim.current_frame).copied().unwrap_or(100) as u64;
+
+                    if now.duration_since(last).as_millis() >= delay.into() {
+                        anim.current_frame = (anim.current_frame + 1) % anim.frames.len();
+                        anim.last_frame_time = Some(now);
+                        needs_redraw = true;
+                    }
                 }
             }
         }
@@ -265,16 +347,38 @@ pub async fn run_chat_page<B: Backend>(
             })?;
         }
 
-        let timeout = Duration::from_millis(100);
+        let timeout = Duration::from_millis(16);
         if !event::poll(timeout)? {
             continue;
         }
 
         let event = event::read()?;
 
+        // Handle mouse scroll events
+        if let Event::Mouse(mouse_event) = event {
+            match mouse_event.kind {
+                MouseEventKind::ScrollUp => {
+                    // Scroll up messages
+                    let rendered_count = state_guard
+                        .rendered_messages
+                        .get(&state_guard.current_channel.as_ref().map(|c| c.id.clone()).unwrap_or_default())
+                        .map_or(0, |v| v.len());
+                    let view_height = state_guard.last_chat_view_height.max(1);
+                    state_guard.scroll_messages_up(rendered_count, view_height);
+                }
+                MouseEventKind::ScrollDown => {
+                    state_guard.scroll_messages_down();
+                }
+                _ => {}
+            }
+            continue;
+        }
+
         // Handle global key events, even when a popup is not active
         if let Event::Key(key) = event {
-            if key.kind == KeyEventKind::Press {
+            match key.kind {
+                KeyEventKind::Press => { // Only handle actions on key press
+
                 let current_popup_type = state_guard.popup_state.popup_type;
 
                 match current_popup_type {
@@ -306,7 +410,9 @@ pub async fn run_chat_page<B: Backend>(
                             KeyCode::Enter => match state_guard.selected_setting_index {
                                 0 => {
                                     state_guard.popup_state.popup_type = PopupType::SetTheme;
-                                     theme_settings_form = ThemeSettingsForm::new(state_guard.current_theme);                                }
+                                    theme_settings_form =
+                                        ThemeSettingsForm::new(state_guard.current_theme);
+                                }
                                 1 => {
                                     state_guard.popup_state.popup_type = PopupType::Deconnection;
                                 }
@@ -331,7 +437,8 @@ pub async fn run_chat_page<B: Backend>(
                                 log::debug!("PopupType::CreateChannel dismissed with Esc");
                                 state_guard.popup_state.show = false;
                                 state_guard.popup_state.popup_type = PopupType::None;
-                                             create_channel_form = CreateChannelForm::new();                            }
+                                create_channel_form = CreateChannelForm::new();
+                            }
                             KeyCode::Tab => {
                                 create_channel_form.next_input();
                             }
@@ -586,7 +693,12 @@ pub async fn run_chat_page<B: Backend>(
                     PopupType::Emojis => {
                         log::debug!("PopupType::Emojis branch, key: {:?}", key.code);
                         let filtered_emojis: Vec<String> = emojis::iter()
-                             .filter(|emoji| emoji.shortcodes().any(|sc| sc.contains(&state_guard.emoji_query)))                            .map(|emoji| emoji.to_string())
+                            .filter(|emoji| {
+                                emoji
+                                    .shortcodes()
+                                    .any(|sc| sc.contains(&state_guard.emoji_query))
+                            })
+                            .map(|emoji| emoji.to_string())
                             .collect();
                         let num_filtered_emojis = filtered_emojis.len();
 
@@ -657,9 +769,12 @@ pub async fn run_chat_page<B: Backend>(
                                     state_guard.emoji_query.clear();
                                 }
                                 let new_filtered_emojis: Vec<String> = emojis::iter()
-                                 .filter(|emoji| {
-                                     emoji.shortcodes().any(|sc| sc.contains(&state_guard.emoji_query))
-                                 })                                    .map(|emoji| emoji.to_string())
+                                    .filter(|emoji| {
+                                        emoji
+                                            .shortcodes()
+                                            .any(|sc| sc.contains(&state_guard.emoji_query))
+                                    })
+                                    .map(|emoji| emoji.to_string())
                                     .collect();
                                 let new_num_filtered_emojis = new_filtered_emojis.len();
                                 if new_num_filtered_emojis > 0 {
@@ -806,6 +921,18 @@ pub async fn run_chat_page<B: Backend>(
                 // It should be outside the `match current_popup_type` block
                 // or explicitly handled for `PopupType::None`.
                 if current_popup_type == PopupType::None {
+                    // Global ESC and logout shortcut handling
+                    if key.code == KeyCode::Esc {
+                        // Show quit popup globally
+                        state_guard.popup_state.show = true;
+                        state_guard.popup_state.popup_type = PopupType::Quit;
+                        return Ok(Some(TuiPage::Exit));
+                    }
+                    if key.code == KeyCode::Char('d') && key.modifiers.contains(KeyModifiers::CONTROL) {
+                        // Show deconnection/logout popup globally
+                        state_guard.popup_state.show = true;
+                        state_guard.popup_state.popup_type = PopupType::Deconnection;
+                    }
                     log::debug!("No popup active, handling key: {:?}", key.code);
                     match key.code {
                         // Interactive download: Enter on file/image message
@@ -908,13 +1035,13 @@ pub async fn run_chat_page<B: Backend>(
                                     let parts: Vec<&str> = input_text.splitn(2, ' ').collect();
                                     if parts.len() == 2 {
                                         let file_path_str = parts[1].trim();
-                                        let file_path = PathBuf::from(file_path_str);
-                                state_guard.set_notification(
-                                    "Image Display Error".to_string(),
-                                    "Image preview is not supported anymore."
-                                        .to_string(),
-                                    NotificationType::Error,
-                                );                                    }
+                                        let _file_path = PathBuf::from(file_path_str);
+                                        state_guard.set_notification(
+                                            "Image Display Error".to_string(),
+                                            "Image preview is not supported anymore.".to_string(),
+                                            NotificationType::Error,
+                                        );
+                                    }
                                 } else {
                                     if let Some(current_channel) = &state_guard.current_channel {
                                         let channel_id = current_channel.id.clone();
@@ -1019,14 +1146,16 @@ pub async fn run_chat_page<B: Backend>(
                         KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                             state_guard.popup_state.show = true;
                             state_guard.popup_state.popup_type = PopupType::CreateChannel;
-                             create_channel_form = CreateChannelForm::new();                        }
+                            create_channel_form = CreateChannelForm::new();
+                        }
                         KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                             state_guard.popup_state.show = true;
                             state_guard.popup_state.popup_type = PopupType::FileManager;
-                             file_manager = popups::file_manager::FileManager::new(
-                                 popups::file_manager::FileManagerMode::LocalUpload,
-                                 Vec::new(),
-                             );                        }
+                            file_manager = popups::file_manager::FileManager::new(
+                                popups::file_manager::FileManagerMode::LocalUpload,
+                                Vec::new(),
+                            );
+                        }
                         KeyCode::Char('j') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                             if let Some(current_channel) = &state_guard.current_channel {
                                 if let Some(messages) =
@@ -1089,39 +1218,44 @@ pub async fn run_chat_page<B: Backend>(
                         }
                         KeyCode::Up => {
                             if key.modifiers.contains(KeyModifiers::CONTROL) {
-                                let channel_id =
-                                    state_guard.current_channel.as_ref().unwrap().id.clone();
-                                let rendered_count =
-                                    state_guard.messages.get(&channel_id).map_or(0, |v| v.len());
-                                if state_guard.message_scroll_offset
-                                    >= rendered_count.saturating_sub(5)
-                                {
-                                    if let Some((offset, has_more)) =
-                                        state_guard.channel_history_state.get(&channel_id)
+                                // Only scroll on key press, not hold
+                                if let Some(current_channel) = &state_guard.current_channel {
+                                    let channel_id = &current_channel.id;
+                                    let rendered_count = state_guard
+                                        .rendered_messages
+                                        .get(channel_id)
+                                        .map_or(0, |v| v.len());
+
+                                    if state_guard.message_scroll_offset
+                                        >= rendered_count.saturating_sub(5)
                                     {
-                                        if *has_more {
-                                            if command_tx
-                                                .send(WsCommand::Message {
-                                                    channel_id: channel_id.clone(),
-                                                    content: format!(
-                                                        "/get_history {} {}",
-                                                        channel_id, offset
-                                                    ),
-                                                })
-                                                .is_err()
-                                            {
-                                                state_guard.set_notification(
-                                                    "History Request Error".to_string(),
-                                                    "Failed to request history".to_string(),
-                                                    NotificationType::Error,
-                                                );
+                                        if let Some((offset, has_more)) =
+                                            state_guard.channel_history_state.get(channel_id)
+                                        {
+                                            if *has_more {
+                                                if command_tx
+                                                    .send(WsCommand::Message {
+                                                        channel_id: channel_id.clone(),
+                                                        content: format!(
+                                                            "/get_history {} {}",
+                                                            channel_id, offset
+                                                        ),
+                                                    })
+                                                    .is_err()
+                                                {
+                                                    state_guard.set_notification(
+                                                        "History Request Error".to_string(),
+                                                        "Failed to request history".to_string(),
+                                                        NotificationType::Error,
+                                                    );
+                                                }
                                             }
                                         }
                                     }
+                                    let view_height = state_guard.last_chat_view_height.max(1);
+                                    state_guard.scroll_messages_up(rendered_count, view_height);
                                 }
-                                let view_height = state_guard.last_chat_view_height.max(1); // Use actual chat area height
-                                let message_count = state_guard.messages.get(&channel_id).map_or(0, |v| v.len());
-                                state_guard.scroll_messages_up(message_count, view_height);                            } else {
+                            } else {
                                 let i = match channel_list_state.selected() {
                                     Some(i) => {
                                         if i == 0 {
@@ -1161,6 +1295,7 @@ pub async fn run_chat_page<B: Backend>(
                         }
                         KeyCode::Down => {
                             if key.modifiers.contains(KeyModifiers::CONTROL) {
+                                // Only scroll on key press, not hold
                                 state_guard.scroll_messages_down();
                             } else {
                                 let i = match channel_list_state.selected() {
@@ -1246,6 +1381,15 @@ pub async fn run_chat_page<B: Backend>(
                         }
                         _ => {}
                     }
+                }
+                }
+                KeyEventKind::Release => {
+                    // Reset any stuck scroll/input state here if needed
+                    // For example, if you want to reset scroll offset or input lock, do it here
+                    // Currently, no persistent key state, so nothing to reset
+                }
+                KeyEventKind::Repeat => {
+                    // Optionally handle repeated key events if needed
                 }
             }
         }

@@ -1,15 +1,13 @@
+use crate::app::AppState;
+use crate::tui::chat::popups::helpers::{render_styled_list, render_styled_paragraph};
+use crate::tui::themes::{get_theme, rgb_to_color};
 use ratatui::{
-    layout::{Constraint, Direction, Layout, Rect},
-    style::{Modifier, Style},
-    text::Text,
-    widgets::{Block, List, ListItem, ListState, Paragraph},
+    layout::{Alignment, Constraint, Direction, Layout, Rect},
+    widgets::Block,
     Frame,
 };
-
-use crate::app::AppState;
-use crate::tui::themes::{get_theme, rgb_to_color};
 // Options defined once as a static constant
-static SETTINGS_OPTIONS: &[&str] = &[" Themes", "  Deconnection", "󰞋 Help"];
+static SETTINGS_OPTIONS: &[&str] = &[" Themes", "  Deconnection", "󰞋 Help"];
 
 pub fn get_settings_popup_size() -> (u16, u16) {
     let width = SETTINGS_OPTIONS.iter().map(|s| s.len()).max().unwrap_or(0) as u16 + 10;
@@ -28,41 +26,25 @@ pub fn draw_settings_popup(f: &mut Frame, state: &mut AppState, area: Rect, popu
         .margin(1)
         .split(inner_area);
 
-    let option_items: Vec<ListItem> = SETTINGS_OPTIONS // Use the static constant
-        .iter()
-        .enumerate()
-        .map(|(i, &option)| {
-            let is_selected = i == state.selected_setting_index;
-            let style = if is_selected {
-                Style::default()
-                    .fg(rgb_to_color(&current_theme.button_text_active))
-                    .bg(rgb_to_color(&current_theme.button_bg_active))
-                    .add_modifier(Modifier::BOLD)
-            } else {
-                Style::default().fg(rgb_to_color(&current_theme.text))
-            };
-            ListItem::new(option).style(style)
-        })
-        .collect();
+    render_styled_list(
+        f,
+        SETTINGS_OPTIONS,
+        Some(state.selected_setting_index),
+        &current_theme,
+        settings_layout[0],
+        Some(Block::default()),
+        None,
+        None,
+        Some(" "),
+    );
 
-    let options_list = List::new(option_items)
-        .block(Block::default())
-        .highlight_style(
-            Style::default()
-                .add_modifier(Modifier::REVERSED)
-                .fg(rgb_to_color(&current_theme.button_text_active))
-                .bg(rgb_to_color(&current_theme.button_bg_active)),
-        )
-        .highlight_symbol(" ");
-
-    let mut list_state = ListState::default();
-    list_state.select(Some(state.selected_setting_index));
-    f.render_stateful_widget(options_list, settings_layout[0], &mut list_state);
-
-    let hint_paragraph = Paragraph::new(Text::styled(
-        "(Esc) Retreat to Safety ",
-        Style::default().fg(rgb_to_color(&current_theme.accent)),
-    ))
-    .alignment(ratatui::layout::Alignment::Center);
-    f.render_widget(hint_paragraph, settings_layout[1]);
+    render_styled_paragraph(
+        f,
+        vec![ratatui::text::Line::from("(Esc) Retreat to Safety ")],
+        &current_theme,
+        settings_layout[1],
+        Alignment::Center,
+        None,
+        Some(rgb_to_color(&current_theme.accent)),
+    );
 }

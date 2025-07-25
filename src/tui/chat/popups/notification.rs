@@ -36,17 +36,15 @@ pub fn draw_notification_popup(f: &mut Frame, app_state: &AppState) {
         };
 
         let popup_block = Block::default()
-            .title(format!(" {} ", notification.title))
+            .title(format!(" {} ", notification.title))
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
             .border_style(Style::default().fg(rgb_to_color(&border_color)));
 
-        let text = Text::from(vec![
-            Line::from(Span::styled(
-                &notification.message,
-                Style::default().fg(rgb_to_color(&theme.text)),
-            )),
-        ]);
+        let text = Text::from(vec![Line::from(Span::styled(
+            &notification.message,
+            Style::default().fg(rgb_to_color(&theme.text)),
+        ))]);
 
         let paragraph = Paragraph::new(text)
             .block(popup_block)

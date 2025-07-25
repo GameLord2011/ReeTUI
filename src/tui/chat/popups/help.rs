@@ -1,37 +1,36 @@
-use ratatui::{
-    Frame,
-    layout::Rect,
-    style::Style,
-    text::{Line, Span},
-    widgets::{Block, Paragraph},
-};
-
 use crate::app::AppState;
-use crate::tui::themes::{get_theme, rgb_to_color};
+use crate::tui::chat::popups::helpers::render_styled_paragraph;
+use crate::tui::themes::get_theme;
+use ratatui::{
+    layout::{Alignment, Rect},
+    text::Line,
+    widgets::Block,
+    Frame,
+};
 
 // Commands defined once as a static constant
 static HELP_COMMANDS: &[&str] = &[
-    "General: ",
-    "  Echap                - Open Quit popup ",
+    " General:",
+    "  Echap                - Open Quit popup (exit automaticly) 󰩈",
     "  Ctrl+S               - Open Settings popup ",
     "  Ctrl+N               - Open Create Channel popup ",
     "  Tab                  - Switch to next channel ",
-    "  Ctrl+Up/Down         - Scroll messages ",
-    "  Up/Down              - Switch channels ",
-    "  Enter                - Send message ",
-    "  Backspace            - Delete last char in input ",
+    "  Ctrl+Up/Down         - Scroll messages ",
+    "  Up/Down              - Switch channels 󰀙",
+    "  Enter                - Send message ",
+    "  Backspace            - Delete last char in input ",
     "",
-    "Popups (varies per popup): ",
-    "  Esc                  - Close popup / Cancel ",
-    "  Enter                - Confirm / Select / Create ",
-    "  Tab/Up/Down          - Navigate fields/options (in forms) ",
-    "  Left/Right           - Select icon (in Create Channel) ",
+    "Popups (varies per popup): 󱨇",
+    "  Esc                  - Close popup / Cancel 󰈆",
+    "  Enter                - Confirm / Select / Create ",
+    "  Tab/Up/Down          - Navigate fields/options (in forms) 󰍍",
+    "  Left/Right           - Select icon (in Create Channel) ",
     "  Q/q (Quit popup)     - Confirm quit ",
-    "  Y/y (Deconn popup)   - Confirm deconnection ",
-    "  N/n (Deconn popup)   - Cancel deconnection ",
-    "  T/t (Settings)       - Open Themes ",
-    "  D/d (Settings)       - Open Deconnection ",
-    "  H/h (Settings)       - Open Help (this page) ",
+    "  Y/y (Deconn popup)   - Confirm deconnection ",
+    "  N/n (Deconn popup)   - Cancel deconnection ",
+    "  T/t (Settings)       - Open Themes ",
+    "  D/d (Settings)       - Open Deconnection ",
+    "  H/h (Settings)       - Open Help (this page) 󰞋",
 ];
 
 pub fn get_help_popup_size() -> (u16, u16) {
@@ -42,21 +41,14 @@ pub fn get_help_popup_size() -> (u16, u16) {
 
 pub fn draw_help_popup(f: &mut Frame, state: &mut AppState, area: Rect, popup_block: &Block) {
     let current_theme = get_theme(state.current_theme);
-
-    let formatted_commands: Vec<Line> = HELP_COMMANDS // Use the static constant
-        .iter()
-        .map(|&s| {
-            Line::from(Span::styled(
-                s,
-                Style::default().fg(rgb_to_color(&current_theme.text)),
-            ))
-        })
-        .collect();
-
-    let commands_paragraph = Paragraph::new(formatted_commands)
-        .alignment(ratatui::layout::Alignment::Left)
-        .block(Block::default().padding(ratatui::widgets::Padding::new(2, 2, 2, 2)));
-
-    f.render_widget(commands_paragraph, popup_block.inner(area));
+    let formatted_commands: Vec<Line> = HELP_COMMANDS.iter().map(|&s| Line::from(s)).collect();
+    render_styled_paragraph(
+        f,
+        formatted_commands,
+        &current_theme,
+        popup_block.inner(area),
+        Alignment::Left,
+        Some(Block::default().padding(ratatui::widgets::Padding::new(2, 2, 2, 2))),
+        None,
+    );
 }
-

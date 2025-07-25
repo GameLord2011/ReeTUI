@@ -21,11 +21,12 @@ use crate::tui::chat::popups::set_theme::{draw_set_theme_popup, get_set_theme_po
 use crate::tui::chat::popups::settings::{draw_settings_popup, get_settings_popup_size};
 use crate::tui::chat::theme_settings_form::ThemeSettingsForm;
 use crate::tui::chat::utils::{centered_rect, get_color_for_user};
-use crate::tui::themes::{Theme, get_contrasting_text_color, get_theme, rgb_to_color};
+use crate::tui::themes::{get_contrasting_text_color, get_theme, rgb_to_color, Theme};
 use ansi_to_tui::IntoText as _;
 use chrono::{TimeZone, Utc};
+use log::debug;
+use ratatui::Frame;
 use ratatui::{
-    Frame,
     backend::Backend,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Modifier, Style, Stylize},
@@ -33,8 +34,6 @@ use ratatui::{
     widgets::{Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph},
 };
 use regex::Regex;
-
-use log::debug;
 
 pub fn draw_chat_ui<B: Backend>(
     f: &mut Frame,
@@ -59,7 +58,7 @@ pub fn draw_chat_ui<B: Backend>(
 
     let left_chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(0), Constraint::Length(3)]) // Channels and then user info
+        .constraints([Constraint::Min(0), Constraint::Length(3)]) // funny
         .split(chunks[0]);
 
     let channels_block = Block::default()
@@ -158,24 +157,25 @@ pub fn draw_chat_ui<B: Backend>(
         let mut new_rendered_messages_vec = Vec::new();
         let mut last_user: Option<String> = None;
 
-        // Fix for E0716: Directly get the messages deque and iterate over it if it exists.
-        let messages_deque = state.messages.get(channel_id).cloned().unwrap_or_default();
-        for msg in messages_deque.iter() {
-            let formatted_lines = format_message_lines(
-                msg,
-                &current_theme,
-                inner_messages_area.width,
-                &last_user,
-                &mention_regex,
-                &emoji_regex,
-                state,
-            );
-            new_rendered_messages_vec.extend(formatted_lines);
-            last_user = Some(msg.user.clone());
+        // Optimization: Iterate over messages by reference, avoid cloning.
+        if let Some(messages_deque) = state.messages.get(channel_id) {
+            for msg in messages_deque.iter() {
+                let formatted_lines = format_message_lines(
+                    msg,
+                    &current_theme,
+                    inner_messages_area.width,
+                    &last_user,
+                    &mention_regex,
+                    &emoji_regex,
+                    &*state,
+                );
+                new_rendered_messages_vec.extend(formatted_lines);
+                last_user = Some(msg.user.clone());
+            }
+            state
+                .rendered_messages
+                .insert(channel_id.clone(), new_rendered_messages_vec);
         }
-        state
-            .rendered_messages
-            .insert(channel_id.clone(), new_rendered_messages_vec);
 
         let rendered_lines = state.rendered_messages.get(channel_id).unwrap();
         let messages_to_render = {
@@ -185,9 +185,20 @@ pub fn draw_chat_ui<B: Backend>(
             let _scroll_offset = state.message_scroll_offset;
             let max_offset = message_count.saturating_sub(view_height).max(0);
             let scroll_offset = state.message_scroll_offset.min(max_offset);
-            let start_index = message_count.saturating_sub(view_height + scroll_offset).min(message_count);
-            let end_index = message_count.saturating_sub(scroll_offset).min(message_count);
-            log::debug!("ui: message_count={} view_height={} scroll_offset={} start_index={} end_index={}", message_count, view_height, scroll_offset, start_index, end_index);
+            let start_index = message_count
+                .saturating_sub(view_height + scroll_offset)
+                .min(message_count);
+            let end_index = message_count
+                .saturating_sub(scroll_offset)
+                .min(message_count);
+            log::debug!(
+                "ui: message_count={} view_height={} scroll_offset={} start_index={} end_index={}",
+                message_count,
+                view_height,
+                scroll_offset,
+                start_index,
+                end_index
+            );
             if message_count > view_height {
                 &rendered_lines[start_index..end_index]
             } else {
@@ -331,6 +342,7 @@ pub fn draw_chat_ui<B: Backend>(
     }
     draw_notification_popup(f, state);
 }
+
 pub fn format_message_lines(
     msg: &BroadcastMessage,
     theme: &Theme,
@@ -338,136 +350,76 @@ pub fn format_message_lines(
     last_user: &Option<String>,
     mention_regex: &Regex,
     emoji_regex: &Regex,
-    state: &mut AppState,
+    state: &AppState,
 ) -> Vec<Line<'static>> {
     debug!(
-        "ui: format_message_lines called for message: {:?}",
-        msg.file_name.as_deref().unwrap_or("text message")
+        "ui: Rendering message: file_id={:?} timestamp={:?} file_name={:?} gif_frames={} image_preview={} download_progress={:?}",
+        msg.file_id,
+        msg.timestamp,
+        msg.file_name,
+        msg.gif_frames.as_ref().map(|f| f.len()).unwrap_or(0),
+        msg.image_preview.is_some(),
+        msg.download_progress
     );
+
+    let is_special_message = msg.file_id.is_some() || msg.is_image.unwrap_or(false);
+    let mut new_lines = Vec::new();
     let timestamp_str = Utc
         .timestamp_opt(msg.timestamp, 0)
         .unwrap()
+        .with_timezone(&chrono::Local)
         .format("%H:%M")
         .to_string();
     let user_color = get_color_for_user(&msg.user);
 
-    let mut new_lines = Vec::new();
-    let mut message_content_spans = Vec::new();
-    let mut is_special_message = false; // To bypass the final generic message formatting
-
-    if msg.message_type == "file" {
-        debug!("ui: Message is a file type.");
-        is_special_message = true;
-        if last_user.as_ref() != Some(&msg.user) {
-            debug!("ui: Different user, adding header.");
-            let header_spans = vec![
-                Span::styled("╭ ", Style::default().fg(user_color)),
-                Span::styled(
-                    format!("{} ", msg.icon),
-                    Style::default().fg(rgb_to_color(&theme.text)),
-                ),
-                Span::styled(
-                    msg.user.as_str().to_string(),
-                    Style::default().fg(user_color).add_modifier(Modifier::BOLD),
-                ),
-            ];
-            let header_width = header_spans.iter().map(|s| s.width()).sum::<usize>();
-            let available_width = width as usize;
-            let timestamp_width = timestamp_str.len();
-            let mut header_line_spans = header_spans;
-            if available_width > header_width + timestamp_width + 1 {
-                let padding = available_width
-                    .saturating_sub(header_width)
-                    .saturating_sub(timestamp_width);
-                header_line_spans.push(Span::raw(" ".repeat(padding)));
-                header_line_spans.push(Span::styled(
-                    timestamp_str.clone(),
-                    Style::default().fg(rgb_to_color(&theme.dim)),
-                ));
-            } else {
-                header_line_spans.push(Span::raw(" "));
-                header_line_spans.push(Span::styled(
-                    timestamp_str.clone(),
-                    Style::default().fg(rgb_to_color(&theme.dim)),
-                ));
-            }
-            new_lines.push(Line::from(header_line_spans).to_owned());
-        }
-
-        debug!("ui: Rendering message: file_id={:?} timestamp={:?} file_name={:?} gif_frames={} image_preview={} download_progress={:?}",
-    msg.file_id, msg.timestamp, msg.file_name, msg.gif_frames.as_ref().map(|f| f.len()).unwrap_or(0), msg.image_preview.is_some(), msg.download_progress);
+    if is_special_message {
         if msg.is_image.unwrap_or(false) {
-            debug!("ui: File is an image.");
             if let Some(_gif_frames) = &msg.gif_frames {
                 if let Some(file_id) = &msg.file_id {
-                    if let Some(animation_state) = state.active_animations.get(file_id) {
-                        debug!(
-                            "ui: Image is an active GIF with {} frames.",
-                            animation_state.frames.len()
-                        );
-                        let current_frame_content =
-                            &animation_state.frames[animation_state.current_frame];
-                        debug!("ui: Rendering GIF file_id={:?} frame={}/{}", file_id, animation_state.current_frame, animation_state.frames.len());
-                        let chafa_text: Text = current_frame_content
-                            .clone()
-                            .into_text()
-                            .expect("Failed to convert ANSI to Text");
-                        for mut line in chafa_text.lines.into_iter() {
-                            let prefix_span =
-                                Span::styled("│ ", Style::default().fg(rgb_to_color(&theme.dim)));
-                            line.spans.insert(0, prefix_span);
-                            new_lines.push(line);
+                    if let Some(animation_state_arc) = state.active_animations.get(file_id) {
+                        if let Ok(animation_state) = animation_state_arc.lock() {
+                            let mut gif_lines = Vec::new();
+                            let frame_count = animation_state.frames.len();
+                            let frame_index = animation_state.current_frame;
+                            if frame_count > 0 && frame_index < frame_count {
+                                let current_frame_content = &animation_state.frames[frame_index];
+                                let chafa_text: Text = current_frame_content
+                                    .clone()
+                                    .into_text()
+                                    .expect("Failed to convert ANSI to Text");
+                                for mut line in chafa_text.lines.into_iter() {
+                                    let prefix_span = Span::styled(
+                                        "│ ",
+                                        Style::default().fg(rgb_to_color(&theme.dim)),
+                                    );
+                                    line.spans.insert(0, prefix_span);
+                                    gif_lines.push(line);
+                                }
+                            } else {
+                                gif_lines.push(
+                                    Line::from(vec![
+                                        Span::styled(
+                                            "│ ",
+                                            Style::default().fg(rgb_to_color(&theme.dim)),
+                                        ),
+                                        Span::styled(
+                                            "[Error: GIF frame unavailable]",
+                                            Style::default()
+                                                .fg(rgb_to_color(&theme.error))
+                                                .add_modifier(Modifier::ITALIC),
+                                        ),
+                                    ])
+                                    .to_owned(),
+                                );
+                            }
+                            return gif_lines;
                         }
-                        debug!("ui: Rendered GIF frame.")
-                    } else if let Some(preview) = &msg.image_preview {
-                        debug!("ui: Image has a static preview.");
-                        let chafa_text: Text = preview
-                            .clone()
-                            .into_text()
-                            .expect("Failed to convert ANSI to Text");
-                        for mut line in chafa_text.lines.into_iter() {
-                            let prefix_span =
-                                Span::styled("│ ", Style::default().fg(rgb_to_color(&theme.dim)));
-                            line.spans.insert(0, prefix_span);
-                            new_lines.push(line);
-                        }
-                        debug!("ui: Rendered static image preview.")
-                    } else {
-                        debug!("ui: Could not display image.");
-                        new_lines.push(
-                            Line::from(vec![
-                                Span::styled("│ ", Style::default().fg(rgb_to_color(&theme.dim))),
-                                Span::styled(
-                                    format!(
-                                        "Could not display image: {}",
-                                        msg.file_name.as_deref().unwrap_or("image")
-                                    ),
-                                    Style::default()
-                                        .fg(rgb_to_color(&theme.error))
-                                        .add_modifier(Modifier::ITALIC),
-                                ),
-                            ])
-                            .to_owned(),
-                        );
                     }
-                } else {
-                    debug!("ui: Image message has no file_id.");
-                    new_lines.push(
-                        Line::from(vec![
-                            Span::styled("│ ", Style::default().fg(rgb_to_color(&theme.dim))),
-                            Span::styled(
-                                "[Error: Image message missing file ID]".to_string(),
-                                Style::default()
-                                    .fg(rgb_to_color(&theme.error))
-                                    .add_modifier(Modifier::ITALIC),
-                            ),
-                        ])
-                        .to_owned(),
-                    );
-                };
-            } else if let Some(preview) = &msg.image_preview {
-                debug!("ui: Image has a static preview.");
-                let chafa_text: Text = preview
+                }
+            }
+            // static image
+            else if let Some(image_preview) = &msg.image_preview {
+                let chafa_text: Text = image_preview
                     .clone()
                     .into_text()
                     .expect("Failed to convert ANSI to Text");
@@ -477,8 +429,10 @@ pub fn format_message_lines(
                     line.spans.insert(0, prefix_span);
                     new_lines.push(line);
                 }
-                debug!("ui: Rendered static image preview.");
-            } else if let Some(progress) = msg.download_progress {
+                return new_lines;
+            }
+            // Download prompts and error states for images
+            else if let Some(progress) = msg.download_progress {
                 debug!("ui: Image download in progress: {}%", progress);
                 new_lines.push(
                     Line::from(vec![
@@ -546,9 +500,11 @@ pub fn format_message_lines(
                     .to_owned(),
                 );
             }
-        } else {
+            return new_lines;
+        }
+        // --- Non-Image File Handling ---
+        else {
             debug!("ui: File is not an image.");
-            // Non-image files
             let file_spans = vec![
                 Span::styled(
                     format!(
@@ -562,10 +518,7 @@ pub fn format_message_lines(
                         .fg(rgb_to_color(&theme.accent))
                         .add_modifier(Modifier::BOLD),
                 ),
-                Span::raw(
-                    "
-",
-                ),
+                Span::raw("\n"),
                 Span::styled(
                     format!(
                         "Download with: /download {}",
@@ -590,7 +543,7 @@ pub fn format_message_lines(
         }
     } else {
         debug!("ui: Message is a regular text message.");
-        // Regular text messages
+        let mut message_content_spans: Vec<Span> = Vec::new();
         let mut current_text_slice = msg.content.as_str();
         while !current_text_slice.is_empty() {
             if let Some(mention_match) = mention_regex.find(current_text_slice) {
@@ -658,9 +611,7 @@ pub fn format_message_lines(
                 current_text_slice = "";
             }
         }
-    }
 
-    if !is_special_message {
         debug!("ui: Formatting regular message lines.");
         if last_user.as_ref() == Some(&msg.user) {
             debug!("ui: Same user, continuing message.");
@@ -722,6 +673,7 @@ pub fn format_message_lines(
             );
         }
     }
+
     debug!("ui: Finished formatting message lines.");
     new_lines
 }

@@ -13,7 +13,6 @@ pub enum NotificationType {
 }
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct Notification {
     pub title: String,
     pub message: String,
@@ -23,7 +22,6 @@ pub struct Notification {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PopupType {
-    #[allow(dead_code)]
     Quit,
     Settings,
     CreateChannel,
@@ -33,10 +31,9 @@ pub enum PopupType {
     Mentions,
     Emojis,
     FileManager,
-    DownloadProgress, // variant never constructed
+    DownloadProgress,
     DebugJson,
     None,
-    #[allow(dead_code)]
     Notification,
 }
 
@@ -54,17 +51,8 @@ impl Default for PopupState {
         }
     }
 }
+use std::sync::{Arc, Mutex};
 
-/// Holds the state for an animated GIF.
-#[derive(Debug, Clone)]
-pub struct GifAnimationState {
-    pub frames: Vec<String>,
-    pub delays: Vec<u16>, // delay in ms for each frame
-    pub current_frame: usize,
-    pub last_frame_time: Option<std::time::Instant>,
-}
-
-#[derive(Debug, Clone)]
 pub struct AppState {
     pub auth_token: Option<String>,
     pub username: Option<String>,
@@ -74,7 +62,7 @@ pub struct AppState {
     pub messages: HashMap<String, VecDeque<BroadcastMessage>>,
     pub rendered_messages: HashMap<String, Vec<Line<'static>>>,
     pub channel_history_state: HashMap<String, (usize, bool)>,
-    pub active_animations: HashMap<String, GifAnimationState>, // Replaces old animation fields
+    pub active_animations: HashMap<String, Arc<Mutex<crate::tui::chat::gif_renderer::GifAnimationState>>>, // Replaces old animation fields
     pub popup_state: PopupState,
     pub message_scroll_offset: usize,
     pub current_theme: ThemeName,
@@ -89,7 +77,7 @@ pub struct AppState {
     pub download_progress: u8,
     pub debug_json_content: String,
     pub terminal_width: u16,
-    pub last_chat_view_height: usize, // stores the last known chat area height for scroll logic
+    pub last_chat_view_height: usize, // funny
 }
 
 impl Default for AppState {
@@ -146,6 +134,14 @@ impl AppState {
             notification_type,
             created_at: Instant::now(),
         });
+        self.popup_state.show = true;
+        self.popup_state.popup_type = PopupType::Notification;
+    }
+
+    pub fn set_download_progress_popup(&mut self, progress: u8) {
+        self.download_progress = progress;
+        self.popup_state.show = true;
+        self.popup_state.popup_type = PopupType::DownloadProgress;
     }
 
     #[allow(dead_code)]
@@ -153,22 +149,29 @@ impl AppState {
         self.notification = None;
     }
 
-    pub fn clear_user_auth(&mut self) {
-        self.auth_token = None;
-        self.username = None;
-        self.user_icon = None;
-        self.current_channel = None;
-        self.channels.clear();
-        self.messages.clear();
-        self.rendered_messages.clear();
-        self.channel_history_state.clear();
-        self.active_animations.clear(); // New
-        self.popup_state = PopupState::default();
-        self.notification = None;
-        self.message_scroll_offset = 0;
-        self.current_theme = ThemeName::Default;
+pub fn clear_user_auth(&mut self) {
+    self.auth_token = None;
+    self.username = None;
+    self.user_icon = None;
+    self.current_channel = None;
+    self.channels.clear();
+    self.messages.clear();
+    self.rendered_messages.clear();
+    self.channel_history_state.clear();
+    // Clean up GIF animation threads
+for (_file_id, animation_arc) in self.active_animations.iter_mut() {
+    if let Ok(mut animation) = animation_arc.lock() {
+        animation.running = false;
+        if let Some(handle) = animation.thread_handle.take() {
+            let _ = handle.join();
+        }
     }
-
+}    self.active_animations.clear(); // New
+    self.popup_state = PopupState::default();
+    self.notification = None;
+    self.message_scroll_offset = 0;
+    self.current_theme = ThemeName::Default;
+}
     pub fn set_current_channel(&mut self, channel: Channel) {
         let channel_id = channel.id.clone();
         self.current_channel = Some(channel);

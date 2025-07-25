@@ -1,12 +1,13 @@
 use crate::api::models::BroadcastMessage;
-use crate::app::{AppState, GifAnimationState};
+use crate::app::AppState;
 use image::ImageFormat;
 use image::ImageReader;
 use log::{error, info};
-use std::io::{self, Write};
-use std::path::Path;
+use std::io::{self};
 use std::sync::Arc;
-use tempfile::NamedTempFile;
+use tokio::fs::File;
+use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 use tokio::sync::{mpsc, Mutex};
 
@@ -30,43 +31,43 @@ async fn update_and_log_message(
     state.update_message(message);
 }
 
-/// Asynchronously writes data to a new temporary file.
-async fn create_temp_file_with_data(data: &[u8]) -> Result<NamedTempFile, String> {
-    let data_vec = data.to_vec();
-    tokio::task::spawn_blocking(move || {
-        let mut temp_file =
-            NamedTempFile::new().map_err(|e| format!("Failed to create temporary file: {}", e))?;
-        temp_file
-            .write_all(&data_vec)
-            .map_err(|e| format!("Failed to write data to temporary file: {}", e))?;
-        Ok(temp_file)
-    })
-    .await
-    .map_err(|e| format!("Task join error during temp file creation: {}", e))?
-}
-
 /// A robust, non-blocking function to execute the chafa command.
-async fn run_chafa(input_path: &Path, height: u16) -> Result<String, String> {
+pub async fn run_chafa(image_data: &[u8], height: u16) -> Result<String, String> {
     let size_arg = format!("--size=x{}", height);
     let args = [size_arg.as_str(), "-f", "symbols"];
-    let command_str = format!("chafa {} {}", args.join(" "), input_path.to_string_lossy());
+    let command_str = format!("chafa {}", args.join(" "));
     info!("Executing command: {}", &command_str);
 
-    let output = Command::new("chafa")
-        .args(&args)
-        .arg(input_path)
-        .output()
-        .await
-        .map_err(|e| {
-            error!(
-                "Failed to spawn chafa command. Is 'chafa' installed and in your system's PATH? Error: {}",
-                e
-            );
-            format!(
-                "Failed to run chafa. Is it installed and in your PATH? Details: {}",
-                e
-            )
-        })?;
+    let mut command = Command::new("chafa");
+    command.args(&args);
+    command.stdin(std::process::Stdio::piped());
+    command.stdout(std::process::Stdio::piped());
+    command.stderr(std::process::Stdio::piped());
+
+    let mut child = command.spawn().map_err(|e| {
+        error!(
+            "Failed to spawn chafa command. Is 'chafa' installed and in your system's PATH? Error: {}",
+            e
+        );
+        format!(
+            "Failed to run chafa. Is it installed and in your PATH? Details: {}",
+            e
+        )
+    })?;
+
+    let mut stdin = child.stdin.take().expect("Failed to open stdin");
+    let data = image_data.to_vec();
+    tokio::spawn(async move {
+        stdin
+            .write_all(&data)
+            .await
+            .expect("Failed to write to stdin");
+    });
+
+    let output = child.wait_with_output().await.map_err(|e| {
+        error!("Failed to wait for chafa command: {}", e);
+        format!("Failed to wait for chafa command: {}", e)
+    })?;
 
     if output.status.success() {
         info!("Chafa command executed successfully.");
@@ -93,58 +94,13 @@ async fn run_chafa(input_path: &Path, height: u16) -> Result<String, String> {
     }
 }
 
-pub async fn convert_gif_to_chafa_frames_and_delays(
-    gif_data: &[u8],
-    height: u16,
-) -> Result<(Vec<String>, Vec<u16>), String> {
-    use gif::{Decoder, Frame}; // unused, kept for clarity
-    use std::io::Cursor;
-    info!("Handling GIF to Chafa frames and delays conversion.");
-    let mut decoder =
-        gif::Decoder::new(Cursor::new(gif_data)).map_err(|e| format!("GIF decode error: {}", e))?;
-    let mut frames = Vec::new();
-    let mut delays = Vec::new();
-    let mut frame_idx = 0;
-    while let Some(frame) = decoder
-        .read_next_frame()
-        .map_err(|e| format!("GIF frame error: {}", e))?
-    {
-        // Save frame as PNG temp file
-        let mut temp_file =
-            tempfile::NamedTempFile::new().map_err(|e| format!("Temp file error: {}", e))?;
-        let width = frame.width as u32;
-        let height_px = frame.height as u32;
-        let buffer = &frame.buffer;
-        image::save_buffer(
-            &mut temp_file,
-            buffer,
-            width,
-            height_px,
-            image::ColorType::Rgba8,
-        )
-        .map_err(|e| format!("Image save error: {}", e))?;
-        // Run chafa on this frame with correct height
-        let ansi = run_chafa(temp_file.path(), height).await?;
-        frames.push(ansi);
-        // Delay is in 10ms units, convert to ms, default to 200ms if 0
-        let delay = if frame.delay == 0 {
-            200
-        } else {
-            frame.delay as u16 * 10
-        };
-        delays.push(delay);
-        frame_idx += 1;
-    }
-    info!("Extracted {} frames and delays from GIF.", frames.len());
-    Ok((frames, delays))
-}
-
 pub async fn convert_image_to_chafa(image_data: &[u8], height: u16) -> Result<String, String> {
     info!("Handling static image to Chafa conversion.");
-    let temp_file = create_temp_file_with_data(image_data).await?;
-    run_chafa(temp_file.path(), height).await
+    // Assume PNG/JPEG input for static images
+    run_chafa(image_data, height).await
 }
 
+#[allow(dead_code)]
 pub fn is_gif(data: &[u8]) -> bool {
     ImageReader::new(io::Cursor::new(data))
         .with_guessed_format()
@@ -175,14 +131,34 @@ pub async fn process_image_message(
     )
     .await
     {
-        Ok(image_data) => {
-            if is_gif(&image_data) {
-                match convert_gif_to_chafa_frames_and_delays(&image_data, height).await {
+        Ok(file_path) => {
+            let mut file = match File::open(&file_path).await {
+                Ok(f) => f,
+                Err(e) => {
+                    message.content = format!("[Error opening downloaded file: {}]", e);
+                    update_and_log_message(&app_state, message, "download_open_error").await;
+                    return;
+                }
+            };
+            let mut image_data = Vec::new();
+            if let Err(e) = file.read_to_end(&mut image_data).await {
+                message.content = format!("[Error reading downloaded file: {}]", e);
+                update_and_log_message(&app_state, message, "download_read_error").await;
+                return;
+            }
+
+            if crate::tui::chat::gif_renderer::is_gif(&image_data) {
+                match crate::tui::chat::gif_renderer::convert_gif_to_chafa_frames_and_delays(
+                    &image_data,
+                    height,
+                )
+                .await
+                {
                     Ok((frames, delays)) if frames.len() > 1 => {
-                        message.content = frames[0].clone();
+                        message.content = (*frames[0]).clone();
                         let frames_with_delays: Vec<(String, std::time::Duration)> = frames
                             .iter()
-                            .cloned()
+                            .map(|arc| (**arc).clone())
                             .zip(
                                 delays
                                     .iter()
@@ -190,23 +166,37 @@ pub async fn process_image_message(
                             )
                             .collect();
                         message.gif_frames = Some(frames_with_delays);
-                        let animation_state = GifAnimationState {
-                            frames,
-                            delays,
-                            current_frame: 0,
-                            last_frame_time: None,
-                        };
+                        let animation_state =
+                            crate::tui::chat::gif_renderer::GifAnimationState::new(
+                                frames.clone(),
+                                delays.clone(),
+                            );
+                        let animation_state_arc =
+                            std::sync::Arc::new(std::sync::Mutex::new(animation_state));
+                        // TODO: Store thread handle in GifAnimationState after spawning animation thread.
+                        let (frame_tx, _frame_rx) = tokio::sync::mpsc::unbounded_channel();
+                        let thread_handle = crate::tui::chat::gif_renderer::spawn_gif_animation(
+                            animation_state_arc.clone(),
+                            frame_tx,
+                        );
+                        {
+                            let mut state = animation_state_arc.lock().unwrap();
+                            state.thread_handle = Some(thread_handle);
+                        }
                         {
                             let mut state = app_state.lock().await;
-                            state.active_animations.insert(file_id.clone(), animation_state);
+                            state
+                                .active_animations
+                                .insert(file_id.clone(), animation_state_arc.clone());
                         }
+                        // Optionally: handle frame_rx to update UI with new frames
                         update_and_log_message(&app_state, message, "gif_ok").await;
                     }
                     Ok((frames, delays)) if !frames.is_empty() => {
-                        message.content = frames[0].clone();
+                        message.content = (*frames[0]).clone();
                         let frames_with_delays: Vec<(String, std::time::Duration)> = frames
                             .iter()
-                            .cloned()
+                            .map(|arc| (**arc).clone())
                             .zip(
                                 delays
                                     .iter()

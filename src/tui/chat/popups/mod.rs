@@ -1,12 +1,13 @@
+pub mod helpers;
 pub mod create_channel;
+pub mod debug_json;
 pub mod deconnection;
+pub mod download_progress;
 pub mod emojis;
 pub mod file_manager;
 pub mod help;
 pub mod mentions;
+pub mod notification;
 pub mod quit;
 pub mod set_theme;
 pub mod settings;
-pub mod download_progress;
-pub mod debug_json;
-pub mod notification;

@@ -31,7 +31,7 @@ pub fn should_show_emoji_popup(input_text: &str) -> bool {
     if let Some(last_colon_idx) = input_text.rfind(':') {
         let potential_shortcode_segment_from_last_colon = &input_text[last_colon_idx..];
 
-        // Rule: If it's a double colon (e.g., "::")
+        // funny
         if potential_shortcode_segment_from_last_colon == ":"
             && last_colon_idx > 0
             && input_text.chars().nth(last_colon_idx - 1).unwrap_or(' ') == ':'

@@ -1,7 +1,7 @@
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
-    text::{Line, Span, Text}, // Added Text for optimization
+    text::{Line, Span, Text}, // funny
     widgets::{Block, Paragraph},
     Frame,
 };
@@ -11,7 +11,7 @@ use crate::tui::chat::create_channel_form::{CreateChannelForm, CreateChannelInpu
 use crate::tui::themes::{get_theme, rgb_to_color};
 
 pub fn get_create_channel_popup_size() -> (u16, u16) {
-    let hint_text = "(Enter) Seal the Deal  / (Esc) Abort Mission ";
+    let hint_text = "(Enter) Seal the Deal  / (Esc) Abort Mission ";
     let icons_row_width = (ICONS.len() * 3) as u16;
     let height = 11; // Simplified: 3 (name) + 3 (icon) + 1 (spacer) + 3 (button) + 1 (hint)
     let width = hint_text.len().max(icons_row_width as usize) as u16 + 4; // +4 for borders and margin
@@ -76,7 +76,7 @@ pub fn draw_create_channel_popup(
     let icon_block = Block::default()
         .borders(ratatui::widgets::Borders::ALL)
         .border_type(ratatui::widgets::BorderType::Rounded)
-        .title("Pick a Pixel Pal ")
+        .title(" Pick a Pixel Pal")
         .style(
             if create_channel_form.input_focused == CreateChannelInput::Icon {
                 Style::default().fg(rgb_to_color(&current_theme.input_border_active))
@@ -135,7 +135,7 @@ pub fn draw_create_channel_popup(
             Style::default().fg(rgb_to_color(&current_theme.button))
         };
     let create_button_paragraph = Paragraph::new(Line::from(Span::styled(
-        "Forge Channel! ",
+        "Forge Channel! ",
         create_button_style,
     )))
     .alignment(ratatui::layout::Alignment::Center)
@@ -162,7 +162,7 @@ pub fn draw_create_channel_popup(
     f.render_widget(create_button_paragraph, create_button_area_h[1]);
 
     let hint_paragraph = Paragraph::new(Line::from(Span::styled(
-        "(Enter) Seal the Deal  / (Esc) Abort Mission ",
+        "(Enter) Seal the Deal  / (Esc) Abort Mission ",
         Style::default().fg(rgb_to_color(&current_theme.accent)),
     )))
     .alignment(ratatui::layout::Alignment::Center);

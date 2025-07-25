@@ -12,8 +12,6 @@ use crate::tui::chat::theme_settings_form::ThemeSettingsForm;
 use crate::tui::themes::{get_theme, rgb_to_color};
 
 pub fn get_set_theme_popup_size(theme_settings_form: &ThemeSettingsForm) -> (u16, u16) {
-    // content: list + hint = (themes_len + 2) + 2 = themes_len + 4
-    // layout: content_margin(2) + popup_border(2) = 4
     let height = (theme_settings_form.themes.len() as u16 + 2) + 2;
     let width = theme_settings_form
         .themes
@@ -109,7 +107,7 @@ pub fn draw_set_theme_popup(
     let hint_paragraph = Paragraph::new(vec![
         Line::from(""),
         Line::from(Line::styled(
-            "(Up/Down) Explore Aesthetics ",
+            "(Up/Down) Explore Aesthetics  ",
             Style::default().fg(rgb_to_color(&current_theme.accent)),
         )),
     ])

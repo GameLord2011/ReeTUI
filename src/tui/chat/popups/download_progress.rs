@@ -5,16 +5,11 @@ use ratatui::{
 
 pub fn draw_download_progress_popup(f: &mut Frame, area: Rect, progress: u8) {
     let block = Block::default()
-        .title("Downloading Awesomeness ")
+        .title("Downloading Awesomeness ")
         .borders(Borders::ALL);
     f.render_widget(block, area);
 
-    let gauge_area = Rect::new(
-        area.x + 2,
-        area.y + 2,
-        area.width - 4,
-        area.height - 4,
-    );
+    let gauge_area = Rect::new(area.x + 2, area.y + 2, area.width - 4, area.height - 4);
 
     let label = format!("{}%", progress);
     let gauge = Gauge::default()
