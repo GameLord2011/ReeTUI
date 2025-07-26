@@ -1,11 +1,11 @@
+use crate::tui::themes::{rgb_to_color, Theme};
 use ratatui::{
-    style::{Style, Modifier},
+    layout::{Alignment, Rect},
+    style::{Modifier, Style},
     text::Line,
     widgets::{Block, List, ListItem, ListState, Paragraph},
-    layout::{Alignment, Rect},
     Frame,
 };
-use crate::tui::themes::{rgb_to_color, Theme};
 
 /// funny
 pub fn render_styled_list(
@@ -75,4 +75,34 @@ pub fn render_styled_paragraph(
         paragraph = paragraph.style(Style::default().fg(rgb_to_color(&theme.text)));
     }
     f.render_widget(paragraph, area);
+}
+
+pub fn get_dialog_popup_size(title: &str, hint: &str) -> (u16, u16) {
+    let width = title.len().max(hint.len()) as u16 + 4;
+    let height = 7;
+    (width, height)
+}
+
+pub fn draw_dialog_popup(
+    f: &mut Frame,
+    theme: &Theme,
+    area: Rect,
+    popup_block: &Block,
+    title: &str,
+    hint: &str,
+) {
+    let popup_text = Paragraph::new(vec![
+        Line::from(""),
+        Line::from(Line::styled(
+            title,
+            Style::default().fg(rgb_to_color(&theme.popup_text)),
+        )),
+        Line::from(""),
+        Line::from(Line::styled(
+            hint,
+            Style::default().fg(rgb_to_color(&theme.accent)),
+        )),
+    ])
+    .alignment(Alignment::Center);
+    f.render_widget(popup_text, popup_block.inner(area));
 }

@@ -1,6 +1,6 @@
 pub mod create_channel_form;
-pub mod image_handler;
 pub mod gif_renderer;
+pub mod image_handler;
 pub mod message_parsing;
 pub mod popups;
 pub mod theme_settings_form;
@@ -11,30 +11,24 @@ pub mod ws_command;
 #[cfg(test)]
 pub mod tests;
 
-// use crate::api::file_api; // Unused, commented out
 use crate::api::models::BroadcastMessage;
 use crate::api::websocket; // ServerMessage unused
 use crate::app::{AppState, NotificationType, PopupType};
 use crate::tui::chat::create_channel_form::{CreateChannelForm, CreateChannelInput};
-// use crate::tui::chat::image_handler::handle_show_image_command; // Unused, commented out
-use crate::tui::TuiPage;
 use crate::tui::chat::message_parsing::{
     replace_shortcodes_with_emojis, should_show_emoji_popup, should_show_mention_popup,
 };
 use crate::tui::chat::theme_settings_form::ThemeSettingsForm;
 use crate::tui::chat::ui::draw_chat_ui;
 use crate::tui::chat::ws_command::WsCommand;
+use crate::tui::TuiPage;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers, MouseEventKind};
 use emojis;
-// use futures_util::{SinkExt, StreamExt}; // Unused, commented out
-// use log::debug; // Already imported elsewhere or unused
-use ratatui::{Terminal, prelude::Backend, widgets::ListState}; // All used
+use ratatui::{prelude::Backend, widgets::ListState, Terminal}; // All used
 use regex::Regex; // Used for mention/emoji regex
 use serde_json; // Used for debug JSON
 use std::{io, path::PathBuf, sync::Arc, time::Duration}; // All used
-// use tokio::io::AsyncWriteExt; // Unused, commented out
 use tokio::sync::mpsc;
-// use tokio_tungstenite::tungstenite; // Unused, commented out
 use unicode_segmentation::UnicodeSegmentation;
 
 pub async fn run_chat_page<B: Backend>(
@@ -125,6 +119,7 @@ pub async fn run_chat_page<B: Backend>(
                                     "File Upload Success".to_string(),
                                     "File uploaded successfully!".to_string(),
                                     NotificationType::Success,
+                                    3,
                                 );
                                 // Optionally, refresh channel messages here
                             }
@@ -134,6 +129,7 @@ pub async fn run_chat_page<B: Backend>(
                                     "File Upload Error".to_string(),
                                     format!("Failed to upload file: {}", e),
                                     NotificationType::Error,
+                                    3,
                                 );
                             }
                         }
@@ -158,6 +154,7 @@ pub async fn run_chat_page<B: Backend>(
                                     "File Download Success".to_string(),
                                     format!("File '{}' downloaded successfully!", file_name),
                                     NotificationType::Success,
+                                    3,
                                 );
                             }
                             Err(e) => {
@@ -166,6 +163,7 @@ pub async fn run_chat_page<B: Backend>(
                                     "File Download Error".to_string(),
                                     format!("Failed to download file: {}", e),
                                     NotificationType::Error,
+                                    3,
                                 );
                             }
                         }
@@ -273,7 +271,7 @@ pub async fn run_chat_page<B: Backend>(
                             message,
                             notification_type,
                         } => {
-                            state.set_notification(title, message, notification_type);
+                            state.set_notification(title, message, notification_type, 3);
                         }
                         _ => {}
                     }
@@ -361,7 +359,13 @@ pub async fn run_chat_page<B: Backend>(
                     // Scroll up messages
                     let rendered_count = state_guard
                         .rendered_messages
-                        .get(&state_guard.current_channel.as_ref().map(|c| c.id.clone()).unwrap_or_default())
+                        .get(
+                            &state_guard
+                                .current_channel
+                                .as_ref()
+                                .map(|c| c.id.clone())
+                                .unwrap_or_default(),
+                        )
                         .map_or(0, |v| v.len());
                     let view_height = state_guard.last_chat_view_height.max(1);
                     state_guard.scroll_messages_up(rendered_count, view_height);
@@ -377,501 +381,515 @@ pub async fn run_chat_page<B: Backend>(
         // Handle global key events, even when a popup is not active
         if let Event::Key(key) = event {
             match key.kind {
-                KeyEventKind::Press => { // Only handle actions on key press
+                KeyEventKind::Press => {
+                    // Only handle actions on key press
 
-                let current_popup_type = state_guard.popup_state.popup_type;
+                    let current_popup_type = state_guard.popup_state.popup_type;
 
-                match current_popup_type {
-                    PopupType::Quit => {
-                        log::debug!("PopupType::Quit branch, key: {:?}", key.code);
-                        match key.code {
-                            KeyCode::Char('q') | KeyCode::Char('Q') => {
-                                return Ok(Some(TuiPage::Exit)); // Return Option<TuiPage> as per new signature
+                    match current_popup_type {
+                        PopupType::Quit => {
+                            log::debug!("PopupType::Quit branch, key: {:?}", key.code);
+                            match key.code {
+                                KeyCode::Char('q') | KeyCode::Char('Q') => {
+                                    return Ok(Some(TuiPage::Exit)); // Return Option<TuiPage> as per new signature
+                                }
+                                KeyCode::Esc => {
+                                    log::debug!("PopupType::Quit dismissed with Esc");
+                                    state_guard.popup_state.show = false;
+                                    state_guard.popup_state.popup_type = PopupType::None;
+                                }
+                                _ => {}
                             }
-                            KeyCode::Esc => {
-                                log::debug!("PopupType::Quit dismissed with Esc");
-                                state_guard.popup_state.show = false;
-                                state_guard.popup_state.popup_type = PopupType::None;
-                            }
-                            _ => {}
                         }
-                    }
-                    PopupType::Settings => {
-                        log::debug!("PopupType::Settings branch, key: {:?}", key.code);
-                        match key.code {
-                            KeyCode::Up => {
-                                state_guard.selected_setting_index =
-                                    state_guard.selected_setting_index.saturating_sub(1);
-                            }
-                            KeyCode::Down => {
-                                state_guard.selected_setting_index =
-                                    (state_guard.selected_setting_index + 1).min(2);
-                            }
-                            KeyCode::Enter => match state_guard.selected_setting_index {
-                                0 => {
-                                    state_guard.popup_state.popup_type = PopupType::SetTheme;
-                                    theme_settings_form =
-                                        ThemeSettingsForm::new(state_guard.current_theme);
+                        PopupType::Settings => {
+                            log::debug!("PopupType::Settings branch, key: {:?}", key.code);
+                            match key.code {
+                                KeyCode::Up => {
+                                    state_guard.selected_setting_index =
+                                        state_guard.selected_setting_index.saturating_sub(1);
                                 }
-                                1 => {
-                                    state_guard.popup_state.popup_type = PopupType::Deconnection;
+                                KeyCode::Down => {
+                                    state_guard.selected_setting_index =
+                                        (state_guard.selected_setting_index + 1).min(2);
                                 }
-                                2 => {
-                                    state_guard.popup_state.popup_type = PopupType::Help;
+                                KeyCode::Enter => match state_guard.selected_setting_index {
+                                    0 => {
+                                        state_guard.popup_state.popup_type = PopupType::SetTheme;
+                                        theme_settings_form =
+                                            ThemeSettingsForm::new(state_guard.current_theme);
+                                    }
+                                    1 => {
+                                        state_guard.popup_state.popup_type =
+                                            PopupType::Deconnection;
+                                    }
+                                    2 => {
+                                        state_guard.popup_state.popup_type = PopupType::Help;
+                                    }
+                                    _ => {}
+                                },
+                                KeyCode::Esc => {
+                                    log::debug!("PopupType::Settings dismissed with Esc");
+                                    state_guard.popup_state.show = false;
+                                    state_guard.popup_state.popup_type = PopupType::None;
+                                    state_guard.selected_setting_index = 0;
                                 }
                                 _ => {}
-                            },
-                            KeyCode::Esc => {
-                                log::debug!("PopupType::Settings dismissed with Esc");
-                                state_guard.popup_state.show = false;
-                                state_guard.popup_state.popup_type = PopupType::None;
-                                state_guard.selected_setting_index = 0;
                             }
-                            _ => {}
                         }
-                    }
-                    PopupType::CreateChannel => {
-                        log::debug!("PopupType::CreateChannel branch, key: {:?}", key.code);
-                        match key.code {
-                            KeyCode::Esc => {
-                                log::debug!("PopupType::CreateChannel dismissed with Esc");
-                                state_guard.popup_state.show = false;
-                                state_guard.popup_state.popup_type = PopupType::None;
-                                create_channel_form = CreateChannelForm::new();
-                            }
-                            KeyCode::Tab => {
-                                create_channel_form.next_input();
-                            }
-                            KeyCode::Up => {
-                                create_channel_form.previous_input();
-                            }
-                            KeyCode::Down => {
-                                create_channel_form.next_input();
-                            }
-                            KeyCode::Backspace => match create_channel_form.input_focused {
-                                CreateChannelInput::Name => {
-                                    create_channel_form.name.pop();
+                        PopupType::CreateChannel => {
+                            log::debug!("PopupType::CreateChannel branch, key: {:?}", key.code);
+                            match key.code {
+                                KeyCode::Esc => {
+                                    log::debug!("PopupType::CreateChannel dismissed with Esc");
+                                    state_guard.popup_state.show = false;
+                                    state_guard.popup_state.popup_type = PopupType::None;
+                                    create_channel_form = CreateChannelForm::new();
                                 }
-                                _ => {}
-                            },
-                            KeyCode::Char(c) => match create_channel_form.input_focused {
-                                CreateChannelInput::Name => {
-                                    create_channel_form.name.push(c);
-                                }
-                                _ => {}
-                            },
-                            KeyCode::Left => {
-                                if create_channel_form.input_focused == CreateChannelInput::Icon {
-                                    create_channel_form.previous_icon();
-                                }
-                            }
-                            KeyCode::Right => {
-                                if create_channel_form.input_focused == CreateChannelInput::Icon {
-                                    create_channel_form.next_icon();
-                                }
-                            }
-                            KeyCode::Enter => match create_channel_form.input_focused {
-                                CreateChannelInput::Name | CreateChannelInput::Icon => {
+                                KeyCode::Tab => {
                                     create_channel_form.next_input();
                                 }
-                                CreateChannelInput::CreateButton => {
-                                    if !create_channel_form.name.is_empty() {
-                                        let channel_name = create_channel_form.name.clone();
-                                        let channel_icon = create_channel_form.get_selected_icon();
-                                        let command = format!(
-                                            "/propose_channel {} {}",
-                                            channel_name, channel_icon
-                                        );
-                                        if command_tx
-                                            .send(WsCommand::Message {
-                                                channel_id: "home".to_string(),
-                                                content: command,
-                                            })
-                                            .is_err()
-                                        {
-                                            state_guard.set_notification(
-                                                "Channel Creation Error".to_string(),
-                                                "Failed to create channel".to_string(),
-                                                NotificationType::Error,
-                                            );
-                                        } else {
-                                            state_guard.set_notification(
-                                                "Channel Creation Success".to_string(),
-                                                format!("Channel '{}' created!", channel_name),
-                                                NotificationType::Success,
-                                            );
-                                            state_guard.popup_state.show = false;
-                                            state_guard.popup_state.popup_type = PopupType::None;
-                                            create_channel_form = CreateChannelForm::new();
-                                        }
-                                    } else {
-                                        state_guard.set_notification(
-                                            "Channel Creation Warning".to_string(),
-                                            "Channel name cannot be empty!".to_string(),
-                                            NotificationType::Warning,
-                                        );
+                                KeyCode::Up => {
+                                    create_channel_form.previous_input();
+                                }
+                                KeyCode::Down => {
+                                    create_channel_form.next_input();
+                                }
+                                KeyCode::Backspace => match create_channel_form.input_focused {
+                                    CreateChannelInput::Name => {
+                                        create_channel_form.name.pop();
                                     }
-                                }
-                            },
-                            _ => {}
-                        }
-                    }
-                    PopupType::SetTheme => {
-                        log::debug!("PopupType::SetTheme branch, key: {:?}", key.code);
-                        match key.code {
-                            KeyCode::Up => {
-                                theme_settings_form.previous_theme();
-                                state_guard.current_theme =
-                                    theme_settings_form.get_selected_theme();
-                            }
-                            KeyCode::Down => {
-                                theme_settings_form.next_theme();
-                                state_guard.current_theme =
-                                    theme_settings_form.get_selected_theme();
-                            }
-                            KeyCode::Enter => {
-                                state_guard.popup_state.show = false;
-                                state_guard.popup_state.popup_type = PopupType::None;
-                            }
-                            KeyCode::Esc => {
-                                log::debug!("PopupType::SetTheme dismissed with Esc");
-                                state_guard.current_theme = theme_settings_form.original_theme;
-                                state_guard.popup_state.show = false;
-                                state_guard.popup_state.popup_type = PopupType::None;
-                            }
-                            _ => {}
-                        }
-                    }
-                    PopupType::Deconnection => {
-                        log::debug!("PopupType::Deconnection branch, key: {:?}", key.code);
-                        match key.code {
-                            KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
-                                state_guard.clear_user_auth();
-                                return Ok(Some(TuiPage::Auth)); // Return Option<TuiPage> as per new signature
-                            }
-                            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
-                                log::debug!("PopupType::Deconnection dismissed with Esc or N");
-                                state_guard.popup_state.popup_type = PopupType::Settings;
-                            }
-                            _ => {}
-                        }
-                    }
-                    PopupType::Help => {
-                        log::debug!("PopupType::Help branch, key: {:?}", key.code);
-                        match key.code {
-                            KeyCode::Esc => {
-                                log::debug!("PopupType::Help dismissed with Esc");
-                                state_guard.popup_state.show = false;
-                                state_guard.popup_state.popup_type = PopupType::None;
-                            }
-                            _ => {}
-                        }
-                    }
-                    PopupType::Mentions => {
-                        log::debug!("PopupType::Mentions branch, key: {:?}", key.code);
-                        let filtered_users: Vec<String> = state_guard
-                            .active_users
-                            .iter()
-                            .filter(|user| {
-                                user.to_lowercase()
-                                    .contains(&state_guard.mention_query.to_lowercase())
-                            })
-                            .cloned()
-                            .collect();
-                        let num_filtered_users = filtered_users.len();
-                        match key.code {
-                            KeyCode::Up => {
-                                if num_filtered_users > 0 {
-                                    state_guard.selected_mention_index =
-                                        (state_guard.selected_mention_index + num_filtered_users
-                                            - 1)
-                                            % num_filtered_users;
-                                } else {
-                                    state_guard.selected_mention_index = 0;
-                                }
-                            }
-                            KeyCode::Down => {
-                                if num_filtered_users > 0 {
-                                    state_guard.selected_mention_index =
-                                        (state_guard.selected_mention_index + 1)
-                                            % num_filtered_users;
-                                } else {
-                                    state_guard.selected_mention_index = 0;
-                                }
-                            }
-                            KeyCode::Enter => {
-                                if let Some(user) =
-                                    filtered_users.get(state_guard.selected_mention_index)
-                                {
-                                    let query_start =
-                                        input_text.rfind('@').unwrap_or(input_text.len());
-                                    input_text.replace_range(query_start.., &format!("@{} ", user));
-                                    state_guard.cursor_position = input_text.len();
-                                }
-                                state_guard.popup_state.show = false;
-                                state_guard.popup_state.popup_type = PopupType::None;
-                                state_guard.selected_mention_index = 0;
-                                state_guard.mention_query.clear();
-                            }
-                            KeyCode::Esc => {
-                                log::debug!("PopupType::Mentions dismissed with Esc");
-                                state_guard.popup_state.show = false;
-                                state_guard.popup_state.popup_type = PopupType::None;
-                                state_guard.selected_mention_index = 0;
-                                state_guard.mention_query.clear();
-                            }
-                            KeyCode::Backspace => {
-                                if state_guard.cursor_position > 0 {
-                                    let old_pos = state_guard.cursor_position;
-                                    let new_pos = input_text[..old_pos]
-                                        .grapheme_indices(true)
-                                        .last()
-                                        .map(|(i, _)| i)
-                                        .unwrap_or(0);
-                                    input_text.replace_range(new_pos..old_pos, "");
-                                    state_guard.cursor_position = new_pos;
-                                }
-                                if let Some(last_at_idx) = input_text.rfind('@') {
-                                    state_guard.mention_query =
-                                        input_text[last_at_idx + 1..].to_string();
-                                } else {
-                                    state_guard.mention_query.clear();
-                                }
-                                let new_filtered_users: Vec<String> = state_guard
-                                    .active_users
-                                    .iter()
-                                    .filter(|user| {
-                                        user.to_lowercase()
-                                            .contains(&state_guard.mention_query.to_lowercase())
-                                    })
-                                    .cloned()
-                                    .collect();
-                                let new_num_filtered_users = new_filtered_users.len();
-                                if new_num_filtered_users > 0 {
-                                    state_guard.selected_mention_index = state_guard
-                                        .selected_mention_index
-                                        .min(new_num_filtered_users.saturating_sub(1));
-                                } else {
-                                    state_guard.selected_mention_index = 0;
-                                }
-                                if !should_show_mention_popup(&input_text) {
-                                    state_guard.popup_state.show = false;
-                                    state_guard.popup_state.popup_type = PopupType::None;
-                                    state_guard.mention_query.clear();
-                                }
-                            }
-                            KeyCode::Char(c) => {
-                                input_text.insert(state_guard.cursor_position, c);
-                                state_guard.cursor_position += c.len_utf8();
-                                state_guard.mention_query.push(c);
-                                let new_filtered_users: Vec<String> = state_guard
-                                    .active_users
-                                    .iter()
-                                    .filter(|user| {
-                                        user.to_lowercase()
-                                            .contains(&state_guard.mention_query.to_lowercase())
-                                    })
-                                    .cloned()
-                                    .collect();
-                                let new_num_filtered_users = new_filtered_users.len();
-                                if new_num_filtered_users > 0 {
-                                    state_guard.selected_mention_index = state_guard
-                                        .selected_mention_index
-                                        .min(new_num_filtered_users.saturating_sub(1));
-                                } else {
-                                    state_guard.selected_mention_index = 0;
-                                }
-                                if !should_show_mention_popup(&input_text) {
-                                    state_guard.popup_state.show = false;
-                                    state_guard.popup_state.popup_type = PopupType::None;
-                                    state_guard.mention_query.clear();
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                    PopupType::Emojis => {
-                        log::debug!("PopupType::Emojis branch, key: {:?}", key.code);
-                        let filtered_emojis: Vec<String> = emojis::iter()
-                            .filter(|emoji| {
-                                emoji
-                                    .shortcodes()
-                                    .any(|sc| sc.contains(&state_guard.emoji_query))
-                            })
-                            .map(|emoji| emoji.to_string())
-                            .collect();
-                        let num_filtered_emojis = filtered_emojis.len();
-
-                        if num_filtered_emojis == 0 && !state_guard.emoji_query.is_empty() {
-                            state_guard.popup_state.show = false;
-                            state_guard.popup_state.popup_type = PopupType::None;
-                            state_guard.emoji_query.clear();
-                        }
-                        match key.code {
-                            KeyCode::Up => {
-                                if num_filtered_emojis > 0 {
-                                    state_guard.selected_emoji_index =
-                                        (state_guard.selected_emoji_index + num_filtered_emojis
-                                            - 1)
-                                            % num_filtered_emojis;
-                                } else {
-                                    state_guard.selected_emoji_index = 0;
-                                }
-                            }
-                            KeyCode::Down => {
-                                if num_filtered_emojis > 0 {
-                                    state_guard.selected_emoji_index =
-                                        (state_guard.selected_emoji_index + 1)
-                                            % num_filtered_emojis;
-                                } else {
-                                    state_guard.selected_emoji_index = 0;
-                                }
-                            }
-                            KeyCode::Enter => {
-                                if let Some(emoji_str) =
-                                    filtered_emojis.get(state_guard.selected_emoji_index)
-                                {
-                                    if let Some(query_start) = input_text.rfind(':') {
-                                        input_text.replace_range(query_start.., emoji_str);
-                                        state_guard.cursor_position = query_start + emoji_str.len();
-                                    } else {
-                                        input_text.push_str(emoji_str);
-                                        state_guard.cursor_position = input_text.len();
+                                    _ => {}
+                                },
+                                KeyCode::Char(c) => match create_channel_form.input_focused {
+                                    CreateChannelInput::Name => {
+                                        create_channel_form.name.push(c);
                                     }
-                                }
-                                state_guard.popup_state.show = false;
-                                state_guard.popup_state.popup_type = PopupType::None;
-                                state_guard.selected_emoji_index = 0;
-                                state_guard.emoji_query.clear();
-                            }
-                            KeyCode::Esc => {
-                                log::debug!("PopupType::Emojis dismissed with Esc");
-                                state_guard.popup_state.show = false;
-                                state_guard.popup_state.popup_type = PopupType::None;
-                                state_guard.selected_emoji_index = 0;
-                                state_guard.emoji_query.clear();
-                            }
-                            KeyCode::Backspace => {
-                                if state_guard.cursor_position > 0 {
-                                    let old_pos = state_guard.cursor_position;
-                                    let new_pos = input_text[..old_pos]
-                                        .grapheme_indices(true)
-                                        .last()
-                                        .map(|(i, _)| i)
-                                        .unwrap_or(0);
-                                    input_text.replace_range(new_pos..old_pos, "");
-                                    state_guard.cursor_position = new_pos;
-                                }
-                                if let Some(last_colon_idx) = input_text.rfind(':') {
-                                    state_guard.emoji_query =
-                                        input_text[last_colon_idx + 1..].to_string();
-                                } else {
-                                    state_guard.emoji_query.clear();
-                                }
-                                let new_filtered_emojis: Vec<String> = emojis::iter()
-                                    .filter(|emoji| {
-                                        emoji
-                                            .shortcodes()
-                                            .any(|sc| sc.contains(&state_guard.emoji_query))
-                                    })
-                                    .map(|emoji| emoji.to_string())
-                                    .collect();
-                                let new_num_filtered_emojis = new_filtered_emojis.len();
-                                if new_num_filtered_emojis > 0 {
-                                    state_guard.selected_emoji_index = state_guard
-                                        .selected_emoji_index
-                                        .min(new_num_filtered_emojis.saturating_sub(1));
-                                } else {
-                                    state_guard.selected_emoji_index = 0;
-                                }
-                                if !should_show_emoji_popup(&input_text) {
-                                    state_guard.popup_state.show = false;
-                                    state_guard.popup_state.popup_type = PopupType::None;
-                                    state_guard.emoji_query.clear();
-                                }
-                            }
-                            KeyCode::Char(c) => {
-                                input_text.insert(state_guard.cursor_position, c);
-                                state_guard.cursor_position += c.len_utf8();
-                                state_guard.emoji_query.push(c);
-                                if let Some(last_colon_idx) = input_text.rfind(':') {
-                                    state_guard.emoji_query =
-                                        input_text[last_colon_idx + 1..].to_string();
-                                } else {
-                                    state_guard.emoji_query.clear();
-                                }
-                                if let Some(last_colon_idx) = input_text.rfind(':') {
-                                    let potential_shortcode_with_colons =
-                                        &input_text[last_colon_idx..];
-                                    if potential_shortcode_with_colons.ends_with(':')
-                                        && potential_shortcode_with_colons.len() > 1
+                                    _ => {}
+                                },
+                                KeyCode::Left => {
+                                    if create_channel_form.input_focused == CreateChannelInput::Icon
                                     {
-                                        let shortcode = &potential_shortcode_with_colons
-                                            [1..potential_shortcode_with_colons.len() - 1];
-                                        if !shortcode.contains(' ') {
-                                            if let Some(emoji) = emojis::get_by_shortcode(shortcode)
+                                        create_channel_form.previous_icon();
+                                    }
+                                }
+                                KeyCode::Right => {
+                                    if create_channel_form.input_focused == CreateChannelInput::Icon
+                                    {
+                                        create_channel_form.next_icon();
+                                    }
+                                }
+                                KeyCode::Enter => match create_channel_form.input_focused {
+                                    CreateChannelInput::Name | CreateChannelInput::Icon => {
+                                        create_channel_form.next_input();
+                                    }
+                                    CreateChannelInput::CreateButton => {
+                                        if !create_channel_form.name.is_empty() {
+                                            let channel_name = create_channel_form.name.clone();
+                                            let channel_icon =
+                                                create_channel_form.get_selected_icon();
+                                            let command = format!(
+                                                "/propose_channel {} {}",
+                                                channel_name, channel_icon
+                                            );
+                                            if command_tx
+                                                .send(WsCommand::Message {
+                                                    channel_id: "home".to_string(),
+                                                    content: command,
+                                                })
+                                                .is_err()
                                             {
-                                                input_text.replace_range(
-                                                    last_colon_idx..,
-                                                    emoji.as_str(),
+                                                state_guard.set_notification(
+                                                    "Channel Creation Error".to_string(),
+                                                    "Failed to create channel".to_string(),
+                                                    NotificationType::Error,
+                                                    3,
                                                 );
-                                                state_guard.cursor_position =
-                                                    last_colon_idx + emoji.as_str().len();
+                                            } else {
+                                                state_guard.set_notification(
+                                                    "Channel Creation Success".to_string(),
+                                                    format!("Channel '{}' created!", channel_name),
+                                                    NotificationType::Success,
+                                                    3,
+                                                );
                                                 state_guard.popup_state.show = false;
                                                 state_guard.popup_state.popup_type =
                                                     PopupType::None;
-                                                state_guard.emoji_query.clear();
+                                                create_channel_form = CreateChannelForm::new();
+                                            }
+                                        } else {
+                                            state_guard.set_notification(
+                                                "Channel Creation Warning".to_string(),
+                                                "Channel name cannot be empty!".to_string(),
+                                                NotificationType::Warning,
+                                                3,
+                                            );
+                                        }
+                                    }
+                                },
+                                _ => {}
+                            }
+                        }
+                        PopupType::SetTheme => {
+                            log::debug!("PopupType::SetTheme branch, key: {:?}", key.code);
+                            match key.code {
+                                KeyCode::Up => {
+                                    theme_settings_form.previous_theme();
+                                    state_guard.current_theme =
+                                        theme_settings_form.get_selected_theme();
+                                }
+                                KeyCode::Down => {
+                                    theme_settings_form.next_theme();
+                                    state_guard.current_theme =
+                                        theme_settings_form.get_selected_theme();
+                                }
+                                KeyCode::Enter => {
+                                    state_guard.popup_state.show = false;
+                                    state_guard.popup_state.popup_type = PopupType::None;
+                                }
+                                KeyCode::Esc => {
+                                    log::debug!("PopupType::SetTheme dismissed with Esc");
+                                    state_guard.current_theme = theme_settings_form.original_theme;
+                                    state_guard.popup_state.show = false;
+                                    state_guard.popup_state.popup_type = PopupType::None;
+                                }
+                                _ => {}
+                            }
+                        }
+                        PopupType::Deconnection => {
+                            log::debug!("PopupType::Deconnection branch, key: {:?}", key.code);
+                            match key.code {
+                                KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
+                                    state_guard.clear_user_auth();
+                                    return Ok(Some(TuiPage::Auth)); // return Option<TuiPage> as per new signature
+                                }
+                                KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                                    log::debug!("PopupType::Deconnection dismissed with Esc or N");
+                                    state_guard.popup_state.popup_type = PopupType::Settings;
+                                }
+                                _ => {}
+                            }
+                        }
+                        PopupType::Help => {
+                            log::debug!("PopupType::Help branch, key: {:?}", key.code);
+                            match key.code {
+                                KeyCode::Esc => {
+                                    log::debug!("PopupType::Help dismissed with Esc");
+                                    state_guard.popup_state.show = false;
+                                    state_guard.popup_state.popup_type = PopupType::None;
+                                }
+                                _ => {}
+                            }
+                        }
+                        PopupType::Mentions => {
+                            log::debug!("PopupType::Mentions branch, key: {:?}", key.code);
+                            let filtered_users: Vec<String> = state_guard
+                                .active_users
+                                .iter()
+                                .filter(|user| {
+                                    user.to_lowercase()
+                                        .contains(&state_guard.mention_query.to_lowercase())
+                                })
+                                .cloned()
+                                .collect();
+                            let num_filtered_users = filtered_users.len();
+                            match key.code {
+                                KeyCode::Up => {
+                                    if num_filtered_users > 0 {
+                                        state_guard.selected_mention_index = (state_guard
+                                            .selected_mention_index
+                                            + num_filtered_users
+                                            - 1)
+                                            % num_filtered_users;
+                                    } else {
+                                        state_guard.selected_mention_index = 0;
+                                    }
+                                }
+                                KeyCode::Down => {
+                                    if num_filtered_users > 0 {
+                                        state_guard.selected_mention_index =
+                                            (state_guard.selected_mention_index + 1)
+                                                % num_filtered_users;
+                                    } else {
+                                        state_guard.selected_mention_index = 0;
+                                    }
+                                }
+                                KeyCode::Enter => {
+                                    if let Some(user) =
+                                        filtered_users.get(state_guard.selected_mention_index)
+                                    {
+                                        let query_start =
+                                            input_text.rfind('@').unwrap_or(input_text.len());
+                                        input_text
+                                            .replace_range(query_start.., &format!("@{} ", user));
+                                        state_guard.cursor_position = input_text.len();
+                                    }
+                                    state_guard.popup_state.show = false;
+                                    state_guard.popup_state.popup_type = PopupType::None;
+                                    state_guard.selected_mention_index = 0;
+                                    state_guard.mention_query.clear();
+                                }
+                                KeyCode::Esc => {
+                                    log::debug!("PopupType::Mentions dismissed with Esc");
+                                    state_guard.popup_state.show = false;
+                                    state_guard.popup_state.popup_type = PopupType::None;
+                                    state_guard.selected_mention_index = 0;
+                                    state_guard.mention_query.clear();
+                                }
+                                KeyCode::Backspace => {
+                                    if state_guard.cursor_position > 0 {
+                                        let old_pos = state_guard.cursor_position;
+                                        let new_pos = input_text[..old_pos]
+                                            .grapheme_indices(true)
+                                            .last()
+                                            .map(|(i, _)| i)
+                                            .unwrap_or(0);
+                                        input_text.replace_range(new_pos..old_pos, "");
+                                        state_guard.cursor_position = new_pos;
+                                    }
+                                    if let Some(last_at_idx) = input_text.rfind('@') {
+                                        state_guard.mention_query =
+                                            input_text[last_at_idx + 1..].to_string();
+                                    } else {
+                                        state_guard.mention_query.clear();
+                                    }
+                                    let new_filtered_users: Vec<String> = state_guard
+                                        .active_users
+                                        .iter()
+                                        .filter(|user| {
+                                            user.to_lowercase()
+                                                .contains(&state_guard.mention_query.to_lowercase())
+                                        })
+                                        .cloned()
+                                        .collect();
+                                    let new_num_filtered_users = new_filtered_users.len();
+                                    if new_num_filtered_users > 0 {
+                                        state_guard.selected_mention_index = state_guard
+                                            .selected_mention_index
+                                            .min(new_num_filtered_users.saturating_sub(1));
+                                    } else {
+                                        state_guard.selected_mention_index = 0;
+                                    }
+                                    if !should_show_mention_popup(&input_text) {
+                                        state_guard.popup_state.show = false;
+                                        state_guard.popup_state.popup_type = PopupType::None;
+                                        state_guard.mention_query.clear();
+                                    }
+                                }
+                                KeyCode::Char(c) => {
+                                    input_text.insert(state_guard.cursor_position, c);
+                                    state_guard.cursor_position += c.len_utf8();
+                                    state_guard.mention_query.push(c);
+                                    let new_filtered_users: Vec<String> = state_guard
+                                        .active_users
+                                        .iter()
+                                        .filter(|user| {
+                                            user.to_lowercase()
+                                                .contains(&state_guard.mention_query.to_lowercase())
+                                        })
+                                        .cloned()
+                                        .collect();
+                                    let new_num_filtered_users = new_filtered_users.len();
+                                    if new_num_filtered_users > 0 {
+                                        state_guard.selected_mention_index = state_guard
+                                            .selected_mention_index
+                                            .min(new_num_filtered_users.saturating_sub(1));
+                                    } else {
+                                        state_guard.selected_mention_index = 0;
+                                    }
+                                    if !should_show_mention_popup(&input_text) {
+                                        state_guard.popup_state.show = false;
+                                        state_guard.popup_state.popup_type = PopupType::None;
+                                        state_guard.mention_query.clear();
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                        PopupType::Emojis => {
+                            log::debug!("PopupType::Emojis branch, key: {:?}", key.code);
+                            let filtered_emojis: Vec<String> = emojis::iter()
+                                .filter(|emoji| {
+                                    emoji
+                                        .shortcodes()
+                                        .any(|sc| sc.contains(&state_guard.emoji_query))
+                                })
+                                .map(|emoji| emoji.to_string())
+                                .collect();
+                            let num_filtered_emojis = filtered_emojis.len();
+
+                            if num_filtered_emojis == 0 && !state_guard.emoji_query.is_empty() {
+                                state_guard.popup_state.show = false;
+                                state_guard.popup_state.popup_type = PopupType::None;
+                                state_guard.emoji_query.clear();
+                            }
+                            match key.code {
+                                KeyCode::Up => {
+                                    if num_filtered_emojis > 0 {
+                                        state_guard.selected_emoji_index = (state_guard
+                                            .selected_emoji_index
+                                            + num_filtered_emojis
+                                            - 1)
+                                            % num_filtered_emojis;
+                                    } else {
+                                        state_guard.selected_emoji_index = 0;
+                                    }
+                                }
+                                KeyCode::Down => {
+                                    if num_filtered_emojis > 0 {
+                                        state_guard.selected_emoji_index =
+                                            (state_guard.selected_emoji_index + 1)
+                                                % num_filtered_emojis;
+                                    } else {
+                                        state_guard.selected_emoji_index = 0;
+                                    }
+                                }
+                                KeyCode::Enter => {
+                                    if let Some(emoji_str) =
+                                        filtered_emojis.get(state_guard.selected_emoji_index)
+                                    {
+                                        if let Some(query_start) = input_text.rfind(':') {
+                                            input_text.replace_range(query_start.., emoji_str);
+                                            state_guard.cursor_position =
+                                                query_start + emoji_str.len();
+                                        } else {
+                                            input_text.push_str(emoji_str);
+                                            state_guard.cursor_position = input_text.len();
+                                        }
+                                    }
+                                    state_guard.popup_state.show = false;
+                                    state_guard.popup_state.popup_type = PopupType::None;
+                                    state_guard.selected_emoji_index = 0;
+                                    state_guard.emoji_query.clear();
+                                }
+                                KeyCode::Esc => {
+                                    log::debug!("PopupType::Emojis dismissed with Esc");
+                                    state_guard.popup_state.show = false;
+                                    state_guard.popup_state.popup_type = PopupType::None;
+                                    state_guard.selected_emoji_index = 0;
+                                    state_guard.emoji_query.clear();
+                                }
+                                KeyCode::Backspace => {
+                                    if state_guard.cursor_position > 0 {
+                                        let old_pos = state_guard.cursor_position;
+                                        let new_pos = input_text[..old_pos]
+                                            .grapheme_indices(true)
+                                            .last()
+                                            .map(|(i, _)| i)
+                                            .unwrap_or(0);
+                                        input_text.replace_range(new_pos..old_pos, "");
+                                        state_guard.cursor_position = new_pos;
+                                    }
+                                    if let Some(last_colon_idx) = input_text.rfind(':') {
+                                        state_guard.emoji_query =
+                                            input_text[last_colon_idx + 1..].to_string();
+                                    } else {
+                                        state_guard.emoji_query.clear();
+                                    }
+                                    let new_filtered_emojis: Vec<String> = emojis::iter()
+                                        .filter(|emoji| {
+                                            emoji
+                                                .shortcodes()
+                                                .any(|sc| sc.contains(&state_guard.emoji_query))
+                                        })
+                                        .map(|emoji| emoji.to_string())
+                                        .collect();
+                                    let new_num_filtered_emojis = new_filtered_emojis.len();
+                                    if new_num_filtered_emojis > 0 {
+                                        state_guard.selected_emoji_index = state_guard
+                                            .selected_emoji_index
+                                            .min(new_num_filtered_emojis.saturating_sub(1));
+                                    } else {
+                                        state_guard.selected_emoji_index = 0;
+                                    }
+                                    if !should_show_emoji_popup(&input_text) {
+                                        state_guard.popup_state.show = false;
+                                        state_guard.popup_state.popup_type = PopupType::None;
+                                        state_guard.emoji_query.clear();
+                                    }
+                                }
+                                KeyCode::Char(c) => {
+                                    input_text.insert(state_guard.cursor_position, c);
+                                    state_guard.cursor_position += c.len_utf8();
+                                    state_guard.emoji_query.push(c);
+                                    if let Some(last_colon_idx) = input_text.rfind(':') {
+                                        state_guard.emoji_query =
+                                            input_text[last_colon_idx + 1..].to_string();
+                                    } else {
+                                        state_guard.emoji_query.clear();
+                                    }
+                                    if let Some(last_colon_idx) = input_text.rfind(':') {
+                                        let potential_shortcode_with_colons =
+                                            &input_text[last_colon_idx..];
+                                        if potential_shortcode_with_colons.ends_with(':')
+                                            && potential_shortcode_with_colons.len() > 1
+                                        {
+                                            let shortcode = &potential_shortcode_with_colons
+                                                [1..potential_shortcode_with_colons.len() - 1];
+                                            if !shortcode.contains(' ') {
+                                                if let Some(emoji) =
+                                                    emojis::get_by_shortcode(shortcode)
+                                                {
+                                                    input_text.replace_range(
+                                                        last_colon_idx..,
+                                                        emoji.as_str(),
+                                                    );
+                                                    state_guard.cursor_position =
+                                                        last_colon_idx + emoji.as_str().len();
+                                                    state_guard.popup_state.show = false;
+                                                    state_guard.popup_state.popup_type =
+                                                        PopupType::None;
+                                                    state_guard.emoji_query.clear();
+                                                }
                                             }
                                         }
                                     }
                                 }
+                                _ => {}
                             }
-                            _ => {}
                         }
-                    }
-                    PopupType::DownloadProgress | PopupType::Notification => {
-                        log::debug!(
-                            "PopupType::{:?} branch, key: {:?}",
-                            state_guard.popup_state.popup_type,
-                            key.code
-                        );
-                        match key.code {
-                            KeyCode::Esc => {
-                                log::debug!(
-                                    "PopupType::{:?} dismissed with Esc",
-                                    state_guard.popup_state.popup_type
-                                );
-                                state_guard.popup_state.show = false;
-                                state_guard.popup_state.popup_type = PopupType::None;
+                        PopupType::DownloadProgress | PopupType::Notification => {
+                            log::debug!(
+                                "PopupType::{:?} branch, key: {:?}",
+                                state_guard.popup_state.popup_type,
+                                key.code
+                            );
+                            match key.code {
+                                KeyCode::Esc => {
+                                    log::debug!(
+                                        "PopupType::{:?} dismissed with Esc",
+                                        state_guard.popup_state.popup_type
+                                    );
+                                    state_guard.popup_state.show = false;
+                                    state_guard.popup_state.popup_type = PopupType::None;
+                                }
+                                _ => {}
                             }
-                            _ => {}
                         }
-                    }
-                    PopupType::DebugJson => {
-                        log::debug!("PopupType::DebugJson branch, key: {:?}", key.code);
-                        match key.code {
-                            KeyCode::Esc => {
-                                log::debug!("PopupType::DebugJson dismissed with Esc");
-                                state_guard.popup_state.show = false;
-                                state_guard.popup_state.popup_type = PopupType::None;
+                        PopupType::DebugJson => {
+                            log::debug!("PopupType::DebugJson branch, key: {:?}", key.code);
+                            match key.code {
+                                KeyCode::Esc => {
+                                    log::debug!("PopupType::DebugJson dismissed with Esc");
+                                    state_guard.popup_state.show = false;
+                                    state_guard.popup_state.popup_type = PopupType::None;
+                                }
+                                _ => {}
                             }
-                            _ => {}
                         }
-                    }
-                    PopupType::None => {
-                        // No specific key handling for None popup type
-                    }
-                    PopupType::FileManager => {
-                        log::debug!("PopupType::FileManager branch, key: {:?}", key.code);
-                        match key.code {
-                            KeyCode::Esc => {
-                                log::debug!("PopupType::FileManager dismissed with Esc");
-                                state_guard.popup_state.show = false;
-                                state_guard.popup_state.popup_type = PopupType::None;
-                            }
-                            _ => {
-                                let file_manager_event = file_manager.handle_key_event(key);
-                                match file_manager_event {
+                        PopupType::None => {
+                            // No specific key handling for None popup type
+                        }
+                        PopupType::FileManager => {
+                            log::debug!("PopupType::FileManager branch, key: {:?}", key.code);
+                            match key.code {
+                                KeyCode::Esc => {
+                                    log::debug!("PopupType::FileManager dismissed with Esc");
+                                    state_guard.popup_state.show = false;
+                                    state_guard.popup_state.popup_type = PopupType::None;
+                                }
+                                _ => {
+                                    let file_manager_event = file_manager.handle_key_event(key);
+                                    match file_manager_event {
                                     popups::file_manager::FileManagerEvent::FileSelectedForUpload(path) => {
                                         if let Some(current_channel) = &state_guard.current_channel {
                                             let channel_id = current_channel.id.clone();
@@ -883,6 +901,7 @@ pub async fn run_chat_page<B: Backend>(
                                                     "File Upload Error".to_string(),
                                                     "Failed to send upload command".to_string(),
                                                     NotificationType::Error,
+                                                    3,
                                                 );
                                             }
                                         } else {
@@ -890,6 +909,7 @@ pub async fn run_chat_page<B: Backend>(
                                                 "File Upload Warning".to_string(),
                                                 "No channel selected to upload file.".to_string(),
                                                 NotificationType::Warning,
+                                                3,
                                             );
                                         }
                                         state_guard.popup_state.show = false;
@@ -899,8 +919,10 @@ pub async fn run_chat_page<B: Backend>(
                                         if filecommand_tx.send(WsCommand::DownloadFile { file_id, file_name }).is_err() {
                                             state_guard.set_notification(
                                                 "File Download Error".to_string(),
-                                                "Failed to send download command".to_string(),
+                                                "Failed to send download command"
+                                                    .to_string(),
                                                 NotificationType::Error,
+                                                3,
                                             );
                                         }
                                         state_guard.popup_state.show = false;
@@ -912,392 +934,298 @@ pub async fn run_chat_page<B: Backend>(
                                     }
                                     popups::file_manager::FileManagerEvent::None => {}
                                 }
+                                }
                             }
                         }
                     }
-                }
 
-                // This block handles key events when NO popup is shown.
-                // It should be outside the `match current_popup_type` block
-                // or explicitly handled for `PopupType::None`.
-                if current_popup_type == PopupType::None {
-                    // Global ESC and logout shortcut handling
-                    if key.code == KeyCode::Esc {
-                        // Show quit popup globally
-                        state_guard.popup_state.show = true;
-                        state_guard.popup_state.popup_type = PopupType::Quit;
-                        return Ok(Some(TuiPage::Exit));
-                    }
-                    if key.code == KeyCode::Char('d') && key.modifiers.contains(KeyModifiers::CONTROL) {
-                        // Show deconnection/logout popup globally
-                        state_guard.popup_state.show = true;
-                        state_guard.popup_state.popup_type = PopupType::Deconnection;
-                    }
-                    log::debug!("No popup active, handling key: {:?}", key.code);
-                    match key.code {
-                        // Interactive download: Enter on file/image message
-                        KeyCode::Enter => {
-                            if !input_text.is_empty() {
-                                if input_text.starts_with("/upload ") {
-                                    let parts: Vec<&str> = input_text.splitn(2, ' ').collect();
-                                    if parts.len() == 2 {
-                                        let file_path_str = parts[1].trim();
-                                        let file_path = PathBuf::from(file_path_str);
-                                        if file_path.exists() && file_path.is_file() {
-                                            if let Some(current_channel) =
-                                                &state_guard.current_channel
-                                            {
-                                                let channel_id = current_channel.id.clone();
-                                                if filecommand_tx
-                                                    .send(WsCommand::UploadFile {
-                                                        channel_id,
-                                                        file_path: file_path.clone(),
-                                                    })
-                                                    .is_err()
+                    // This block handles key events when NO popup is shown.
+                    // It should be outside the `match current_popup_type` block
+                    // or explicitly handled for `PopupType::None`.
+                    if current_popup_type == PopupType::None {
+                        // Global ESC and logout shortcut handling
+                        if key.code == KeyCode::Esc {
+                            // Show quit popup globally
+                            state_guard.popup_state.show = true;
+                            state_guard.popup_state.popup_type = PopupType::Quit;
+                            return Ok(Some(TuiPage::Exit));
+                        }
+                        if key.code == KeyCode::Char('d')
+                            && key.modifiers.contains(KeyModifiers::CONTROL)
+                        {
+                            // Show deconnection/logout popup globally
+                            state_guard.popup_state.show = true;
+                            state_guard.popup_state.popup_type = PopupType::Deconnection;
+                        }
+                        log::debug!("No popup active, handling key: {:?}", key.code);
+                        match key.code {
+                            // Interactive download: Enter on file/image message
+                            KeyCode::Enter => {
+                                if !input_text.is_empty() {
+                                    if input_text.starts_with("/upload ") {
+                                        let parts: Vec<&str> = input_text.splitn(2, ' ').collect();
+                                        if parts.len() == 2 {
+                                            let file_path_str = parts[1].trim();
+                                            let file_path = PathBuf::from(file_path_str);
+                                            if file_path.exists() && file_path.is_file() {
+                                                if let Some(current_channel) =
+                                                    &state_guard.current_channel
                                                 {
+                                                    let channel_id = current_channel.id.clone();
+                                                    if filecommand_tx
+                                                        .send(WsCommand::UploadFile {
+                                                            channel_id,
+                                                            file_path: file_path.clone(),
+                                                        })
+                                                        .is_err()
+                                                    {
+                                                        state_guard.set_notification(
+                                                            "File Upload Error".to_string(),
+                                                            "Failed to send upload command"
+                                                                .to_string(),
+                                                            NotificationType::Error,
+                                                            3,
+                                                        );
+                                                    }
+                                                } else {
                                                     state_guard.set_notification(
-                                                        "File Upload Error".to_string(),
-                                                        "Failed to send upload command".to_string(),
-                                                        NotificationType::Error,
+                                                        "No Channel Selected".to_string(),
+                                                        "No channel selected to upload file."
+                                                            .to_string(),
+                                                        NotificationType::Warning,
+                                                        3,
                                                     );
                                                 }
                                             } else {
                                                 state_guard.set_notification(
-                                                    "No Channel Selected".to_string(),
-                                                    "No channel selected to upload file."
-                                                        .to_string(),
-                                                    NotificationType::Warning,
+                                                    "File Not Found".to_string(),
+                                                    format!("File not found: {}", file_path_str),
+                                                    NotificationType::Error,
+                                                    3,
                                                 );
                                             }
-                                        } else {
+                                        }
+                                    } else if input_text.starts_with("/download ") {
+                                        let parts: Vec<&str> = input_text.splitn(2, ' ').collect();
+                                        if parts.len() == 2 {
+                                            let file_id_to_download = parts[1].trim().to_string();
+                                            let mut file_to_download: Option<BroadcastMessage> =
+                                                None;
+                                            if let Some(current_channel) =
+                                                &state_guard.current_channel
+                                            {
+                                                if let Some(messages) =
+                                                    state_guard.messages.get(&current_channel.id)
+                                                {
+                                                    for msg in messages.iter().rev() {
+                                                        if let Some(file_id) = &msg.file_id {
+                                                            if file_id == &file_id_to_download {
+                                                                file_to_download =
+                                                                    Some(msg.clone());
+                                                                break;
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            if let Some(file_info) = file_to_download {
+                                                if let Some(file_name) = file_info.file_name {
+                                                    if filecommand_tx
+                                                        .send(WsCommand::DownloadFile {
+                                                            file_id: file_id_to_download,
+                                                            file_name,
+                                                        })
+                                                        .is_err()
+                                                    {
+                                                        state_guard.set_notification(
+                                                            "Download Error".to_string(),
+                                                            "Failed to send download command"
+                                                                .to_string(),
+                                                            NotificationType::Error,
+                                                            3,
+                                                        );
+                                                    }
+                                                } else {
+                                                    state_guard.set_notification(
+                                                        "File Info Error".to_string(),
+                                                        "File name not found in message"
+                                                            .to_string(),
+                                                        NotificationType::Error,
+                                                        3,
+                                                    );
+                                                }
+                                            } else {
+                                                state_guard.set_notification(
+                                                    "File Not Found".to_string(),
+                                                    format!(
+                                                    "File with ID '{}' not found in this channel.",
+                                                    file_id_to_download
+                                                ),
+                                                    NotificationType::Error,
+                                                    3,
+                                                );
+                                            }
+                                        }
+                                    } else if input_text.starts_with("/show ") {
+                                        let parts: Vec<&str> = input_text.splitn(2, ' ').collect();
+                                        if parts.len() == 2 {
+                                            let file_path_str = parts[1].trim();
+                                            let _file_path = PathBuf::from(file_path_str);
                                             state_guard.set_notification(
-                                                "File Not Found".to_string(),
-                                                format!("File not found: {}", file_path_str),
+                                                "Image Display Error".to_string(),
+                                                "Image preview is not supported anymore."
+                                                    .to_string(),
                                                 NotificationType::Error,
+                                                3,
                                             );
                                         }
-                                    }
-                                } else if input_text.starts_with("/download ") {
-                                    let parts: Vec<&str> = input_text.splitn(2, ' ').collect();
-                                    if parts.len() == 2 {
-                                        let file_id_to_download = parts[1].trim().to_string();
-                                        let mut file_to_download: Option<BroadcastMessage> = None;
+                                    } else {
                                         if let Some(current_channel) = &state_guard.current_channel
                                         {
-                                            if let Some(messages) =
-                                                state_guard.messages.get(&current_channel.id)
+                                            let channel_id = current_channel.id.clone();
+                                            let content =
+                                                replace_shortcodes_with_emojis(&input_text);
+                                            if command_tx
+                                                .send(WsCommand::Message {
+                                                    channel_id,
+                                                    content,
+                                                })
+                                                .is_err()
                                             {
-                                                for msg in messages.iter().rev() {
+                                                state_guard.set_notification(
+                                                    "Message Send Error".to_string(),
+                                                    "Failed to send message".to_string(),
+                                                    NotificationType::Error,
+                                                    3,
+                                                );
+                                            }
+                                        }
+                                    }
+                                    input_text.clear();
+                                    state_guard.cursor_position = 0;
+                                } else {
+                                    // Only trigger if a file/image message is selected for download
+                                    if let Some(current_channel) = &state_guard.current_channel {
+                                        if let Some(messages) =
+                                            state_guard.messages.get(&current_channel.id)
+                                        {
+                                            // Calculate which message is selected based on scroll offset and visible area
+                                            let message_count = messages.len();
+                                            let _rendered_lines = state_guard
+                                                .rendered_messages
+                                                .get(&current_channel.id)
+                                                .map(|v| v.len())
+                                                .unwrap_or(0);
+                                            // The 'view_height' here is likely incorrect as it uses terminal_width.
+                                            // It should ideally be derived from the actual chat message area height.
+                                            // For now, retaining the original logic but noting potential issue.
+                                            let view_height = state_guard.terminal_width as usize; // fallback, ideally get from UI
+                                            let scroll_offset = state_guard.message_scroll_offset;
+                                            let _start_index = message_count
+                                                .saturating_sub(view_height + scroll_offset);
+                                            let end_index =
+                                                message_count.saturating_sub(scroll_offset);
+                                            // We'll use the last visible message as the 'selected' one for now
+                                            if let Some(msg) =
+                                                messages.get(end_index.saturating_sub(1))
+                                            {
+                                                if msg.message_type == "file"
+                                                    && msg.file_id.is_some()
+                                                    && msg.download_progress.is_none()
+                                                {
                                                     if let Some(file_id) = &msg.file_id {
-                                                        if file_id == &file_id_to_download {
-                                                            file_to_download = Some(msg.clone());
-                                                            break;
+                                                        if let Some(file_name) = &msg.file_name {
+                                                            let _ = filecommand_tx.send(
+                                                                WsCommand::DownloadFile {
+                                                                    file_id: file_id.clone(),
+                                                                    file_name: file_name.clone(),
+                                                                },
+                                                            );
                                                         }
                                                     }
                                                 }
                                             }
                                         }
-                                        if let Some(file_info) = file_to_download {
-                                            if let Some(file_name) = file_info.file_name {
-                                                if filecommand_tx
-                                                    .send(WsCommand::DownloadFile {
-                                                        file_id: file_id_to_download,
-                                                        file_name,
-                                                    })
-                                                    .is_err()
-                                                {
-                                                    state_guard.set_notification(
-                                                        "Download Error".to_string(),
-                                                        "Failed to send download command"
-                                                            .to_string(),
-                                                        NotificationType::Error,
-                                                    );
-                                                }
-                                            } else {
-                                                state_guard.set_notification(
-                                                    "File Info Error".to_string(),
-                                                    "File name not found in message".to_string(),
-                                                    NotificationType::Error,
-                                                );
-                                            }
-                                        } else {
-                                            state_guard.set_notification(
-                                                "File Not Found".to_string(),
-                                                format!(
-                                                    "File with ID '{}' not found in this channel.",
-                                                    file_id_to_download
-                                                ),
-                                                NotificationType::Error,
-                                            );
-                                        }
-                                    }
-                                } else if input_text.starts_with("/show ") {
-                                    let parts: Vec<&str> = input_text.splitn(2, ' ').collect();
-                                    if parts.len() == 2 {
-                                        let file_path_str = parts[1].trim();
-                                        let _file_path = PathBuf::from(file_path_str);
-                                        state_guard.set_notification(
-                                            "Image Display Error".to_string(),
-                                            "Image preview is not supported anymore.".to_string(),
-                                            NotificationType::Error,
-                                        );
-                                    }
-                                } else {
-                                    if let Some(current_channel) = &state_guard.current_channel {
-                                        let channel_id = current_channel.id.clone();
-                                        let content = replace_shortcodes_with_emojis(&input_text);
-                                        if command_tx
-                                            .send(WsCommand::Message {
-                                                channel_id,
-                                                content,
-                                            })
-                                            .is_err()
-                                        {
-                                            state_guard.set_notification(
-                                                "Message Send Error".to_string(),
-                                                "Failed to send message".to_string(),
-                                                NotificationType::Error,
-                                            );
-                                        }
                                     }
                                 }
-                                input_text.clear();
-                                state_guard.cursor_position = 0;
-                            } else {
-                                // Only trigger if a file/image message is selected for download
+                            }
+                            KeyCode::Char('@') => {
+                                input_text.insert(state_guard.cursor_position, '@');
+                                state_guard.cursor_position += 1;
+                                state_guard.popup_state.show = true;
+                                state_guard.popup_state.popup_type = PopupType::Mentions;
+                                if command_tx
+                                    .send(WsCommand::Message {
+                                        channel_id: "home".to_string(),
+                                        content: "/get_active_users".to_string(),
+                                    })
+                                    .is_err()
+                                {
+                                    state_guard.set_notification(
+                                        "Active Users Request Error".to_string(),
+                                        "Failed to request active users".to_string(),
+                                        NotificationType::Error,
+                                        3,
+                                    );
+                                }
+                            }
+                            KeyCode::Char(':') => {
+                                input_text.insert(state_guard.cursor_position, ':');
+                                state_guard.cursor_position += 1;
+                                if should_show_emoji_popup(&input_text) {
+                                    state_guard.popup_state.show = true;
+                                    state_guard.popup_state.popup_type = PopupType::Emojis;
+                                    state_guard.emoji_query.clear();
+                                } else {
+                                    state_guard.popup_state.show = false;
+                                    state_guard.popup_state.popup_type = PopupType::None;
+                                    state_guard.emoji_query.clear();
+                                }
+                            }
+                            KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                                state_guard.popup_state.show = true;
+                                state_guard.popup_state.popup_type = PopupType::Settings;
+                            }
+                            KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                                state_guard.popup_state.show = true;
+                                state_guard.popup_state.popup_type = PopupType::CreateChannel;
+                                create_channel_form = CreateChannelForm::new();
+                            }
+                            KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                                state_guard.popup_state.show = true;
+                                state_guard.popup_state.popup_type = PopupType::FileManager;
+                                file_manager = popups::file_manager::FileManager::new(
+                                    popups::file_manager::FileManagerMode::LocalUpload,
+                                    Vec::new(),
+                                );
+                            }
+                            KeyCode::Char('j') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                                 if let Some(current_channel) = &state_guard.current_channel {
                                     if let Some(messages) =
                                         state_guard.messages.get(&current_channel.id)
                                     {
-                                        // Calculate which message is selected based on scroll offset and visible area
-                                        let message_count = messages.len();
-                                        let _rendered_lines = state_guard
-                                            .rendered_messages
-                                            .get(&current_channel.id)
-                                            .map(|v| v.len())
-                                            .unwrap_or(0);
-                                        // The 'view_height' here is likely incorrect as it uses terminal_width.
-                                        // It should ideally be derived from the actual chat message area height.
-                                        // For now, retaining the original logic but noting potential issue.
-                                        let view_height = state_guard.terminal_width as usize; // fallback, ideally get from UI
-                                        let scroll_offset = state_guard.message_scroll_offset;
-                                        let _start_index = message_count
-                                            .saturating_sub(view_height + scroll_offset);
-                                        let end_index = message_count.saturating_sub(scroll_offset);
-                                        // We'll use the last visible message as the 'selected' one for now
-                                        if let Some(msg) = messages.get(end_index.saturating_sub(1))
-                                        {
-                                            if msg.message_type == "file"
-                                                && msg.file_id.is_some()
-                                                && msg.download_progress.is_none()
+                                        if let Some(last_message) = messages.back() {
+                                            if let Ok(json_string) =
+                                                serde_json::to_string_pretty(last_message)
                                             {
-                                                if let Some(file_id) = &msg.file_id {
-                                                    if let Some(file_name) = &msg.file_name {
-                                                        let _ = filecommand_tx.send(
-                                                            WsCommand::DownloadFile {
-                                                                file_id: file_id.clone(),
-                                                                file_name: file_name.clone(),
-                                                            },
-                                                        );
-                                                    }
-                                                }
+                                                state_guard.debug_json_content = json_string;
+                                                state_guard.popup_state.show = true;
+                                                state_guard.popup_state.popup_type =
+                                                    PopupType::DebugJson;
+                                            } else {
+                                                state_guard.set_notification(
+                                                    "JSON Error".to_string(),
+                                                    "Failed to serialize message to JSON"
+                                                        .to_string(),
+                                                    NotificationType::Error,
+                                                    3,
+                                                );
                                             }
                                         }
                                     }
                                 }
                             }
-                        }
-                        KeyCode::Char('@') => {
-                            input_text.insert(state_guard.cursor_position, '@');
-                            state_guard.cursor_position += 1;
-                            state_guard.popup_state.show = true;
-                            state_guard.popup_state.popup_type = PopupType::Mentions;
-                            if command_tx
-                                .send(WsCommand::Message {
-                                    channel_id: "home".to_string(),
-                                    content: "/get_active_users".to_string(),
-                                })
-                                .is_err()
-                            {
-                                state_guard.set_notification(
-                                    "Active Users Request Error".to_string(),
-                                    "Failed to request active users".to_string(),
-                                    NotificationType::Error,
-                                );
-                            }
-                        }
-                        KeyCode::Char(':') => {
-                            input_text.insert(state_guard.cursor_position, ':');
-                            state_guard.cursor_position += 1;
-                            if should_show_emoji_popup(&input_text) {
-                                state_guard.popup_state.show = true;
-                                state_guard.popup_state.popup_type = PopupType::Emojis;
-                                state_guard.emoji_query.clear();
-                            } else {
-                                state_guard.popup_state.show = false;
-                                state_guard.popup_state.popup_type = PopupType::None;
-                                state_guard.emoji_query.clear();
-                            }
-                        }
-                        KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                            state_guard.popup_state.show = true;
-                            state_guard.popup_state.popup_type = PopupType::Settings;
-                        }
-                        KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                            state_guard.popup_state.show = true;
-                            state_guard.popup_state.popup_type = PopupType::CreateChannel;
-                            create_channel_form = CreateChannelForm::new();
-                        }
-                        KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                            state_guard.popup_state.show = true;
-                            state_guard.popup_state.popup_type = PopupType::FileManager;
-                            file_manager = popups::file_manager::FileManager::new(
-                                popups::file_manager::FileManagerMode::LocalUpload,
-                                Vec::new(),
-                            );
-                        }
-                        KeyCode::Char('j') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                            if let Some(current_channel) = &state_guard.current_channel {
-                                if let Some(messages) =
-                                    state_guard.messages.get(&current_channel.id)
-                                {
-                                    if let Some(last_message) = messages.back() {
-                                        if let Ok(json_string) =
-                                            serde_json::to_string_pretty(last_message)
-                                        {
-                                            state_guard.debug_json_content = json_string;
-                                            state_guard.popup_state.show = true;
-                                            state_guard.popup_state.popup_type =
-                                                PopupType::DebugJson;
-                                        } else {
-                                            state_guard.set_notification(
-                                                "JSON Error".to_string(),
-                                                "Failed to serialize message to JSON".to_string(),
-                                                NotificationType::Error,
-                                            );
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        KeyCode::Tab => {
-                            let i = match channel_list_state.selected() {
-                                Some(i) => {
-                                    if i >= state_guard.channels.len() - 1 {
-                                        0
-                                    } else {
-                                        i + 1
-                                    }
-                                }
-                                None => 0,
-                            };
-                            channel_list_state.select(Some(i));
-                            if let Some(selected_channel) = state_guard.channels.get(i).cloned() {
-                                let channel_id = selected_channel.id.clone();
-                                let messages_loaded = state_guard
-                                    .messages
-                                    .get(&channel_id)
-                                    .map_or(false, |v| !v.is_empty());
-                                state_guard.set_current_channel(selected_channel);
-                                if !messages_loaded {
-                                    if command_tx
-                                        .send(WsCommand::Message {
-                                            channel_id: channel_id.clone(),
-                                            content: format!("/get_history {} 0", channel_id),
-                                        })
-                                        .is_err()
-                                    {
-                                        state_guard.set_notification(
-                                            "Command Error".to_string(),
-                                            "Failed to send command".to_string(),
-                                            NotificationType::Error,
-                                        );
-                                    }
-                                }
-                            }
-                        }
-                        KeyCode::Up => {
-                            if key.modifiers.contains(KeyModifiers::CONTROL) {
-                                // Only scroll on key press, not hold
-                                if let Some(current_channel) = &state_guard.current_channel {
-                                    let channel_id = &current_channel.id;
-                                    let rendered_count = state_guard
-                                        .rendered_messages
-                                        .get(channel_id)
-                                        .map_or(0, |v| v.len());
-
-                                    if state_guard.message_scroll_offset
-                                        >= rendered_count.saturating_sub(5)
-                                    {
-                                        if let Some((offset, has_more)) =
-                                            state_guard.channel_history_state.get(channel_id)
-                                        {
-                                            if *has_more {
-                                                if command_tx
-                                                    .send(WsCommand::Message {
-                                                        channel_id: channel_id.clone(),
-                                                        content: format!(
-                                                            "/get_history {} {}",
-                                                            channel_id, offset
-                                                        ),
-                                                    })
-                                                    .is_err()
-                                                {
-                                                    state_guard.set_notification(
-                                                        "History Request Error".to_string(),
-                                                        "Failed to request history".to_string(),
-                                                        NotificationType::Error,
-                                                    );
-                                                }
-                                            }
-                                        }
-                                    }
-                                    let view_height = state_guard.last_chat_view_height.max(1);
-                                    state_guard.scroll_messages_up(rendered_count, view_height);
-                                }
-                            } else {
-                                let i = match channel_list_state.selected() {
-                                    Some(i) => {
-                                        if i == 0 {
-                                            state_guard.channels.len() - 1
-                                        } else {
-                                            i - 1
-                                        }
-                                    }
-                                    None => 0,
-                                };
-                                channel_list_state.select(Some(i));
-                                if let Some(selected_channel) = state_guard.channels.get(i).cloned()
-                                {
-                                    let channel_id = selected_channel.id.clone();
-                                    let messages_loaded = state_guard
-                                        .messages
-                                        .get(&channel_id)
-                                        .map_or(false, |v| !v.is_empty());
-                                    state_guard.set_current_channel(selected_channel);
-                                    if !messages_loaded {
-                                        if command_tx
-                                            .send(WsCommand::Message {
-                                                channel_id: channel_id.clone(),
-                                                content: format!("/get_history {} 0", channel_id),
-                                            })
-                                            .is_err()
-                                        {
-                                            state_guard.set_notification(
-                                                "Command Error".to_string(),
-                                                "Failed to send command".to_string(),
-                                                NotificationType::Error,
-                                            );
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        KeyCode::Down => {
-                            if key.modifiers.contains(KeyModifiers::CONTROL) {
-                                // Only scroll on key press, not hold
-                                state_guard.scroll_messages_down();
-                            } else {
+                            KeyCode::Tab => {
                                 let i = match channel_list_state.selected() {
                                     Some(i) => {
                                         if i >= state_guard.channels.len() - 1 {
@@ -1329,59 +1257,189 @@ pub async fn run_chat_page<B: Backend>(
                                                 "Command Error".to_string(),
                                                 "Failed to send command".to_string(),
                                                 NotificationType::Error,
+                                                3,
                                             );
                                         }
                                     }
                                 }
                             }
-                        }
-                        KeyCode::Backspace => {
-                            if state_guard.cursor_position > 0 {
+                            KeyCode::Up => {
+                                if key.modifiers.contains(KeyModifiers::CONTROL) {
+                                    // Only scroll on key press, not hold
+                                    if let Some(current_channel) = &state_guard.current_channel {
+                                        let channel_id = &current_channel.id;
+                                        let rendered_count = state_guard
+                                            .rendered_messages
+                                            .get(channel_id)
+                                            .map_or(0, |v| v.len());
+
+                                        if state_guard.message_scroll_offset
+                                            >= rendered_count.saturating_sub(5)
+                                        {
+                                            if let Some((offset, has_more)) =
+                                                state_guard.channel_history_state.get(channel_id)
+                                            {
+                                                if *has_more {
+                                                    if command_tx
+                                                        .send(WsCommand::Message {
+                                                            channel_id: channel_id.clone(),
+                                                            content: format!(
+                                                                "/get_history {} {}",
+                                                                channel_id, offset
+                                                            ),
+                                                        })
+                                                        .is_err()
+                                                    {
+                                                        state_guard.set_notification(
+                                                            "History Request Error".to_string(),
+                                                            "Failed to request history".to_string(),
+                                                            NotificationType::Error,
+                                                            3,
+                                                        );
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        let view_height = state_guard.last_chat_view_height.max(1);
+                                        state_guard.scroll_messages_up(rendered_count, view_height);
+                                    }
+                                } else {
+                                    let i = match channel_list_state.selected() {
+                                        Some(i) => {
+                                            if i == 0 {
+                                                state_guard.channels.len() - 1
+                                            } else {
+                                                i - 1
+                                            }
+                                        }
+                                        None => 0,
+                                    };
+                                    channel_list_state.select(Some(i));
+                                    if let Some(selected_channel) =
+                                        state_guard.channels.get(i).cloned()
+                                    {
+                                        let channel_id = selected_channel.id.clone();
+                                        let messages_loaded = state_guard
+                                            .messages
+                                            .get(&channel_id)
+                                            .map_or(false, |v| !v.is_empty());
+                                        state_guard.set_current_channel(selected_channel);
+                                        if !messages_loaded {
+                                            if command_tx
+                                                .send(WsCommand::Message {
+                                                    channel_id: channel_id.clone(),
+                                                    content: format!(
+                                                        "/get_history {} 0",
+                                                        channel_id
+                                                    ),
+                                                })
+                                                .is_err()
+                                            {
+                                                state_guard.set_notification(
+                                                    "Command Error".to_string(),
+                                                    "Failed to send command".to_string(),
+                                                    NotificationType::Error,
+                                                    3,
+                                                );
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            KeyCode::Down => {
+                                if key.modifiers.contains(KeyModifiers::CONTROL) {
+                                    // Only scroll on key press, not hold
+                                    state_guard.scroll_messages_down();
+                                } else {
+                                    let i = match channel_list_state.selected() {
+                                        Some(i) => {
+                                            if i >= state_guard.channels.len() - 1 {
+                                                0
+                                            } else {
+                                                i + 1
+                                            }
+                                        }
+                                        None => 0,
+                                    };
+                                    channel_list_state.select(Some(i));
+                                    if let Some(selected_channel) =
+                                        state_guard.channels.get(i).cloned()
+                                    {
+                                        let channel_id = selected_channel.id.clone();
+                                        let messages_loaded = state_guard
+                                            .messages
+                                            .get(&channel_id)
+                                            .map_or(false, |v| !v.is_empty());
+                                        state_guard.set_current_channel(selected_channel);
+                                        if !messages_loaded {
+                                            if command_tx
+                                                .send(WsCommand::Message {
+                                                    channel_id: channel_id.clone(),
+                                                    content: format!(
+                                                        "/get_history {} 0",
+                                                        channel_id
+                                                    ),
+                                                })
+                                                .is_err()
+                                            {
+                                                state_guard.set_notification(
+                                                    "Command Error".to_string(),
+                                                    "Failed to send command".to_string(),
+                                                    NotificationType::Error,
+                                                    3,
+                                                );
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            KeyCode::Backspace => {
+                                if state_guard.cursor_position > 0 {
+                                    let old_pos = state_guard.cursor_position;
+                                    let new_pos = input_text[..old_pos]
+                                        .grapheme_indices(true)
+                                        .last()
+                                        .map(|(i, _)| i)
+                                        .unwrap_or(0);
+                                    input_text.replace_range(new_pos..old_pos, "");
+                                    state_guard.cursor_position = new_pos;
+                                }
+                            }
+                            KeyCode::Char(c) => {
+                                input_text.insert(state_guard.cursor_position, c);
+                                state_guard.cursor_position += c.len_utf8();
+                            }
+                            KeyCode::Left => {
+                                if state_guard.cursor_position > 0 {
+                                    let old_pos = state_guard.cursor_position;
+                                    let new_pos = input_text[..old_pos]
+                                        .grapheme_indices(true)
+                                        .last()
+                                        .map(|(i, _)| i)
+                                        .unwrap_or(0);
+                                    state_guard.cursor_position = new_pos;
+                                }
+                            }
+                            KeyCode::Right => {
                                 let old_pos = state_guard.cursor_position;
-                                let new_pos = input_text[..old_pos]
-                                    .grapheme_indices(true)
-                                    .last()
-                                    .map(|(i, _)| i)
-                                    .unwrap_or(0);
-                                input_text.replace_range(new_pos..old_pos, "");
-                                state_guard.cursor_position = new_pos;
+                                if old_pos < input_text.len() {
+                                    let new_pos = input_text[old_pos..]
+                                        .grapheme_indices(true)
+                                        .nth(1)
+                                        .map(|(i, _)| old_pos + i)
+                                        .unwrap_or_else(|| input_text.len());
+                                    state_guard.cursor_position = new_pos;
+                                }
                             }
-                        }
-                        KeyCode::Char(c) => {
-                            input_text.insert(state_guard.cursor_position, c);
-                            state_guard.cursor_position += c.len_utf8();
-                        }
-                        KeyCode::Left => {
-                            if state_guard.cursor_position > 0 {
-                                let old_pos = state_guard.cursor_position;
-                                let new_pos = input_text[..old_pos]
-                                    .grapheme_indices(true)
-                                    .last()
-                                    .map(|(i, _)| i)
-                                    .unwrap_or(0);
-                                state_guard.cursor_position = new_pos;
+                            KeyCode::Home => {
+                                state_guard.cursor_position = 0;
                             }
-                        }
-                        KeyCode::Right => {
-                            let old_pos = state_guard.cursor_position;
-                            if old_pos < input_text.len() {
-                                let new_pos = input_text[old_pos..]
-                                    .grapheme_indices(true)
-                                    .nth(1)
-                                    .map(|(i, _)| old_pos + i)
-                                    .unwrap_or_else(|| input_text.len());
-                                state_guard.cursor_position = new_pos;
+                            KeyCode::End => {
+                                state_guard.cursor_position = input_text.len();
                             }
+                            _ => {}
                         }
-                        KeyCode::Home => {
-                            state_guard.cursor_position = 0;
-                        }
-                        KeyCode::End => {
-                            state_guard.cursor_position = input_text.len();
-                        }
-                        _ => {}
                     }
-                }
                 }
                 KeyEventKind::Release => {
                     // Reset any stuck scroll/input state here if needed

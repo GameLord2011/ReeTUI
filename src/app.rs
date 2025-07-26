@@ -2,7 +2,7 @@ use crate::api::models::{BroadcastMessage, Channel};
 use crate::tui::themes::ThemeName;
 use ratatui::text::Line;
 use std::collections::{HashMap, VecDeque};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Deserialize)]
 pub enum NotificationType {
@@ -18,6 +18,13 @@ pub struct Notification {
     pub message: String,
     pub notification_type: NotificationType,
     pub created_at: Instant,
+    pub duration: Duration,
+}
+
+impl Notification {
+    pub fn is_timed_out(&self) -> bool {
+        self.created_at.elapsed() >= self.duration
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -127,12 +134,14 @@ impl AppState {
         title: String,
         message: String,
         notification_type: NotificationType,
+        duration_in_seconds: u64,
     ) {
         self.notification = Some(Notification {
             title,
             message,
             notification_type,
             created_at: Instant::now(),
+            duration: Duration::from_secs(duration_in_seconds),
         });
         self.popup_state.show = true;
         self.popup_state.popup_type = PopupType::Notification;

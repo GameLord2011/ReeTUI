@@ -25,7 +25,7 @@ pub fn get_emojis_popup_size(state: &AppState) -> (u16, u16) {
     let height = std::cmp::min(filtered_emojis.len() as u16, 10) + 2; // +2 for borders
     let width = filtered_emojis
         .iter()
-        .map(|emoji| format!("{}  {}", emoji.as_str(), emoji.name()).len())
+        .map(|emoji| format!(" {}  {}", emoji.as_str(), emoji.name()).len())
         .max()
         .unwrap_or(20) as u16
         + 4; // +4 for borders and padding
@@ -51,7 +51,7 @@ pub fn draw_emojis_popup(f: &mut Frame, state: &mut AppState, area: Rect, popup_
             } else {
                 Style::default().fg(rgb_to_color(&current_theme.text))
             };
-            ListItem::new(format!(" {}  {}", emoji.as_str(), emoji.name())).style(style)
+            ListItem::new(format!(" {}  {}", emoji.as_str(), emoji.name())).style(style)
         })
         .collect();
 

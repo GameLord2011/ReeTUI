@@ -1,6 +1,6 @@
 use ratatui::{
     layout::{Alignment, Rect},
-    style::Style,
+    style::{Color, Style},
     text::{Line, Span, Text},
     widgets::{Block, BorderType, Borders, Clear, Paragraph},
     Frame,
@@ -11,7 +11,7 @@ use crate::{
     tui::themes::{get_theme, rgb_to_color},
 };
 
-pub fn draw_notification_popup(f: &mut Frame, app_state: &AppState) {
+pub fn draw_notification_popup(f: &mut Frame, app_state: &mut AppState) {
     if let Some(notification) = &app_state.notification {
         let theme = get_theme(app_state.current_theme);
         let popup_area = {
@@ -28,7 +28,7 @@ pub fn draw_notification_popup(f: &mut Frame, app_state: &AppState) {
 
         f.render_widget(Clear, popup_area);
 
-        let (border_color, _) = match notification.notification_type {
+        let (border_color, bg_color) = match notification.notification_type {
             NotificationType::Info => (theme.accent, theme.accent),
             NotificationType::Warning => (theme.button, theme.button),
             NotificationType::Error => (theme.error, theme.error),
@@ -39,7 +39,12 @@ pub fn draw_notification_popup(f: &mut Frame, app_state: &AppState) {
             .title(format!(" {} ", notification.title))
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
-            .border_style(Style::default().fg(rgb_to_color(&border_color)));
+            .border_style(Style::default().fg(rgb_to_color(&border_color)))
+            .style(Style::default().bg(Color::Rgb(
+                (bg_color.0 as f32 * 0.1) as u8,
+                (bg_color.1 as f32 * 0.1) as u8,
+                (bg_color.2 as f32 * 0.1) as u8,
+            )));
 
         let text = Text::from(vec![Line::from(Span::styled(
             &notification.message,
@@ -52,5 +57,9 @@ pub fn draw_notification_popup(f: &mut Frame, app_state: &AppState) {
             .wrap(ratatui::widgets::Wrap { trim: true });
 
         f.render_widget(paragraph, popup_area);
+
+        if notification.is_timed_out() {
+            app_state.notification = None;
+        }
     }
 }

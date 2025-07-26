@@ -68,11 +68,11 @@ Yb,  88      `8b                Yb,_    88       Yb, `88        88      d8   8b
      88""""Yb,     ,ggg,    ,ggg,       88            88        88      Y8   8P
      88     "8b   i8" "8i  i8" "8i      88            88        88      `8, ,8'
      88      `8i  I8, ,8I  I8, ,8Igg,   88            88        88 8888  "8,8" 
-     88       Yb, `YbadP'  `YbadP' "Yb,,8P            Y8b,____,d88,`8b,  ,d8b, 
-     88        Y8888P"Y888888P"Y888  "Y8P'             "Y888888P"Y8  "Y88P" "Y8
+     88       Yb, `YbadP'  `YbadP' "Yb,,8P    |\ /|   Y8b,____,d88,`8b,  ,d8b, 
+     88        Y8888P"Y888888P"Y888  "Y8P'    (°w°)     "Y888888P"Y8  "Y88P" "Y8
 "#,
 ];
-pub const FRAME_DURATION_MS: u64 = 100;
+pub const FRAME_DURATION_MS: u64 = 600;
 
 pub fn draw_home_ui<B: Backend>(f: &mut Frame, current_frame_index: usize, theme: &Theme) {
     let size = f.area();
