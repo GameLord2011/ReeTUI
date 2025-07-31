@@ -31,7 +31,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Modifier, Style, Stylize},
     text::{Line, Span, Text},
-    widgets::{Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph},
+    widgets::{Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph, Padding},
 };
 use regex::Regex;
 
@@ -317,7 +317,7 @@ pub fn draw_chat_ui<B: Backend>(
             PopupType::CreateChannel => get_create_channel_popup_size(),
             PopupType::Mentions => get_mentions_popup_size(state),
             PopupType::Emojis => get_emojis_popup_size(state),
-            PopupType::FileManager => (90, 90),
+            PopupType::FileManager => (90, 30),
             PopupType::DownloadProgress => get_download_progress_popup_size(),
             PopupType::DebugJson => get_debug_json_popup_size(),
             _ => (0, 0),
@@ -337,7 +337,21 @@ pub fn draw_chat_ui<B: Backend>(
         };
 
         f.render_widget(Clear, popup_area);
-        f.render_widget(&popup_block_widget, popup_area);
+        if state.popup_state.popup_type == PopupType::FileManager {
+            // Render a transparent block for the file manager popup
+            let file_manager_popup_block = Block::default()
+                .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
+                .style(
+                    Style::default()
+                        .fg(rgb_to_color(&current_theme.colors.popup_border))
+                        .bg(rgb_to_color(&current_theme.colors.background)),
+                )
+                .padding(Padding::new(0, 0, 0, 0));
+            f.render_widget(&file_manager_popup_block, popup_area);
+        } else {
+            f.render_widget(&popup_block_widget, popup_area);
+        }
         match state.popup_state.popup_type {
             PopupType::CreateChannel => {
                 draw_create_channel_popup(
@@ -359,7 +373,6 @@ pub fn draw_chat_ui<B: Backend>(
                 draw_emojis_popup(f, state, popup_area, &popup_block_widget);
             }
             PopupType::FileManager => {
-                let popup_area = centered_rect(80, 80, size);
                 file_manager.ui(f, popup_area, state);
             }
             PopupType::DownloadProgress => {
