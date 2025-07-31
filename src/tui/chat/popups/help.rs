@@ -1,6 +1,6 @@
-use crate::app::AppState;
+use crate::app::app_state::AppState;
 use crate::tui::chat::popups::helpers::render_styled_paragraph;
-use crate::tui::themes::get_theme;
+
 use ratatui::{
     layout::{Alignment, Rect},
     text::Line,
@@ -40,7 +40,7 @@ pub fn get_help_popup_size() -> (u16, u16) {
 }
 
 pub fn draw_help_popup(f: &mut Frame, state: &mut AppState, area: Rect, popup_block: &Block) {
-    let current_theme = get_theme(state.current_theme);
+    let current_theme = &state.current_theme;
     let formatted_commands: Vec<Line> = HELP_COMMANDS.iter().map(|&s| Line::from(s)).collect();
     render_styled_paragraph(
         f,

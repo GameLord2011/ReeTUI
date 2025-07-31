@@ -1,38 +1,125 @@
-mod api;
-mod app;
-mod tui;
+pub mod api;
+pub mod app;
+mod themes;
+pub mod tui;
 
-use app::AppState;
-use log::error;
-
+use crate::app::app_state::AppState;
+use crate::tui::auth::run_auth_page;
+use crate::tui::home::run_home_page;
+use crate::app::TuiPage;
+use crossterm::{
+    execute,
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+};
+use ratatui::{backend::CrosstermBackend, Terminal};
+use std::io::{self};
 use std::sync::Arc;
+use tokio::sync::Mutex;
+use clap::Parser; 
+use log::{LevelFilter};
+use log4rs::append::file::FileAppender;
+use log4rs::config::{Appender, Config, Root};
+use log4rs::encode::pattern::PatternEncoder;
+
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    #[arg(long)]
+    debug: bool,
+}
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let _ = rustls::crypto::ring::default_provider().install_default(); // funny
+async fn main() -> io::Result<()> {
+    let args = Args::parse();
 
-    // Initialize logger
-    let log_file = std::fs::File::create("log.log").expect("Could not create log file");
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("trace"))
-        .target(env_logger::Target::Pipe(Box::new(log_file)))
-        .filter_module("tokio_tungstenite", log::LevelFilter::Off)
-        .filter_module("tungstenite", log::LevelFilter::Off)
-        .init();
-    log::debug!("ReeTUI application started.");
+    let stdout_appender = log4rs::append::console::ConsoleAppender::builder()
+        .encoder(Box::new(PatternEncoder::new("{h({l})} {M} - {m}{n}")))
+        .build();
 
-    let mut app_state = AppState::new();
-    let (width, _height) = crossterm::terminal::size()?;
-    app_state.terminal_width = width;
-    let app_state = Arc::new(tokio::sync::Mutex::new(app_state));
+    if args.debug {
+        log::info!("Debug logging enabled. Logs will be written to log.log");
+        let file_appender = FileAppender::builder()
+            .encoder(Box::new(PatternEncoder::new("{d(%Y-%m-%d %H:%M:%S%.3f)} {h({l})} {M} - {m}{n}")))
+            .build("log.log")
+            .unwrap();
 
-    if let Err(e) = tui::run_tui(app_state.clone()).await {
-        error!("TUI application error: {:?}", e);
+        let config = Config::builder()
+            .appender(Appender::builder().build("stdout", Box::new(stdout_appender)))
+            .appender(Appender::builder().build("file", Box::new(file_appender)))
+            .build(
+                Root::builder()
+                    .appender("stdout")
+                    .appender("file")
+                    .build(LevelFilter::Debug),
+            )
+            .unwrap();
+        log4rs::init_config(config).unwrap();
+    } else {
+        log::info!("Debug logging disabled. No logs will be written to log.log");
+        let config = Config::builder()
+            .appender(Appender::builder().build("stdout", Box::new(stdout_appender)))
+            .build(
+                Root::builder()
+                    .appender("stdout")
+                    .build(LevelFilter::Off),
+            )
+            .unwrap();
+        log4rs::init_config(config).unwrap();
     }
 
-    let cache_dir = std::env::temp_dir().join("ReeTUI_cache");
-    if cache_dir.exists() {
-        let _ = std::fs::remove_dir_all(cache_dir);
-    }
+
+    let task = tokio::task::spawn_blocking(move || {
+        async move {
+            enable_raw_mode()?;
+            let mut stdout = std::io::stdout();
+            execute!(stdout, EnterAlternateScreen)?;
+            let backend = CrosstermBackend::new(stdout);
+            let mut terminal = Terminal::new(backend)?;
+            
+            let app_state = Arc::new(Mutex::new(AppState::new()));
+            let mut current_page = TuiPage::Home;
+
+            loop {
+                let next_page = match current_page {
+                    TuiPage::Home => {
+                        let result = run_home_page(&mut terminal, app_state.clone()).await?;
+                        if let Some(TuiPage::Settings) = result {
+                        }
+                        result
+                    }
+                    TuiPage::Auth => {
+                        let result = Some(run_auth_page(&mut terminal, app_state.clone()).await?);
+                        if let Some(TuiPage::Settings) = result {
+                        }
+                        result
+                    }
+                    TuiPage::Chat => {
+                        let result = tui::chat::run_chat_page(&mut terminal, app_state.clone()).await?;
+                        result
+                    }
+                    TuiPage::Settings => {
+                        tui::settings::run_settings_page(&mut terminal, app_state.clone()).await?
+                    }
+                    TuiPage::Exit => None,
+                };
+        
+                if let Some(page) = next_page {
+                    current_page = page;
+                } else {
+                    break;
+                }
+        
+                if app_state.lock().await.should_exit_app {
+                    break;
+                }
+            }
+            disable_raw_mode()?;
+            execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+            Ok::<(), io::Error>(())
+        }
+    });
+
+    task.await.unwrap().await?;
 
     Ok(())
 }

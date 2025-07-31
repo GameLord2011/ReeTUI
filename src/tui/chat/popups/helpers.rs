@@ -1,4 +1,4 @@
-use crate::tui::themes::{rgb_to_color, Theme};
+use crate::themes::{rgb_to_color, Theme};
 use ratatui::{
     layout::{Alignment, Rect},
     style::{Modifier, Style},
@@ -7,7 +7,6 @@ use ratatui::{
     Frame,
 };
 
-/// funny
 pub fn render_styled_list(
     f: &mut Frame,
     items: &[&str],
@@ -26,11 +25,11 @@ pub fn render_styled_list(
             let is_selected = selected_index.map_or(false, |idx| idx == i);
             let style = if is_selected {
                 Style::default()
-                    .fg(highlight_fg.unwrap_or(rgb_to_color(&theme.button_text_active)))
-                    .bg(highlight_bg.unwrap_or(rgb_to_color(&theme.button_bg_active)))
+                    .fg(highlight_fg.unwrap_or(rgb_to_color(&theme.colors.button_text_active)))
+                    .bg(highlight_bg.unwrap_or(rgb_to_color(&theme.colors.button_bg_active)))
                     .add_modifier(Modifier::BOLD)
             } else {
-                Style::default().fg(rgb_to_color(&theme.text))
+                Style::default().fg(rgb_to_color(&theme.colors.text))
             };
             ListItem::new(item).style(style)
         })
@@ -46,8 +45,8 @@ pub fn render_styled_list(
     list_widget = list_widget.highlight_style(
         Style::default()
             .add_modifier(Modifier::REVERSED)
-            .fg(highlight_fg.unwrap_or(rgb_to_color(&theme.button_text_active)))
-            .bg(highlight_bg.unwrap_or(rgb_to_color(&theme.button_bg_active))),
+            .fg(highlight_fg.unwrap_or(rgb_to_color(&theme.colors.button_text_active)))
+            .bg(highlight_bg.unwrap_or(rgb_to_color(&theme.colors.button_bg_active))),
     );
     if let Some(symbol) = highlight_symbol {
         list_widget = list_widget.highlight_symbol(symbol);
@@ -55,7 +54,6 @@ pub fn render_styled_list(
     f.render_stateful_widget(list_widget, area, &mut list_state);
 }
 
-/// Helper to render a styled paragraph
 pub fn render_styled_paragraph(
     f: &mut Frame,
     lines: Vec<Line>,
@@ -72,7 +70,7 @@ pub fn render_styled_paragraph(
     if let Some(fg_color) = fg {
         paragraph = paragraph.style(Style::default().fg(fg_color));
     } else {
-        paragraph = paragraph.style(Style::default().fg(rgb_to_color(&theme.text)));
+        paragraph = paragraph.style(Style::default().fg(rgb_to_color(&theme.colors.text)));
     }
     f.render_widget(paragraph, area);
 }
@@ -95,12 +93,12 @@ pub fn draw_dialog_popup(
         Line::from(""),
         Line::from(Line::styled(
             title,
-            Style::default().fg(rgb_to_color(&theme.popup_text)),
+            Style::default().fg(rgb_to_color(&theme.colors.popup_text)),
         )),
         Line::from(""),
         Line::from(Line::styled(
             hint,
-            Style::default().fg(rgb_to_color(&theme.accent)),
+            Style::default().fg(rgb_to_color(&theme.colors.accent)),
         )),
     ])
     .alignment(Alignment::Center);

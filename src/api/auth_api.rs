@@ -1,11 +1,9 @@
 use crate::api::error::AuthError;
-use crate::api::models::AuthRequest;
-use crate::api::models::RegisterRequest;
-use crate::api::models::TokenResponse;
+use crate::api::models::{AuthRequest, RegisterRequest, TokenResponse};
 use reqwest::Client;
 use reqwest::StatusCode;
 
-const API_BASE_URL: &str = "https:back.reetui.hackclub.app";
+const API_BASE_URL: &str = "https://back.reetui.hackclub.app";
 
 pub async fn register(
     client: &Client,
@@ -13,8 +11,7 @@ pub async fn register(
     password: &str,
     icon: &str,
 ) -> Result<TokenResponse, AuthError> {
-    let endpoint = format!("{}/auth/register", API_BASE_URL); // funny
-                                                              // meow
+    let endpoint = format!("{}/auth/register", API_BASE_URL);
     let payload = RegisterRequest {
         username,
         password,
@@ -33,7 +30,8 @@ pub async fn register(
         }
     }
 }
-
+// 󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻󱑻
+// noice
 pub async fn login(
     client: &Client,
     username: &str,
@@ -48,10 +46,7 @@ pub async fn login(
         let full_response_body = response.text().await?.to_string();
         match serde_json::from_str::<TokenResponse>(&full_response_body) {
             Ok(token_response) => Ok(token_response),
-            Err(_e) => {
-                // Removed error logging as per user request
-                Err(AuthError::ServerError(status))
-            }
+            Err(_e) => Err(AuthError::ServerError(status)),
         }
     } else {
         if status == StatusCode::UNAUTHORIZED {

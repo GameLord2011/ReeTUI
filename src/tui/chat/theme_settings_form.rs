@@ -1,20 +1,17 @@
-use crate::tui::themes::ThemeName;
+use crate::themes::ThemeName;
 use ratatui::widgets::ListState;
 
 pub struct ThemeSettingsForm {
     pub selected_theme_index: usize,
     pub themes: Vec<ThemeName>,
     pub list_state: ListState,
-    pub original_theme: ThemeName,
+    pub original_theme: crate::themes::Theme,
 }
 
 impl ThemeSettingsForm {
-    pub fn new(current_theme: ThemeName) -> Self {
+    pub fn new(current_theme: crate::themes::Theme) -> Self {
         let themes = ThemeName::all_themes();
-        let selected_theme_index = themes
-            .iter()
-            .position(|&t| t == current_theme)
-            .unwrap_or(0);
+        let selected_theme_index = themes.iter().position(|&t| t == current_theme.name).unwrap_or(0);
 
         let mut list_state = ListState::default();
         list_state.select(Some(selected_theme_index));

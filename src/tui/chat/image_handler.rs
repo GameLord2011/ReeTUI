@@ -1,5 +1,5 @@
 use crate::api::models::BroadcastMessage;
-use crate::app::AppState;
+use crate::app::app_state::AppState;
 use image::ImageFormat;
 use image::ImageReader;
 use log::{error, info};
@@ -28,7 +28,17 @@ async fn update_and_log_message(
         message.gif_frames.as_ref().map(|f| f.len()).unwrap_or(0),
         message.image_preview.is_some()
     );
+    let channel_id = message.channel_id.clone();
+    let message_id = message
+        .file_id
+        .clone()
+        .unwrap_or_else(|| message.timestamp.to_string());
     state.update_message(message);
+    state
+        .needs_re_render
+        .entry(channel_id)
+        .or_default()
+        .insert(message_id, true);
 }
 
 /// A robust, non-blocking function to execute the chafa command.
@@ -114,11 +124,13 @@ pub async fn process_image_message(
     mut message: BroadcastMessage,
     http_client: &reqwest::Client,
     height: u16,
+    redraw_tx: mpsc::UnboundedSender<String>, // Add redraw_tx here
 ) {
     log::debug!(
-        "process_image_message: file_id={:?} timestamp={}",
+        "process_image_message: file_id={:?} timestamp={} height={}",
         message.file_id,
-        message.timestamp
+        message.timestamp,
+        height
     );
     let file_id = message.file_id.clone().unwrap_or_default();
     let file_name = message.file_name.clone().unwrap_or_default();
@@ -166,21 +178,24 @@ pub async fn process_image_message(
                             )
                             .collect();
                         message.gif_frames = Some(frames_with_delays);
+
                         let animation_state =
                             crate::tui::chat::gif_renderer::GifAnimationState::new(
+                                message.file_id.clone().unwrap_or_default(),
                                 frames.clone(),
                                 delays.clone(),
+                                tokio_util::sync::CancellationToken::new(),
                             );
                         let animation_state_arc =
-                            std::sync::Arc::new(std::sync::Mutex::new(animation_state));
-                        // TODO: Store thread handle in GifAnimationState after spawning animation thread.
-                        let (frame_tx, _frame_rx) = tokio::sync::mpsc::unbounded_channel();
+                            Arc::new(tokio::sync::Mutex::new(animation_state));
                         let thread_handle = crate::tui::chat::gif_renderer::spawn_gif_animation(
+                            app_state.clone(),
                             animation_state_arc.clone(),
-                            frame_tx,
-                        );
+                            redraw_tx.clone(), // Pass redraw_tx here
+                        )
+                        .await;
                         {
-                            let mut state = animation_state_arc.lock().unwrap();
+                            let mut state = animation_state_arc.lock().await;
                             state.thread_handle = Some(thread_handle);
                         }
                         {

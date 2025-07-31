@@ -1,6 +1,6 @@
-use crate::app::AppState;
+use crate::app::app_state::AppState;
 use crate::tui::chat::popups::helpers::{draw_dialog_popup, get_dialog_popup_size};
-use crate::tui::themes::get_theme;
+
 use ratatui::{layout::Rect, widgets::Block, Frame};
 
 const POPUP_TITLE: &str = "Abandon Ship? ";
@@ -16,7 +16,7 @@ pub fn draw_deconnection_popup(
     area: Rect,
     popup_block: &Block,
 ) {
-    let current_theme = get_theme(state.current_theme);
+    let current_theme = &state.current_theme;
     draw_dialog_popup(
         f,
         &current_theme,

@@ -1,15 +1,15 @@
-// funny
-mod events;
+pub mod events;
 pub mod page;
-mod state;
+pub mod state;
 
 use crate::api::auth_api;
-use crate::app::AppState;
+use crate::app::app_state::AppState;
 use crate::tui::auth::events::handle_auth_event;
-use crate::tui::auth::page::{draw_auth_ui, get_validation_error, AuthMode, SelectedField, ICONS};
-use crate::tui::auth::state::AuthState;
-use crate::tui::themes::ThemeName;
-use crate::tui::TuiPage;
+use crate::tui::auth::page::{draw_auth_ui, get_validation_error, ICONS};
+use crate::tui::auth::state::{AuthMode, AuthState, SelectedField};
+use crate::TuiPage;
+use crossterm::event;
+
 use ratatui::Terminal;
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
@@ -21,19 +21,26 @@ pub async fn run_auth_page<B: ratatui::backend::Backend>(
     app_state: Arc<tokio::sync::Mutex<AppState>>,
 ) -> io::Result<TuiPage> {
     let mut auth_state = AuthState::new();
-    let current_theme = ThemeName::CatppuccinMocha;
+    let mut settings_state = {
+        let state = app_state.lock().await;
+        crate::tui::settings::state::SettingsState::new(
+            state.themes.keys().cloned().collect(),
+            state.current_theme.name.clone(),
+            state.username.as_deref().unwrap_or(""),
+            state.user_icon.as_deref().unwrap_or(""),
+            state.settings_main_selection,
+            state.settings_focused_pane,
+        )
+    };
     let client = reqwest::Client::new();
-    loop {
-        if auth_state.selected_icon_index >= ICONS.len() {
-            auth_state.selected_icon_index = ICONS.len() - 1;
-        }
+    terminal.show_cursor()?;
 
-        let msg_to_draw_guard = auth_state.message_state.lock().await;
-        let msg_to_draw = msg_to_draw_guard.clone();
-        drop(msg_to_draw_guard);
+    loop {
+        let mut app_state_guard = app_state.lock().await;
 
         terminal.draw(|f| {
-            draw_auth_ui(
+            let msg_to_draw = auth_state.message_state.try_lock().map(|g| g.clone()).unwrap_or_default();
+            draw_auth_ui::<B>(
                 f,
                 &auth_state.username_input,
                 &auth_state.password_input,
@@ -41,172 +48,164 @@ pub async fn run_auth_page<B: ratatui::backend::Backend>(
                 &auth_state.current_mode,
                 &auth_state.selected_field,
                 &msg_to_draw,
-                current_theme,
+                &app_state_guard.current_theme,
+                &app_state_guard,
+                &mut settings_state,
             );
-
-            match auth_state.selected_field {
-                SelectedField::Username => {
-                    let cursor_x = f.area().x
-                        + (f.area().width.saturating_sub(35)) / 2
-                        + 1
-                        + auth_state.username_input.len() as u16;
-                    let cursor_y = f.area().y + 1 + 1 + 1 + 1;
-                    f.set_cursor_position((cursor_x, cursor_y));
-                }
-                SelectedField::Password => {
-                    let cursor_x = f.area().x
-                        + (f.area().width.saturating_sub(35)) / 2
-                        + 1
-                        + auth_state.password_input.len() as u16;
-                    let cursor_y = f.area().y + 1 + 1 + 1 + 1 + 3;
-                    f.set_cursor_position((cursor_x, cursor_y));
-                }
-                _ => {}
-            }
         })?;
 
-        match auth_state.selected_field {
-            SelectedField::Username | SelectedField::Password => terminal.show_cursor()?,
-            _ => terminal.hide_cursor()?,
-        }
+        let event = tokio::select! {
+            event_result = tokio::task::spawn_blocking(|| event::poll(Duration::from_millis(16))) => {
+                match event_result {
+                    Ok(Ok(true)) => Some(tokio::task::spawn_blocking(event::read).await.unwrap().unwrap()),
+                    _ => None,
+                }
+            }
+        };
 
-        let event_result = handle_auth_event(
-            Duration::from_millis(50),
-            auth_state.username_input.clone(),
-            auth_state.password_input.clone(),
-            auth_state.selected_icon_index,
-            auth_state.current_mode,
-            auth_state.selected_field,
-            if msg_to_draw.is_empty() {
-                None
+        if let Some(event) = event {
+            if app_state_guard.show_settings {
+                if let event::Event::Key(key) = &event {
+                    if key.code == event::KeyCode::Esc {
+                        app_state_guard.show_settings = false;
+                        continue;
+                    }
+                }
+                if let Some(target_page) = crate::tui::settings::handle_settings_key_event(crate::tui::settings::SettingsEvent::Key(event.clone()), &mut app_state_guard, &mut settings_state) {
+                    if target_page == TuiPage::Auth {
+                        app_state_guard.show_settings = false;
+                    } else if target_page == TuiPage::Exit {
+                        return Ok(TuiPage::Exit);
+                    } else {
+                        return Ok(target_page);
+                    }
+                }
             } else {
-                Some(msg_to_draw.clone())
-            },
-        )?;
-
-        auth_state.username_input = event_result.username_input;
-        auth_state.password_input = event_result.password_input;
-        auth_state.selected_icon_index = event_result.selected_icon_index;
-        auth_state.current_mode = event_result.current_mode;
-        auth_state.selected_field = event_result.selected_field;
-        if let Some(msg) = event_result.message {
-            *auth_state.message_state.lock().await = msg;
-        }
-
-        if let Some(page) = event_result.next_page {
-            return Ok(page);
-        }
-
-        // Handle API calls and validation for Register/Login buttons
-        match auth_state.selected_field {
-            SelectedField::RegisterButton => {
-                if auth_state.current_mode == AuthMode::Register {
-                    let validation_error = get_validation_error(
-                        &auth_state.username_input,
-                        &auth_state.password_input,
-                        &auth_state.current_mode,
-                    );
-                    if let Some(err_msg) = validation_error {
-                        *auth_state.message_state.lock().await = err_msg;
+                if let event::Event::Key(key) = event {
+                    if key.code == event::KeyCode::Char('s') && key.modifiers.contains(event::KeyModifiers::CONTROL) {
+                        app_state_guard.show_settings = true;
                         continue;
                     }
+                }
 
-                    let hashed_password =
-                        format!("{:x}", Sha256::digest(auth_state.password_input.as_bytes()));
-                    *auth_state.message_state.lock().await = "Registering...".to_string();
-                    terminal.draw(|f| {
-                        draw_auth_ui(
-                            f,
-                            &auth_state.username_input,
-                            &auth_state.password_input,
-                            auth_state.selected_icon_index,
-                            &auth_state.current_mode,
-                            &auth_state.selected_field,
-                            &msg_to_draw,
-                            current_theme,
-                        );
-                    })?;
+                let event_result = handle_auth_event(
+                    event,
+                    &mut auth_state.username_input,
+                    &mut auth_state.password_input,
+                    auth_state.selected_icon_index,
+                    auth_state.current_mode,
+                    auth_state.selected_field,
+                    None,
+                    app_state.clone(),
+                )?;
 
-                    match auth_api::register(
-                        &client,
-                        &auth_state.username_input,
-                        &hashed_password,
-                        ICONS[auth_state.selected_icon_index],
-                    )
-                    .await
-                    {
-                        Ok(token_response) => {
-                            let mut state = app_state.lock().await;
-                            state.set_user_auth(
-                                token_response.token,
-                                auth_state.username_input.clone(),
-                                token_response.icon,
-                            );
-                            return Ok(TuiPage::Home);
+                auth_state.selected_icon_index = event_result.selected_icon_index;
+                auth_state.current_mode = event_result.current_mode;
+                auth_state.selected_field = event_result.selected_field;
+                auth_state.update_focus();
+                if let Some(msg) = event_result.message {
+                    *auth_state.message_state.lock().await = msg;
+                }
+
+                if let Some(page) = event_result.next_page {
+                    return Ok(page);
+                }
+
+                if event_result.should_submit {
+                    match auth_state.selected_field {
+                        SelectedField::RegisterButton => {
+                            if auth_state.current_mode == AuthMode::Register {
+                                let validation_error = get_validation_error(
+                                    &auth_state.username_input,
+                                    &auth_state.password_input,
+                                    &auth_state.current_mode,
+                                );
+                                if let Some(err_msg) = validation_error {
+                                    *auth_state.message_state.lock().await = err_msg;
+                                    continue;
+                                }
+
+                                let hashed_password = format!(
+                                    "{:x}",
+                                    Sha256::digest(auth_state.password_input.text.as_bytes())
+                                );
+                                *auth_state.message_state.lock().await = "Registering...".to_string();
+
+                                match auth_api::register(
+                                    &client,
+                                    &auth_state.username_input.text,
+                                    &hashed_password,
+                                    ICONS[auth_state.selected_icon_index],
+                                )
+                                .await
+                                {
+                                    Ok(token_response) => {
+                                        app_state_guard.set_user_auth(
+                                            token_response.token,
+                                            auth_state.username_input.text.clone(),
+                                            token_response.icon,
+                                        );
+                                        return Ok(TuiPage::Chat);
+                                    }
+                                    Err(e) => {
+                                        *auth_state.message_state.lock().await = e.to_string();
+                                        let msg_clone = auth_state.message_state.clone();
+                                        tokio::spawn(async move {
+                                            sleep(Duration::from_secs(3)).await;
+                                            *msg_clone.lock().await = String::new();
+                                        });
+                                    }
+                                }
+                            }
                         }
-                        Err(e) => {
-                            *auth_state.message_state.lock().await = e.to_string();
-                            let msg_clone = auth_state.message_state.clone();
-                            tokio::spawn(async move {
-                                sleep(Duration::from_secs(3)).await;
-                                *msg_clone.lock().await = String::new();
-                            });
+                        SelectedField::LoginButton => {
+                            if auth_state.current_mode == AuthMode::Login {
+                                let validation_error = get_validation_error(
+                                    &auth_state.username_input,
+                                    &auth_state.password_input,
+                                    &auth_state.current_mode,
+                                );
+                                if let Some(err_msg) = validation_error {
+                                    *auth_state.message_state.lock().await = err_msg;
+                                    continue;
+                                }
+
+                                *auth_state.message_state.lock().await = "Logging in...".to_string();
+
+                                let hashed_password = format!(
+                                    "{:x}",
+                                    Sha256::digest(auth_state.password_input.text.as_bytes())
+                                );
+                                match auth_api::login(
+                                    &client,
+                                    &auth_state.username_input.text,
+                                    &hashed_password,
+                                )
+                                .await
+                                {
+                                    Ok(token_response) => {
+                                        app_state_guard.set_user_auth(
+                                            token_response.token,
+                                            auth_state.username_input.text.clone(),
+                                            token_response.icon,
+                                        );
+                                        return Ok(TuiPage::Chat);
+                                    }
+                                    Err(e) => {
+                                        *auth_state.message_state.lock().await = e.to_string();
+                                        let msg_clone = auth_state.message_state.clone();
+                                        tokio::spawn(async move {
+                                            sleep(Duration::from_secs(3)).await;
+                                            *msg_clone.lock().await = String::new();
+                                        });
+                                    }
+                                }
+                            }
                         }
+                        _ => {}
                     }
                 }
             }
-            SelectedField::LoginButton => {
-                if auth_state.current_mode == AuthMode::Login {
-                    let validation_error = get_validation_error(
-                        &auth_state.username_input,
-                        &auth_state.password_input,
-                        &auth_state.current_mode,
-                    );
-                    if let Some(err_msg) = validation_error {
-                        *auth_state.message_state.lock().await = err_msg;
-                        continue;
-                    }
-
-                    *auth_state.message_state.lock().await = "Logging in...".to_string();
-                    terminal.draw(|f| {
-                        draw_auth_ui(
-                            f,
-                            &auth_state.username_input,
-                            &auth_state.password_input,
-                            auth_state.selected_icon_index,
-                            &auth_state.current_mode,
-                            &auth_state.selected_field,
-                            &msg_to_draw,
-                            current_theme,
-                        );
-                    })?;
-
-                    let hashed_password =
-                        format!("{:x}", Sha256::digest(auth_state.password_input.as_bytes()));
-                    match auth_api::login(&client, &auth_state.username_input, &hashed_password)
-                        .await
-                    {
-                        Ok(token_response) => {
-                            let mut state = app_state.lock().await;
-                            state.set_user_auth(
-                                token_response.token,
-                                auth_state.username_input.clone(),
-                                token_response.icon,
-                            );
-                            return Ok(TuiPage::Home);
-                        }
-                        Err(e) => {
-                            *auth_state.message_state.lock().await = e.to_string();
-                            let msg_clone = auth_state.message_state.clone();
-                            tokio::spawn(async move {
-                                sleep(Duration::from_secs(3)).await;
-                                *msg_clone.lock().await = String::new();
-                            });
-                        }
-                    }
-                }
-            }
-            _ => {}
         }
     }
 }

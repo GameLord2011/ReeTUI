@@ -1,10 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
-// its more undertsanble without comments
-// gonna comments about it
-// no comment about
-
 #[derive(Serialize)]
 pub struct AuthRequest<'a> {
     pub username: &'a str,
@@ -29,8 +25,6 @@ pub struct ChannelCommand<'a> {
     pub channel_id: &'a str,
     pub content: &'a str,
 }
-
-
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BroadcastMessage {

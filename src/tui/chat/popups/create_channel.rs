@@ -1,20 +1,20 @@
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
-    text::{Line, Span, Text}, // funny
+    text::{Line, Span, Text},
     widgets::{Block, Paragraph},
     Frame,
 };
 
-use crate::app::AppState;
+use crate::app::app_state::AppState;
+use crate::themes::rgb_to_color;
 use crate::tui::chat::create_channel_form::{CreateChannelForm, CreateChannelInput, ICONS};
-use crate::tui::themes::{get_theme, rgb_to_color};
 
 pub fn get_create_channel_popup_size() -> (u16, u16) {
     let hint_text = "(Enter) Seal the Deal  / (Esc) Abort Mission ";
     let icons_row_width = (ICONS.len() * 3) as u16;
-    let height = 11; // Simplified: 3 (name) + 3 (icon) + 1 (spacer) + 3 (button) + 1 (hint)
-    let width = hint_text.len().max(icons_row_width as usize) as u16 + 4; // +4 for borders and margin
+    let height = 11;
+    let width = hint_text.len().max(icons_row_width as usize) as u16 + 4;
     (width, height)
 }
 
@@ -25,7 +25,7 @@ pub fn draw_create_channel_popup(
     create_channel_form: &mut CreateChannelForm,
     popup_block: &Block,
 ) {
-    let current_theme = get_theme(state.current_theme);
+    let current_theme = &state.current_theme;
     let inner_area = popup_block.inner(area);
 
     let form_layout = Layout::default()
@@ -40,7 +40,7 @@ pub fn draw_create_channel_popup(
         .margin(1)
         .split(inner_area);
 
-    let icons_row_width = (ICONS.len() * 3) as u16; // Calculated once
+    let icons_row_width = (ICONS.len() * 3) as u16;
 
     let name_area_h = Layout::default()
         .direction(Direction::Horizontal)
@@ -57,17 +57,17 @@ pub fn draw_create_channel_popup(
         .title("Name Your Digital Den ")
         .style(
             if create_channel_form.input_focused == CreateChannelInput::Name {
-                Style::default().fg(rgb_to_color(&current_theme.input_border_active))
+                Style::default().fg(rgb_to_color(&current_theme.colors.input_border_active))
             } else {
-                Style::default().fg(rgb_to_color(&current_theme.input_border_inactive))
+                Style::default().fg(rgb_to_color(&current_theme.colors.input_border_inactive))
             },
         );
-    let name_paragraph = Paragraph::new(Text::from(create_channel_form.name.as_str())) // Optimized: avoid clone
+    let name_paragraph = Paragraph::new(Text::from(create_channel_form.name.as_str()))
         .style(
             if create_channel_form.input_focused == CreateChannelInput::Name {
-                Style::default().fg(rgb_to_color(&current_theme.input_text_active))
+                Style::default().fg(rgb_to_color(&current_theme.colors.input_text_active))
             } else {
-                Style::default().fg(rgb_to_color(&current_theme.input_text_inactive))
+                Style::default().fg(rgb_to_color(&current_theme.colors.input_text_inactive))
             },
         )
         .block(name_block);
@@ -79,9 +79,9 @@ pub fn draw_create_channel_popup(
         .title(" Pick a Pixel Pal")
         .style(
             if create_channel_form.input_focused == CreateChannelInput::Icon {
-                Style::default().fg(rgb_to_color(&current_theme.input_border_active))
+                Style::default().fg(rgb_to_color(&current_theme.colors.input_border_active))
             } else {
-                Style::default().fg(rgb_to_color(&current_theme.input_border_inactive))
+                Style::default().fg(rgb_to_color(&current_theme.colors.input_border_inactive))
             },
         );
 
@@ -109,13 +109,13 @@ pub fn draw_create_channel_popup(
             spans.push(Span::styled(
                 icon_char,
                 Style::default()
-                    .fg(rgb_to_color(&current_theme.accent))
+                    .fg(rgb_to_color(&current_theme.colors.accent))
                     .add_modifier(Modifier::BOLD),
             ));
         } else {
             spans.push(Span::styled(
                 icon_char,
-                Style::default().fg(rgb_to_color(&current_theme.dim)),
+                Style::default().fg(rgb_to_color(&current_theme.colors.dim)),
             ));
         }
         if i != center as isize + display_range as isize {
@@ -130,9 +130,9 @@ pub fn draw_create_channel_popup(
 
     let create_button_style =
         if create_channel_form.input_focused == CreateChannelInput::CreateButton {
-            Style::default().fg(rgb_to_color(&current_theme.button_text_active))
+            Style::default().fg(rgb_to_color(&current_theme.colors.button_text_active))
         } else {
-            Style::default().fg(rgb_to_color(&current_theme.button))
+            Style::default().fg(rgb_to_color(&current_theme.colors.button))
         };
     let create_button_paragraph = Paragraph::new(Line::from(Span::styled(
         "Forge Channel! ",
@@ -143,11 +143,11 @@ pub fn draw_create_channel_popup(
         Block::default()
             .borders(ratatui::widgets::Borders::ALL)
             .border_type(ratatui::widgets::BorderType::Rounded)
-            .style(
+            .border_style(
                 if create_channel_form.input_focused == CreateChannelInput::CreateButton {
-                    Style::default().fg(rgb_to_color(&current_theme.input_border_active))
+                    Style::default().fg(rgb_to_color(&current_theme.colors.accent))
                 } else {
-                    Style::default().fg(rgb_to_color(&current_theme.input_border_inactive))
+                    Style::default().fg(rgb_to_color(&current_theme.colors.border))
                 },
             ),
     );
@@ -163,7 +163,7 @@ pub fn draw_create_channel_popup(
 
     let hint_paragraph = Paragraph::new(Line::from(Span::styled(
         "(Enter) Seal the Deal  / (Esc) Abort Mission ",
-        Style::default().fg(rgb_to_color(&current_theme.accent)),
+        Style::default().fg(rgb_to_color(&current_theme.colors.accent)),
     )))
     .alignment(ratatui::layout::Alignment::Center);
     f.render_widget(hint_paragraph, form_layout[4]);

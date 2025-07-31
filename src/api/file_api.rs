@@ -3,7 +3,7 @@ use reqwest::{multipart, Client};
 use std::fmt;
 use std::path::PathBuf;
 use tokio::fs::File;
-use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
 
 const API_BASE_URL: &str = "https://back.reetui.hackclub.app";
@@ -52,22 +52,20 @@ pub async fn upload_file(
 ) -> Result<String, FileApiError> {
     let file_name = file_path
         .file_name()
-        .ok_or(FileApiError::Other("Invalid file name".to_string()))?
+        .ok_or_else(|| FileApiError::Other("Invalid file name".to_string()))?
         .to_str()
-        .ok_or(FileApiError::Other("Invalid file name".to_string()))?
+        .ok_or_else(|| FileApiError::Other("Invalid file name".to_string()))?
         .to_string();
     let file_extension = file_path
         .extension()
         .and_then(|ext| ext.to_str())
         .unwrap_or("")
-        .to_string(); // funny
-    let mut file = File::open(&file_path).await?;
-    let mut buffer = Vec::new();
-    file.read_to_end(&mut buffer).await?;
+        .to_string();
+    let file = tokio::fs::read(&file_path).await?;
 
     let form = multipart::Form::new()
-        .part("file", multipart::Part::bytes(buffer).file_name(file_name))
-        .part("file_extension", multipart::Part::text(file_extension)); // meow
+        .part("file", multipart::Part::bytes(file).file_name(file_name))
+        .part("file_extension", multipart::Part::text(file_extension));
 
     let response = client
         .post(&format!("{}/files/upload/{}", API_BASE_URL, channel_id))
@@ -78,12 +76,11 @@ pub async fn upload_file(
 
     if response.status().is_success() {
         let file_id = response.text().await?;
-        // Send 100% progress on successful upload
-        let _ = progress_sender.send((file_id.clone(), 100)); // funny
+        let _ = progress_sender.send((file_id.clone(), 100));
         Ok(file_id)
     } else {
         let status = response.status();
-        let _error_text = response.text().await?; // meow
+        let _error_text = response.text().await?;
         Err(FileApiError::RequestFailedStatus(status))
     }
 }
@@ -108,14 +105,14 @@ pub async fn download_file(
         let file_path = temp_dir.join(file_name);
         let mut file = File::create(&file_path).await?;
 
-        while let Some(chunk) = stream.next().await {
-            let chunk = chunk?;
-            tokio::io::AsyncWriteExt::write_all(&mut file, &chunk).await?;
+        while let Some(chunk_result) = stream.next().await {
+            let chunk = chunk_result.unwrap();
+            file.write_all(&chunk).await?;
             downloaded_size += chunk.len() as u64;
             let progress = ((downloaded_size as f64 / total_size as f64) * 100.0) as u8;
             let _ = progress_sender.send((file_id.to_string(), progress));
         }
-        let _ = progress_sender.send((file_id.to_string(), 100)); // funny
+        let _ = progress_sender.send((file_id.to_string(), 100));
         Ok(file_path)
     } else {
         Err(FileApiError::RequestFailedStatus(response.status()))

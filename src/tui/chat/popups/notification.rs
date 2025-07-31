@@ -6,20 +6,18 @@ use ratatui::{
     Frame,
 };
 
-use crate::{
-    app::{AppState, NotificationType},
-    tui::themes::{get_theme, rgb_to_color},
-};
+use crate::app::{AppState, NotificationType};
+use crate::themes::rgb_to_color;
 
 pub fn draw_notification_popup(f: &mut Frame, app_state: &mut AppState) {
     if let Some(notification) = &app_state.notification {
-        let theme = get_theme(app_state.current_theme);
+        let theme = &app_state.current_theme;
         let popup_area = {
-            let parent_area = f.area();
+            let _area = f.area();
             let popup_width = 40;
             let popup_height = 5;
             Rect::new(
-                parent_area.width.saturating_sub(popup_width + 1),
+                f.area().width.saturating_sub(popup_width + 1),
                 1,
                 popup_width,
                 popup_height,
@@ -29,10 +27,10 @@ pub fn draw_notification_popup(f: &mut Frame, app_state: &mut AppState) {
         f.render_widget(Clear, popup_area);
 
         let (border_color, bg_color) = match notification.notification_type {
-            NotificationType::Info => (theme.accent, theme.accent),
-            NotificationType::Warning => (theme.button, theme.button),
-            NotificationType::Error => (theme.error, theme.error),
-            NotificationType::Success => (theme.border_focus, theme.border_focus),
+            NotificationType::Info => (theme.colors.accent, theme.colors.accent),
+            NotificationType::Warning => (theme.colors.button, theme.colors.button),
+            NotificationType::Error => (theme.colors.error, theme.colors.error),
+            NotificationType::Success => (theme.colors.border_focus, theme.colors.border_focus),
         };
 
         let popup_block = Block::default()
@@ -48,7 +46,7 @@ pub fn draw_notification_popup(f: &mut Frame, app_state: &mut AppState) {
 
         let text = Text::from(vec![Line::from(Span::styled(
             &notification.message,
-            Style::default().fg(rgb_to_color(&theme.text)),
+            Style::default().fg(rgb_to_color(&theme.colors.text)),
         ))]);
 
         let paragraph = Paragraph::new(text)

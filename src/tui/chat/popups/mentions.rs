@@ -5,8 +5,8 @@ use ratatui::{
     Frame,
 };
 
-use crate::app::AppState;
-use crate::tui::themes::{get_theme, rgb_to_color};
+use crate::app::app_state::AppState;
+use crate::themes::rgb_to_color;
 
 // funny
 fn get_filtered_users<'a>(state: &'a AppState) -> Vec<&'a String> {
@@ -31,12 +31,12 @@ pub fn get_mentions_popup_size(state: &AppState) -> (u16, u16) {
         .map(|user| user.len())
         .max()
         .unwrap_or(20) as u16
-        + 4; // +4 for borders and padding
+        + 4;
     (width, height)
 }
 
 pub fn draw_mentions_popup(f: &mut Frame, state: &mut AppState, area: Rect, popup_block: &Block) {
-    let current_theme = get_theme(state.current_theme);
+    let current_theme = &state.current_theme;
     let inner_area = popup_block.inner(area);
 
     let filtered_users = get_filtered_users(state); // Call the helper once
@@ -48,13 +48,13 @@ pub fn draw_mentions_popup(f: &mut Frame, state: &mut AppState, area: Rect, popu
             let is_selected = i == state.selected_mention_index;
             let style = if is_selected {
                 Style::default()
-                    .fg(rgb_to_color(&current_theme.button_text_active))
-                    .bg(rgb_to_color(&current_theme.button_bg_active))
+                    .fg(rgb_to_color(&current_theme.colors.button_text_active))
+                    .bg(rgb_to_color(&current_theme.colors.button_bg_active))
                     .add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
-                    .fg(rgb_to_color(&current_theme.text))
-                    .bg(rgb_to_color(&current_theme.dim)) // Applied background color based on "text color of the demi circle"
+                    .fg(rgb_to_color(&current_theme.colors.text))
+                    .bg(rgb_to_color(&current_theme.colors.dim)) // Applied background color based on "text color of the demi circle"
             };
             ListItem::new(user.as_str()).style(style) // Use as_str() to avoid cloning String here
         })
@@ -65,8 +65,8 @@ pub fn draw_mentions_popup(f: &mut Frame, state: &mut AppState, area: Rect, popu
         .highlight_style(
             Style::default()
                 .add_modifier(Modifier::REVERSED)
-                .fg(rgb_to_color(&current_theme.button_text_active))
-                .bg(rgb_to_color(&current_theme.button_bg_active)),
+                .fg(rgb_to_color(&current_theme.colors.button_text_active))
+                .bg(rgb_to_color(&current_theme.colors.button_bg_active)),
         )
         .highlight_symbol(" ");
 

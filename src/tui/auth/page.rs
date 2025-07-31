@@ -1,48 +1,27 @@
-// funny
-// --- BEGIN MOVED CODE ---
-
-use crate::tui::themes::interpolate_rgb;
-use crate::tui::themes::{get_theme, rgb_to_color, Theme, ThemeName};
+use crate::themes::{interpolate_rgb, rgb_to_color, Theme};
+use crate::tui::auth::state::{AuthMode, SelectedField};
 use ratatui::{
-    layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Modifier, Style},
-    text::{Line, Span},
+    prelude::*,
     widgets::{Block, BorderType, Borders, Clear, Paragraph},
-    Frame,
 };
-
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum AuthMode {
-    Register,
-    Login,
-}
-
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum SelectedField {
-    Username,
-    Password,
-    Icon,
-    RegisterButton,
-    LoginButton,
-}
 
 pub const ICONS: [&str; 11] = ["󰱨", "󰱩", "󱃞", "󰱫", "󰱬", "󰱮", "󰱰", "󰽌", "󰱱", "󰱸", "󰇹"];
 
 pub fn get_validation_error(
-    username_input: &str,
-    password_input: &str,
+    username_input: &TextInput,
+    password_input: &TextInput,
     _current_mode: &AuthMode,
 ) -> Option<String> {
-    if username_input.trim().is_empty() {
+    if username_input.text.trim().is_empty() {
         return Some("Username cannot be empty.".to_string());
     }
-    if username_input.contains(' ') {
+    if username_input.text.contains(' ') {
         return Some("Username cannot contain spaces.".to_string());
     }
-    if password_input.trim().is_empty() {
+    if password_input.text.trim().is_empty() {
         return Some("Password cannot be empty.".to_string());
     }
-    if password_input.contains(' ') {
+    if password_input.text.contains(' ') {
         return Some("Password cannot contain spaces.".to_string());
     }
     None
@@ -52,31 +31,31 @@ pub fn draw_ascii_title(f: &mut Frame, area: Rect, theme: &Theme, current_mode: 
     let ascii_art_str = match current_mode {
         AuthMode::Register => {
             r#"
- ███████████                      ███           █████                      
-░░███░░░░░███                    ░░░           ░░███                       
- ░███    ░███   ██████   ███████ ████   █████  ███████    ██████  ████████ 
- ░██████████   ███░░███ ███░░███░░███  ███░░  ░░░███░    ███░░███░░███░░███
- ░███░░░░░███ ░███████ ░███ ░███ ░███ ░░█████   ░███    ░███████  ░███ ░░░ 
- ░███    ░███ ░███░░░  ░███ ░███ ░███  ░░░░███  ░███ ███░███░░░   ░███     
- █████   █████░░██████ ░░███████ █████ ██████   ░░█████ ░░██████  █████    
-░░░░░   ░░░░░  ░░░░░░   ░░░░░███░░░░░ ░░░░░░     ░░░░░   ░░░░░░  ░░░░░     
-                         ███ ░███                                           
-                        ░░██████                                            
-                         ░░░░░░                                             "#
+
+
+
+██████╗ ███████╗ ██████╗ ██╗███████╗████████╗███████╗██████╗ 
+██╔══██╗██╔════╝██╔════╝ ██║██╔════╝╚══██╔══╝██╔════╝██╔══██╗
+██████╔╝█████╗  ██║  ███╗██║███████╗   ██║   █████╗  ██████╔╝
+██╔══██╗██╔══╝  ██║   ██║██║╚════██║   ██║   ██╔══╝  ██╔══██╗
+██║  ██║███████╗╚██████╔╝██║███████║   ██║   ███████╗██║  ██║
+╚═╝  ╚═╝╚══════╝ ╚═════╝ ╚═╝╚══════╝   ╚═╝   ╚══════╝╚═╝  ╚═╝
+
+"#
         }
         AuthMode::Login => {
             r#"
- █████                          ███            
-░░███                          ░░░             
- ░███         ██████   ███████ ████  ████████  
- ░███        ███░░███ ███░░███░░███ ░░███░░███ 
- ░███       ░███ ░███░███ ░███ ░███  ░███ ░███ 
- ░███      █░███ ░███░███ ░███ ░███  ░███ ░███ 
- ███████████░░██████ ░░███████ █████ ████ █████
-░░░░░░░░░░░  ░░░░░░   ░░░░░███░░░░░ ░░░░ ░░░░░ 
-                       ███ ░███                 
-                      ░░██████                  
-                       ░░░░░░                   "#
+
+
+
+██╗      ██████╗  ██████╗ ██╗███╗   ██╗
+██║     ██╔═══██╗██╔════╝ ██║████╗  ██║
+██║     ██║   ██║██║  ███╗██║██╔██╗ ██║
+██║     ██║   ██║██║   ██║██║██║╚██╗██║
+███████╗╚██████╔╝╚██████╔╝██║██║ ╚████║
+╚══════╝ ╚═════╝  ╚═════╝ ╚═╝╚═╝  ╚═══╝
+
+"#
         }
     };
     let lines: Vec<&str> = ascii_art_str
@@ -96,8 +75,8 @@ pub fn draw_ascii_title(f: &mut Frame, area: Rect, theme: &Theme, current_mode: 
         let fraction_y = line_idx as f32 / num_lines_for_gradient;
         for ch in line_str.chars() {
             let interpolated_rgb = interpolate_rgb(
-                &theme.title_gradient_start,
-                &theme.title_gradient_end,
+                &theme.colors.title_gradient_start,
+                &theme.colors.title_gradient_end,
                 fraction_y,
             );
             spans.push(Span::styled(
@@ -119,95 +98,119 @@ pub fn draw_ascii_title(f: &mut Frame, area: Rect, theme: &Theme, current_mode: 
     f.render_widget(title_paragraph, title_area);
 }
 
-#[warn(clippy::too_many_arguments)]
-pub fn draw_auth_ui(
+use crate::tui::text_input::TextInput;
+
+pub fn draw_auth_ui<'a, B: Backend>(
     f: &mut Frame,
-    username_input: &str,
-    password_input: &str,
+    username_input: &'a TextInput,
+    password_input: &'a TextInput,
     selected_icon_index: usize,
     current_mode: &AuthMode,
     selected_field: &SelectedField,
     message: &str,
-    theme_name: ThemeName,
+    theme: &Theme,
+    app_state: &crate::app::app_state::AppState,
+    settings_state: &mut crate::tui::settings::state::SettingsState,
 ) {
     let size = f.area();
-    let theme = get_theme(theme_name);
-    f.render_widget(
-        Block::default().style(Style::default().fg(rgb_to_color(&theme.text))),
-        f.area(),
-    );
-    draw_ascii_title(f, size, &theme, current_mode);
+    let background = ratatui::widgets::Block::default()
+        .style(Style::default().bg(rgb_to_color(&theme.colors.background)));
+    f.render_widget(background, size);
+
     let ascii_art_str = match current_mode {
         AuthMode::Register => {
             r#"
- ███████████                      ███           █████                      
-░░███░░░░░███                    ░░░           ░░███                       
- ░███    ░███   ██████   ███████ ████   █████  ███████    ██████  ████████ 
- ░██████████   ███░░███ ███░░███░░███  ███░░  ░░░███░    ███░░███░░███░░███
- ░███░░░░░███ ░███████ ░███ ░███ ░███ ░░█████   ░███    ░███████  ░███ ░░░ 
- ░███    ░███ ░███░░░  ░███ ░███ ░███  ░░░░███  ░███ ███░███░░░   ░███     
- █████   █████░░██████ ░░███████ █████ ██████   ░░█████ ░░██████  █████    
-░░░░░   ░░░░░  ░░░░░░   ░░░░░███░░░░░ ░░░░░░     ░░░░░   ░░░░░░  ░░░░░     
-                          ███ ░███                                           
-                         ░░██████                                            
-                          ░░░░░░                                             "#
+██████╗ ███████╗ ██████╗ ██╗███████╗████████╗███████╗██████╗ 
+██╔══██╗██╔════╝██╔════╝ ██║██╔════╝╚══██╔══╝██╔════╝██╔══██╗
+██████╔╝█████╗  ██║  ███╗██║███████╗   ██║   █████╗  ██████╔╝
+██╔══██╗██╔══╝  ██║   ██║██║╚════██║   ██║   ██╔══╝  ██╔══██╗
+██║  ██║███████╗╚██████╔╝██║███████║   ██║   ███████╗██║  ██║
+╚═╝  ╚═╝╚══════╝ ╚═════╝ ╚═╝╚══════╝   ╚═╝   ╚══════╝╚═╝  ╚═╝
+"#
         }
         AuthMode::Login => {
             r#"
- █████                          ███            
-░░███                          ░░░             
- ░███         ██████   ███████ ████  ████████  
- ░███        ███░░███ ███░░███░░███ ░░███░░███ 
- ░███       ░███ ░███░███ ░███ ░███  ░███ ░███ 
- ░███      █░███ ░███░███ ░███ ░███  ░███ ░███ 
- ███████████░░██████ ░░███████ █████ ████ █████
-░░░░░░░░░░░  ░░░░░░   ░░░░░███░░░░░ ░░░░ ░░░░░ 
-                        ███ ░███                 
-                       ░░██████                  
-                        ░░░░░░                   "#
+██╗      ██████╗  ██████╗ ██╗███╗   ██╗
+██║     ██╔═══██╗██╔════╝ ██║████╗  ██║
+██║     ██║   ██║██║  ███╗██║██╔██╗ ██║
+██║     ██║   ██║██║   ██║██║██║╚██╗██║
+███████╗╚██████╔╝╚██████╔╝██║██║ ╚████║
+╚══════╝ ╚═════╝  ╚═════╝ ╚═╝╚═╝  ╚═══╝
+"#
         }
     };
-    let title_height = ascii_art_str.trim().lines().count() as u16;
-    let margin_after_title: u16 = 2;
+    let title_height = ascii_art_str.trim().lines().count() as u16 + 2;
+
+    let main_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(title_height),
+            Constraint::Min(0),
+            Constraint::Length(4),
+        ])
+        .split(size);
+
+    draw_ascii_title(f, main_chunks[0], &theme, current_mode);
+
     let visible_inputs = if *current_mode == AuthMode::Register {
         3
     } else {
         2
     };
+
+    let input_height = 3;
+    let button_height = 3;
+
+    let total_form_height = (visible_inputs as u16 * input_height) + button_height + 2;
     let main_box_width = 35;
-    let content_height = (visible_inputs as u16 * 3) + 3;
-    let main_box_height = content_height + 2;
-    let main_box_x = size.x + (size.width.saturating_sub(main_box_width)) / 2;
-    let main_box_y = size.y + title_height + margin_after_title;
-    let main_area = Rect::new(
-        main_box_x,
-        main_box_y,
-        main_box_width.min(size.width),
-        main_box_height.min(size.height.saturating_sub(main_box_y)),
-    );
+
+    let main_box_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Min(0),
+            Constraint::Length(total_form_height),
+            Constraint::Min(0),
+        ])
+        .split(main_chunks[1]);
+
+    let centered_form_chunk = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Min(0),
+            Constraint::Length(main_box_width),
+            Constraint::Min(0),
+        ])
+        .split(main_box_chunks[1]);
+
+    let main_area = centered_form_chunk[1];
+
     f.render_widget(
         Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
-            .border_style(Style::default().fg(rgb_to_color(&theme.border))),
+            .border_style(Style::default().fg(rgb_to_color(&theme.colors.border))),
         main_area,
     );
+
     let inner = Rect {
         x: main_area.x + 1,
         y: main_area.y + 1,
         width: main_area.width.saturating_sub(2),
         height: main_area.height.saturating_sub(2),
     };
+
     let mut constraints = Vec::with_capacity(visible_inputs + 1);
     for _ in 0..visible_inputs {
-        constraints.push(Constraint::Length(3));
+        constraints.push(Constraint::Length(input_height));
     }
-    constraints.push(Constraint::Length(3));
+    constraints.push(Constraint::Length(button_height));
+
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints(constraints)
         .split(inner);
-    let input_labels = ["Username", "Password", "Icon"];
+
+    let input_labels = [" Username", " Password", "󰓺 Icon"];
     for (idx, label) in input_labels.iter().take(visible_inputs).enumerate() {
         let focus = *selected_field
             == match idx {
@@ -217,19 +220,20 @@ pub fn draw_auth_ui(
                 _ => unreachable!(),
             };
         let input_area = rows[idx];
+
         let border_style = if focus {
             Style::default()
-                .fg(rgb_to_color(&theme.input_border_active))
+                .fg(rgb_to_color(&theme.colors.input_border_active))
                 .add_modifier(Modifier::BOLD)
         } else {
-            Style::default().fg(rgb_to_color(&theme.input_border_inactive))
+            Style::default().fg(rgb_to_color(&theme.colors.input_border_inactive))
         };
-        let text_style = if focus {
+        let _text_style = if focus {
             Style::default()
-                .fg(rgb_to_color(&theme.input_text_active))
+                .fg(rgb_to_color(&theme.colors.input_text_active))
                 .add_modifier(Modifier::BOLD)
         } else {
-            Style::default().fg(rgb_to_color(&theme.input_text_inactive))
+            Style::default().fg(rgb_to_color(&theme.colors.input_text_inactive))
         };
 
         if *current_mode == AuthMode::Register && idx == 2 {
@@ -248,14 +252,14 @@ pub fn draw_auth_ui(
                     spans.push(ratatui::text::Span::styled(
                         icon_char,
                         Style::default()
-                            .fg(rgb_to_color(&theme.selected_icon))
+                            .fg(rgb_to_color(&theme.colors.selected_icon))
                             .add_modifier(Modifier::BOLD),
                     ));
                 } else {
                     spans.push(ratatui::text::Span::styled(
                         icon_char,
                         Style::default()
-                            .fg(rgb_to_color(&theme.dimmed_icon))
+                            .fg(rgb_to_color(&theme.colors.dimmed_icon))
                             .add_modifier(Modifier::DIM),
                     ));
                 }
@@ -270,40 +274,22 @@ pub fn draw_auth_ui(
                     Block::default()
                         .borders(Borders::ALL)
                         .border_type(BorderType::Rounded)
+                        .border_type(BorderType::Rounded)
                         .border_style(border_style)
                         .title(ratatui::text::Span::styled(
                             label.to_string(),
                             Style::default()
-                                .fg(rgb_to_color(&theme.placeholder_text))
+                                .fg(rgb_to_color(&theme.colors.placeholder_text))
                                 .add_modifier(Modifier::ITALIC),
                         )),
                 );
             f.render_widget(icon_para, input_area);
         } else {
-            let input_value = if idx == 0 {
-                username_input.to_string()
-            } else {
-                password_input.chars().map(|_| "ILoveTv").collect()
-            };
-
-            f.render_widget(
-                Paragraph::new(input_value)
-                    .style(text_style)
-                    .block(
-                        Block::default()
-                            .borders(Borders::ALL)
-                            .border_type(BorderType::Rounded)
-                            .border_style(border_style)
-                            .title(ratatui::text::Span::styled(
-                                label.to_string(),
-                                Style::default()
-                                    .fg(rgb_to_color(&theme.placeholder_text))
-                                    .add_modifier(Modifier::ITALIC),
-                            )),
-                    )
-                    .alignment(Alignment::Left),
-                input_area,
-            );
+            if idx == 0 {
+                username_input.render::<B>(f, input_area, theme);
+            } else if idx == 1 {
+                password_input.render::<B>(f, input_area, theme);
+            }
         }
     }
 
@@ -321,16 +307,16 @@ pub fn draw_auth_ui(
 
     let validation_error = get_validation_error(username_input, password_input, current_mode);
     let button_border_color = if button_is_selected {
-        rgb_to_color(&theme.button_border_active)
+        rgb_to_color(&theme.colors.button_border_active)
     } else if validation_error.is_some() {
-        rgb_to_color(&theme.error)
+        rgb_to_color(&theme.colors.error)
     } else {
-        rgb_to_color(&theme.button_border_inactive)
+        rgb_to_color(&theme.colors.button_border_inactive)
     };
     let button_text_color = if button_is_selected {
-        rgb_to_color(&theme.button_border_active)
+        rgb_to_color(&theme.colors.button_border_active)
     } else {
-        rgb_to_color(&theme.button_text_inactive)
+        rgb_to_color(&theme.colors.button_text_inactive)
     };
 
     let button_style = Style::default()
@@ -342,10 +328,15 @@ pub fn draw_auth_ui(
             Block::default()
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
+                .border_type(BorderType::Rounded)
                 .border_style(button_border_color)
                 .title(""),
         );
     f.render_widget(btn_para, rows[button_chunk_index]);
+
+    let footer_area = main_chunks[2];
+    let help_text_area = Rect::new(footer_area.x, footer_area.y, footer_area.width, 1);
+    let instructions_area = Rect::new(footer_area.x, footer_area.y + 2, footer_area.width, 1);
 
     let help_text = if *current_mode == AuthMode::Register {
         "Already have an account? Press < Tab> to switch to Login."
@@ -355,16 +346,9 @@ pub fn draw_auth_ui(
     let help_line = Line::from(vec![ratatui::text::Span::styled(
         help_text,
         Style::default()
-            .fg(rgb_to_color(&theme.help_text))
+            .fg(rgb_to_color(&theme.colors.help_text))
             .add_modifier(Modifier::ITALIC),
     )]);
-
-    let help_text_area = Rect {
-        x: size.x,
-        y: main_area.y + main_area.height + 1,
-        width: size.width,
-        height: 1,
-    };
     f.render_widget(
         Paragraph::new(help_line)
             .alignment(Alignment::Center)
@@ -372,17 +356,11 @@ pub fn draw_auth_ui(
         help_text_area,
     );
 
-    let instructions_text = "Q: Quit |   : Navigate | Enter: Submit";
+    let instructions_text = "Esc: Quit |   : Navigate | Enter: Submit";
     let instructions = Paragraph::new(Line::from(instructions_text))
-        .style(Style::default().fg(rgb_to_color(&theme.instructions_text)))
+        .style(Style::default().fg(rgb_to_color(&theme.colors.instructions_text)))
         .alignment(Alignment::Center);
 
-    let instructions_area = Rect {
-        x: size.x + 1,
-        y: size.height.saturating_sub(2),
-        width: size.width.saturating_sub(2),
-        height: 1,
-    };
     f.render_widget(instructions, instructions_area);
 
     let show_popup = !message.is_empty();
@@ -393,7 +371,8 @@ pub fn draw_auth_ui(
             .title(" Error")
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
-            .border_style(Style::default().fg(rgb_to_color(&theme.popup_border)));
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(rgb_to_color(&theme.colors.popup_border)));
 
         let popup_width: u16 = 40;
         let mut estimated_height_from_text: u16 = 0;
@@ -431,9 +410,14 @@ pub fn draw_auth_ui(
             .split(popup_area)[0];
 
         let popup_paragraph = Paragraph::new(Line::from(popup_message_content))
-            .style(Style::default().fg(rgb_to_color(&theme.popup_text)))
+            .style(Style::default().fg(rgb_to_color(&theme.colors.popup_text)))
             .alignment(Alignment::Left)
             .wrap(ratatui::widgets::Wrap { trim: false });
         f.render_widget(popup_paragraph, popup_text_area);
+    }
+
+    if app_state.show_settings {
+        crate::tui::settings::render_settings_popup::<B>(f, app_state, settings_state, f.area())
+            .unwrap();
     }
 }

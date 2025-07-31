@@ -5,9 +5,7 @@ use ratatui::{
 
 pub fn draw_debug_json_popup(f: &mut Frame, area: Rect, content: &str) {
     let block = Block::default()
-        .title(
-            "JSON Jungle: Debugging Delights  ( funny )",
-        )
+        .title("JSON Jungle: Debugging Delights  ( <- this is a nerd icon )")
         .borders(Borders::ALL);
     f.render_widget(block, area);
 

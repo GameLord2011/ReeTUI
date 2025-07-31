@@ -5,8 +5,8 @@ use ratatui::{
     Frame,
 };
 
-use crate::app::AppState;
-use crate::tui::themes::{get_theme, rgb_to_color};
+use crate::app::app_state::AppState;
+use crate::themes::rgb_to_color;
 
 fn get_filtered_emojis(state: &AppState) -> Vec<&'static emojis::Emoji> {
     emojis::iter()
@@ -25,7 +25,7 @@ pub fn get_emojis_popup_size(state: &AppState) -> (u16, u16) {
     let height = std::cmp::min(filtered_emojis.len() as u16, 10) + 2; // +2 for borders
     let width = filtered_emojis
         .iter()
-        .map(|emoji| format!(" {}  {}", emoji.as_str(), emoji.name()).len())
+        .map(|emoji| format!("{}  {}", emoji.as_str(), emoji.name()).len())
         .max()
         .unwrap_or(20) as u16
         + 4; // +4 for borders and padding
@@ -33,7 +33,7 @@ pub fn get_emojis_popup_size(state: &AppState) -> (u16, u16) {
 }
 
 pub fn draw_emojis_popup(f: &mut Frame, state: &mut AppState, area: Rect, popup_block: &Block) {
-    let current_theme = get_theme(state.current_theme);
+    let current_theme = &state.current_theme;
     let inner_area = popup_block.inner(area);
 
     let filtered_emojis = get_filtered_emojis(state);
@@ -45,11 +45,11 @@ pub fn draw_emojis_popup(f: &mut Frame, state: &mut AppState, area: Rect, popup_
             let is_selected = i == state.selected_emoji_index;
             let style = if is_selected {
                 Style::default()
-                    .fg(rgb_to_color(&current_theme.button_text_active))
-                    .bg(rgb_to_color(&current_theme.button_bg_active))
+                    .fg(rgb_to_color(&current_theme.colors.button_text_active))
+                    .bg(rgb_to_color(&current_theme.colors.button_bg_active))
                     .add_modifier(Modifier::BOLD)
             } else {
-                Style::default().fg(rgb_to_color(&current_theme.text))
+                Style::default().fg(rgb_to_color(&current_theme.colors.text))
             };
             ListItem::new(format!(" {}  {}", emoji.as_str(), emoji.name())).style(style)
         })
@@ -60,8 +60,8 @@ pub fn draw_emojis_popup(f: &mut Frame, state: &mut AppState, area: Rect, popup_
         .highlight_style(
             Style::default()
                 .add_modifier(Modifier::REVERSED)
-                .fg(rgb_to_color(&current_theme.button_text_active))
-                .bg(rgb_to_color(&current_theme.button_bg_active)),
+                .fg(rgb_to_color(&current_theme.colors.button_text_active))
+                .bg(rgb_to_color(&current_theme.colors.button_bg_active)),
         )
         .highlight_symbol(" ");
 

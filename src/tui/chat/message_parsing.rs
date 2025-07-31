@@ -1,4 +1,5 @@
 pub fn replace_shortcodes_with_emojis(text: &str) -> String {
+    log::debug!("message_parsing: replace_shortcodes_with_emojis called with text: {}", text);
     let mut result = String::with_capacity(text.len());
     let mut current_pos = 0;
 
@@ -28,6 +29,7 @@ pub fn replace_shortcodes_with_emojis(text: &str) -> String {
 }
 
 pub fn should_show_emoji_popup(input_text: &str) -> bool {
+    log::debug!("message_parsing: should_show_emoji_popup called with input_text: {}", input_text);
     if let Some(last_colon_idx) = input_text.rfind(':') {
         let potential_shortcode_segment_from_last_colon = &input_text[last_colon_idx..];
 

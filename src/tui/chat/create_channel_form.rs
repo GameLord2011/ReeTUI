@@ -1,12 +1,12 @@
 pub const ICONS: [&str; 11] = ["󰱨", "󰱩", "󱃞", "󰱫", "󰱬", "󰱮", "󰱰", "󰽌", "󰱱", "󰱸", "󰇹"];
-#[derive(Default)]
+#[derive(Default, Debug, Clone)]
 pub struct CreateChannelForm {
     pub name: String,
     pub input_focused: CreateChannelInput,
     pub selected_icon_index: usize,
 }
 
-#[derive(PartialEq, Default, Clone, Copy)]
+#[derive(PartialEq, Default, Clone, Copy, Debug)]
 pub enum CreateChannelInput {
     #[default]
     Name,
@@ -16,6 +16,7 @@ pub enum CreateChannelInput {
 
 impl CreateChannelForm {
     pub fn new() -> Self {
+        log::debug!("CreateChannelForm: new instance created.");
         Self {
             name: String::new(),
             input_focused: CreateChannelInput::Name,
@@ -24,11 +25,13 @@ impl CreateChannelForm {
     }
 
     pub fn next_input(&mut self) {
+        let old_input_focused = self.input_focused;
         self.input_focused = match self.input_focused {
             CreateChannelInput::Name => CreateChannelInput::Icon,
             CreateChannelInput::Icon => CreateChannelInput::CreateButton,
             CreateChannelInput::CreateButton => CreateChannelInput::Name,
         };
+        log::debug!("CreateChannelForm: next_input called. Changed from {:?} to {:?}", old_input_focused, self.input_focused);
     }
 
     pub fn previous_input(&mut self) {
