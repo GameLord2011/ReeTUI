@@ -317,7 +317,7 @@ pub fn draw_chat_ui<B: Backend>(
             PopupType::CreateChannel => get_create_channel_popup_size(),
             PopupType::Mentions => get_mentions_popup_size(state),
             PopupType::Emojis => get_emojis_popup_size(state),
-            PopupType::FileManager => (90, 30),
+            PopupType::FileManager => (140, 44),
             PopupType::DownloadProgress => get_download_progress_popup_size(),
             PopupType::DebugJson => get_debug_json_popup_size(),
             _ => (0, 0),
@@ -674,7 +674,7 @@ pub fn format_message_lines(
                     "│ ",
                     Style::default().fg(rgb_to_color(&theme.colors.dim)),
                 ))
-                .chain(message_content_spans.into_iter())
+                .chain(message_content_spans.clone().into_iter())
                 .collect::<Vec<Span>>(),
             )
             .to_owned(),

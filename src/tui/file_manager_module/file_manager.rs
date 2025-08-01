@@ -1,17 +1,32 @@
 use crate::app::AppState;
 use crate::themes::rgb_to_color;
+use ansi_to_tui::IntoText;
 use crossterm::event::{KeyCode, KeyEvent};
 use devicons::{icon_for_file, FileIcon, Theme};
 use ratatui::{
     prelude::*,
-    widgets::{Block, Borders, Paragraph, Padding},
+    widgets::{Block, Borders, Padding, Paragraph},
 };
 use std::{
-    env, fs,
+    collections::HashMap,
+    env,
+    fs,
+    io::{BufRead, BufReader, Read},
     path::{Path, PathBuf},
+    process::Command,
     sync::Arc,
+    time::SystemTime,
+    time::Duration,
+};
+use chrono::{DateTime, Local};
+use image::{GenericImageView, ImageReader};
+use syntect::{
+    easy::HighlightLines,
+    highlighting::{Style as SyntectStyle, ThemeSet},
+    parsing::SyntaxSet,
 };
 use tokio::sync::mpsc;
+use tokio::time::sleep;
 
 pub enum FileManagerEvent {
     FileSelectedForUpload(PathBuf),
@@ -50,9 +65,26 @@ pub struct FileManager {
     pub displayed_items: Vec<PathBuf>,
     pub redraw_tx: mpsc::UnboundedSender<String>,
     pub app_state: Arc<tokio::sync::Mutex<AppState>>,
+    preview_tx: mpsc::UnboundedSender<(PathBuf, Result<Text<'static>, String>)>, 
+    preview_rx: mpsc::UnboundedReceiver<(PathBuf, Result<Text<'static>, String>)>, 
+    preview_cache: HashMap<PathBuf, Result<Text<'static>, String>>,
+    generating_preview_for: Option<PathBuf>,
+    syntax_set: Arc<SyntaxSet>,
+    theme_set: Arc<ThemeSet>,
+    metadata_tx: mpsc::UnboundedSender<(PathBuf, Result<String, String>)>, 
+    metadata_rx: mpsc::UnboundedReceiver<(PathBuf, Result<String, String>)>, 
+    metadata_cache: HashMap<PathBuf, Result<String, String>>,
+    generating_metadata_for: Option<PathBuf>,
+    gif_tx: mpsc::UnboundedSender<(PathBuf, Result<Vec<Text<'static>>, String>)>, 
+    gif_rx: mpsc::UnboundedReceiver<(PathBuf, Result<Vec<Text<'static>>, String>)>, 
+    gif_cache: HashMap<PathBuf, Result<Vec<Text<'static>>, String>>,
+    current_gif_frame: HashMap<PathBuf, usize>,
 }
 
 impl FileManager {
+    const MAX_UPLOAD_SIZE_MB: u64 = 25; // 25 MB
+    const MAX_UPLOAD_SIZE_BYTES: u64 = Self::MAX_UPLOAD_SIZE_MB * 1024 * 1024;
+
     pub fn new(
         redraw_tx: mpsc::UnboundedSender<String>,
         app_state_param: Arc<tokio::sync::Mutex<AppState>>,
@@ -69,12 +101,30 @@ impl FileManager {
         Self::read_dir(&mut root);
         root.expanded = true;
 
+        let (preview_tx, preview_rx) = mpsc::unbounded_channel();
+        let (metadata_tx, metadata_rx) = mpsc::unbounded_channel();
+        let (gif_tx, gif_rx) = mpsc::unbounded_channel();
+
         Self {
             tree: root,
             selected_index: 0,
             displayed_items: Vec::new(),
             redraw_tx,
             app_state: app_state_param,
+            preview_tx,
+            preview_rx,
+            preview_cache: HashMap::new(),
+            generating_preview_for: None,
+            syntax_set: Arc::new(SyntaxSet::load_defaults_newlines()),
+            theme_set: Arc::new(ThemeSet::load_defaults()),
+            metadata_tx,
+            metadata_rx,
+            metadata_cache: HashMap::new(),
+            generating_metadata_for: None,
+            gif_tx,
+            gif_rx,
+            gif_cache: HashMap::new(),
+            current_gif_frame: HashMap::new(),
         }
     }
 
@@ -94,7 +144,6 @@ impl FileManager {
                 .collect();
             children.sort_by(|a, b| (b.is_dir, &a.path).cmp(&(a.is_dir, &b.path)));
 
-            // Add ".." for parent directory if not at root
             if let Some(parent_path) = item.path.parent() {
                 if parent_path != item.path {
                     children.insert(0, FileItem::new(parent_path.to_path_buf(), true, true));
@@ -109,13 +158,20 @@ impl FileManager {
 
         let chunks = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Length(20), Constraint::Min(0)].as_ref())
+            .constraints([Constraint::Length(40), Constraint::Min(0)].as_ref())
             .split(area);
 
         let left_area = chunks[0];
         let right_area = chunks[1];
 
-        // File tree block
+        let main_chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(70), Constraint::Percentage(30)].as_ref())
+            .split(right_area);
+
+        let preview_area = main_chunks[0];
+        let metadata_area = main_chunks[1];
+
         let file_tree_block = Block::default()
             .borders(Borders::ALL)
             .border_type(ratatui::widgets::BorderType::Rounded)
@@ -124,7 +180,6 @@ impl FileManager {
         f.render_widget(file_tree_block.clone(), left_area);
         let inner_left_area = file_tree_block.inner(left_area);
 
-        // File tree rendering
         let mut lines = Vec::new();
         self.displayed_items.clear();
         let mut displayed_items = Vec::new();
@@ -143,7 +198,9 @@ impl FileManager {
             let y = inner_left_area.y + (i - start_index) as u16;
             let is_selected = i == self.selected_index;
             let style = if is_selected {
-                Style::default().fg(rgb_to_color(&theme.colors.background)).bg(rgb_to_color(&theme.colors.accent))
+                Style::default()
+                    .fg(rgb_to_color(&theme.colors.background))
+                    .bg(rgb_to_color(&theme.colors.accent))
             } else {
                 Style::default().fg(Color::White)
             };
@@ -155,34 +212,353 @@ impl FileManager {
             }
         }
 
-        // Preview pane block
         let preview_block = Block::default()
             .borders(Borders::ALL)
             .border_type(ratatui::widgets::BorderType::Rounded)
             .border_style(Style::default().fg(rgb_to_color(&theme.colors.accent)))
-            .padding(Padding::new(0, 0, 0, 0));
-        f.render_widget(preview_block.clone(), right_area);
-        let inner_right_area = preview_block.inner(right_area);
+            .padding(Padding::new(1, 1, 1, 1));
+        let inner_preview_area = preview_block.inner(preview_area);
+        f.render_widget(Block::default().bg(rgb_to_color(&theme.colors.background)), preview_area);
+        f.render_widget(preview_block.clone(), preview_area);
 
-        let selected_item = self.get_selected_item();
-        let preview_text = if let Some(item) = selected_item {
+        if let Ok((path, result)) = self.preview_rx.try_recv() {
+            self.preview_cache.insert(path, result);
+            self.generating_preview_for = None;
+        }
+
+        if let Ok((path, result)) = self.gif_rx.try_recv() {
+            self.gif_cache.insert(path, result);
+        }
+
+        let mut gif_frame_to_update: Option<(PathBuf, usize)> = None;
+
+        if let Some(item) = self.get_selected_item() {
             if item.is_dir {
-                "Select a file to preview".to_string()
+                let p = Paragraph::new("Directory selected").style(Style::default().bg(rgb_to_color(&theme.colors.background)));
+                f.render_widget(p, inner_preview_area);
             } else {
-                match fs::read_to_string(&item.path) {
-                    Ok(content) => content,
-                    Err(_) => "Cannot preview this file type (might be binary).".to_string(),
+                if let Some(cached_gif) = self.gif_cache.get(&item.path) {
+                    match cached_gif {
+                        Ok(frames) => {
+                            let current_frame_index = *self.current_gif_frame.get(&item.path).unwrap_or(&0);
+                            if let Some(frame_text) = frames.get(current_frame_index) {
+                                let p = Paragraph::new(frame_text.clone()).style(Style::default().bg(rgb_to_color(&theme.colors.background)));
+                                f.render_widget(p, inner_preview_area);
+
+                                // Prepare update for next frame
+                                let next_frame_index = (current_frame_index + 1) % frames.len();
+                                gif_frame_to_update = Some((item.path.clone(), next_frame_index));
+
+                                // Schedule redraw for next frame
+                                let redraw_tx_clone = self.redraw_tx.clone();
+                                tokio::spawn(async move {
+                                    sleep(Duration::from_millis(100)).await;
+                                    let _ = redraw_tx_clone.send("redraw".to_string());
+                                });
+                            } else {
+                                let p = Paragraph::new("GIF frame error").style(Style::default().fg(Color::Red).bg(rgb_to_color(&theme.colors.background)));
+                                f.render_widget(p, inner_preview_area);
+                            }
+                        }
+                        Err(e) => {
+                            let p = Paragraph::new(format!("GIF error: {}", e))
+                                .style(Style::default().fg(Color::Red).bg(rgb_to_color(&theme.colors.background)));
+                            f.render_widget(p, inner_preview_area);
+                        }
+                    }
+                } else if let Some(cached_preview) = self.preview_cache.get(&item.path) {
+                    match cached_preview {
+                        Ok(text) => {
+                            let p = Paragraph::new(text.clone()).style(Style::default().bg(rgb_to_color(&theme.colors.background)));
+                            f.render_widget(p, inner_preview_area);
+                        }
+                        Err(e) => {
+                            let p = Paragraph::new(format!("Preview error: {}", e))
+                                .style(Style::default().fg(Color::Red).bg(rgb_to_color(&theme.colors.background)));
+                            f.render_widget(p, inner_preview_area);
+                        }
+                    }
+                } else {
+                    let path = item.path.clone();
+                    if self.generating_preview_for.as_ref() != Some(&path) {
+                        self.generating_preview_for = Some(path.clone());
+                        let tx = self.preview_tx.clone();
+                        let gif_tx = self.gif_tx.clone();
+                        let syntax_set = Arc::clone(&self.syntax_set);
+                        let theme_set = Arc::clone(&self.theme_set);
+                        let height = inner_preview_area.height;
+                        let is_image_file = FileManager::is_image(&path);
+                        let is_likely_binary_file = FileManager::is_likely_binary(&path);
+
+                        tokio::spawn(async move {
+                            let result = if is_image_file {
+                                if path.extension().map_or(false, |ext| ext.to_ascii_lowercase() == "gif") {
+                                    // Handle GIF decoding
+                                    let frames_result = decode_gif_frames(&path, inner_preview_area.width, height).await;
+                                    let _ = gif_tx.send((path.clone(), frames_result));
+                                    Ok(Text::raw("Loading GIF...")) // Display loading message in preview
+                                } else {
+                                    // Handle other images with chafa
+                                    let cmd = Command::new("chafa")
+                                        .arg("-f")
+                                        .arg("symbols")
+                                        .arg(format!("--size={}x{}", inner_preview_area.width, height))
+                                        .arg(&path)
+                                        .output();
+
+                                    match cmd {
+                                        Ok(output) => {
+                                            if output.status.success() {
+                                                Ok(String::from_utf8_lossy(&output.stdout).to_string().into_text().unwrap())
+                                            } else {
+                                                Err(String::from_utf8_lossy(&output.stderr).into_owned())
+                                            }
+                                        }
+                                        Err(e) => Err(e.to_string()),
+                                    }
+                                }
+                            } else if is_likely_binary_file {
+                                Ok(Text::raw("Cannot preview binary file."))
+                            } else {
+                                let syntax =
+                                    syntax_set.find_syntax_by_extension(path.extension().and_then(|s| s.to_str()).unwrap_or(""))
+                                        .unwrap_or_else(|| syntax_set.find_syntax_plain_text());
+
+                                let theme = &theme_set.themes["base16-ocean.dark"];
+                                let file = fs::File::open(&path);
+                                let mut lines_vec = Vec::new();
+                                if let Ok(file) = file {
+                                    let reader = BufReader::new(file);
+                                    for (i, line) in reader.lines().enumerate() {
+                                        if i >= height as usize {
+                                            break;
+                                        }
+                                        if let Ok(line) = line {
+                                            let mut h = HighlightLines::new(syntax, theme);
+                                            let ranges: Vec<(SyntectStyle, &str)> = h.highlight_line(&line, &syntax_set).unwrap();
+                                            let spans: Vec<Span> = ranges.iter().map(|(style, text)| {
+                                                let color = style.foreground;
+                                                Span::styled(text.to_string(), Style::default().fg(Color::Rgb(color.r, color.g, color.b)))
+                                            }).collect();
+                                            lines_vec.push(Line::from(spans));
+                                        }
+                                    }
+                                    Ok(Text::from(lines_vec))
+                                } else {
+                                    Err("Cannot open file.".to_string())
+                                }
+                            };
+                            let _ = tx.send((path, result));
+                        });
+                    }
+                    let p = Paragraph::new("Generating preview...").style(Style::default().bg(rgb_to_color(&theme.colors.background)));
+                    f.render_widget(p, inner_preview_area);
                 }
             }
         } else {
-            "No item selected".to_string()
+            let p = Paragraph::new("No item selected").style(Style::default().bg(rgb_to_color(&theme.colors.background)));
+            f.render_widget(p, inner_preview_area);
+        }
+
+        // Apply GIF frame update after rendering
+        if let Some((path, next_frame_index)) = gif_frame_to_update {
+            self.current_gif_frame.insert(path, next_frame_index);
+        }
+
+        // Metadata block
+        let metadata_block = Block::default()
+            .borders(Borders::ALL)
+            .border_type(ratatui::widgets::BorderType::Rounded)
+            .border_style(Style::default().fg(rgb_to_color(&theme.colors.accent)))
+            .title(Span::styled("Metadata", Style::default().fg(rgb_to_color(&theme.colors.text))))
+            .padding(Padding::new(1, 1, 1, 1));
+        let inner_metadata_area = metadata_block.inner(metadata_area);
+        f.render_widget(Block::default().bg(rgb_to_color(&theme.colors.background)), metadata_area);
+        f.render_widget(metadata_block.clone(), metadata_area);
+
+        if let Ok((path, result)) = self.metadata_rx.try_recv() {
+            self.metadata_cache.insert(path, result);
+            self.generating_metadata_for = None;
+        }
+
+        if let Some(item) = self.get_selected_item() {
+            let metadata_field_constraints: Vec<Constraint> = (0..9).map(|_| Constraint::Length(3)).collect();
+            let _metadata_display_chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints(metadata_field_constraints)
+                .split(inner_metadata_area);
+
+            let mut metadata_info = HashMap::new();
+
+            if item.is_dir {
+                metadata_info.insert("Type".to_string(), "Directory".to_string());
+            } else {
+                if let Some(cached) = self.metadata_cache.get(&item.path) {
+                    match cached {
+                        Ok(text) => {
+                            let lines: Vec<&str> = text.lines().collect();
+                            for line in lines {
+                                if let Some((key, value)) = line.split_once(": ") {
+                                    metadata_info.insert(key.to_string(), value.to_string());
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            metadata_info.insert("Error".to_string(), format!("Metadata error: {}", e));
+                        }
+                    }
+                } else {
+                    let path = item.path.clone();
+                    if self.generating_metadata_for.as_ref() != Some(&path) {
+                        self.generating_metadata_for = Some(path.clone());
+                        let tx = self.metadata_tx.clone();
+
+                        tokio::spawn(async move {
+                            let result = match fs::metadata(&path) {
+                                Ok(metadata) => {
+                                    let mut info = String::new();
+                                    info.push_str(&format!("Size: {}\n", FileManager::format_file_size(metadata.len())));
+                                    if let Ok(created) = metadata.created() {
+                                        info.push_str(&format!("Created: {}\n", DateTime::<Local>::from(created).format("%Y-%m-%d %H:%M:%S")));
+                                    }
+                                    if let Ok(modified) = metadata.modified() {
+                                        info.push_str(&format!("Last Modified: {}\n", DateTime::<Local>::from(modified).format("%Y-%m-%d %H:%M:%S")));
+                                    }
+                                    info.push_str(&format!("Type: {}\n", if metadata.is_file() {"File"} else if metadata.is_dir() {"Directory"} else {"Other"}));
+                                    info.push_str(&format!("Permissions: {:?}\n", metadata.permissions()));
+
+                                    // Resolution for images
+                                    if FileManager::is_image(&path) {
+                                        if let Ok(reader) = ImageReader::open(&path) {
+                                            if let Ok(img) = reader.decode() {
+                                                let (width, height) = img.dimensions();
+                                                info.push_str(&format!("Resolution: {}x{}\n", width, height));
+                                            }
+                                        }
+                                    }
+
+                                    // Duration and resolution for videos
+                                    if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
+                                        if matches!(ext.to_lowercase().as_str(), "mp4" | "mkv" | "avi" | "mov") {
+                                            let cmd = Command::new("ffprobe")
+                                                .args(&[
+                                                    "-v", "error",
+                                                    "-select_streams", "v:0", // Select video stream
+                                                    "-show_entries", "stream=width,height:format=duration", // Get width, height, duration
+                                                    "-of", "default=noprint_wrappers=1:nokey=1",
+                                                    path.to_str().unwrap(),
+                                                ])
+                                                .output();
+
+                                            if let Ok(output) = cmd {
+                                                if output.status.success() {
+                                                    let output_str = String::from_utf8_lossy(&output.stdout);
+                                                    let lines: Vec<&str> = output_str.trim().lines().collect();
+                                                    let mut resolution_found = false;
+                                                    let mut duration_found = false;
+
+                                                    for line in lines {
+                                                        if line.contains('x') && !resolution_found { // Simple check for resolution
+                                                            info.push_str(&format!("Resolution: {}\n", line));
+                                                            resolution_found = true;
+                                                        } else if let Ok(duration) = line.parse::<f64>() { // Check for duration
+                                                            let minutes = (duration / 60.0).round();
+                                                            info.push_str(&format!("Duration: {} minutes\n", minutes));
+                                                            duration_found = true;
+                                                        }
+                                                        if resolution_found && duration_found { break; }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // Too big to send
+                                    if metadata.len() > FileManager::MAX_UPLOAD_SIZE_BYTES {
+                                        info.push_str(&format!("Too Big to Send: Yes (> {}\n)", FileManager::format_file_size(FileManager::MAX_UPLOAD_SIZE_BYTES)));
+                                    } else {
+                                        info.push_str("Too Big to Send: No\n");
+                                    }
+
+                                    Ok(info)
+                                }
+                                Err(e) => Err(format!("Failed to get metadata: {}", e)),
+                            };
+                            let _ = tx.send((path, result));
+                        });
+                    }
+                    metadata_info.insert("Status".to_string(), "Loading metadata...".to_string());
+                }
+            }
+
+            let size_str = metadata_info.get("Size").map(|s| s.as_str()).unwrap_or("N/A");
+            let created_str = metadata_info.get("Created").map(|s| s.as_str()).unwrap_or("N/A");
+            let last_modified_str = metadata_info.get("Last Modified").map(|s| s.as_str()).unwrap_or("N/A");
+            let type_str = metadata_info.get("Type").map(|s| s.as_str()).unwrap_or("N/A");
+            let permissions_str = metadata_info.get("Permissions").map(|s| s.as_str()).unwrap_or("N/A");
+            let resolution_str = metadata_info.get("Resolution").map(|s| s.as_str()).unwrap_or("N/A");
+            let duration_str = metadata_info.get("Duration").map(|s| s.as_str()).unwrap_or("N/A");
+            let too_big_str = metadata_info.get("Too Big to Send").map(|s| s.as_str()).unwrap_or("N/A");
+            let status_str = metadata_info.get("Status").map(|s| s.as_str()).unwrap_or("N/A");
+
+            let fields = [
+                ("Size", size_str),
+                ("Created", created_str),
+                ("Last Modified", last_modified_str),
+                ("Type", type_str),
+                ("Permissions", permissions_str),
+                ("Resolution", resolution_str),
+                ("Duration", duration_str),
+                ("Too Big to Send", too_big_str),
+                ("Status", status_str),
+            ];
+
+            let metadata_field_constraints: Vec<Constraint> = fields.iter().map(|_| Constraint::Length(3)).collect();
+            let _metadata_display_chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints(metadata_field_constraints)
+                .split(inner_metadata_area);
+
+            for (i, (label, value)) in fields.iter().enumerate() {
+                let chunk = _metadata_display_chunks[i];
+                let block = Block::default()
+                    .borders(Borders::ALL)
+                    .border_type(ratatui::widgets::BorderType::Rounded)
+                    .border_style(Style::default().fg(rgb_to_color(&theme.colors.accent)))
+                    .title(Span::styled(*label, Style::default().fg(rgb_to_color(&theme.colors.text))));
+                let p = Paragraph::new(*value).style(Style::default().bg(rgb_to_color(&theme.colors.background)));
+                f.render_widget(block.clone(), chunk);
+                f.render_widget(p, block.inner(chunk));
+            }
+        } else {
+            let p = Paragraph::new("No item selected").style(Style::default().bg(rgb_to_color(&theme.colors.background)));
+            f.render_widget(p, inner_metadata_area);
+        }
+    }
+
+    fn is_likely_binary(path: &Path) -> bool {
+        let mut file = match fs::File::open(path) {
+            Ok(f) => f,
+            Err(_) => return true,
         };
+        let mut buffer = [0; 1024];
+        let n = match file.read(&mut buffer) {
+            Ok(n) => n,
+            Err(_) => return true,
+        };
+        buffer[..n].contains(&0)
+    }
 
-        let paragraph = Paragraph::new(preview_text)
-            .wrap(ratatui::widgets::Wrap { trim: false })
-            .style(Style::default().fg(Color::White));
-
-        f.render_widget(paragraph, inner_right_area);
+    fn is_image(path: &Path) -> bool {
+        let extension = path.extension().and_then(|s| s.to_str());
+        if let Some(ext) = extension {
+            matches!(
+                ext.to_lowercase().as_str(),
+                "png" | "jpg" | "jpeg" | "gif" | "bmp"
+            )
+        } else {
+            false
+        }
     }
 
     fn render_tree<'a>(
@@ -193,7 +569,7 @@ impl FileManager {
         displayed_items: &mut Vec<PathBuf>,
         theme: &crate::themes::Theme,
     ) {
-        let prefix = "  ".repeat(depth);
+        let prefix = " ".repeat(depth * 2);
         let icon_span = if item.is_dir {
             let folder_icon = if item.expanded { "" } else { "" };
             let folder_style = Style::default().fg(Color::White);
@@ -201,19 +577,25 @@ impl FileManager {
         } else {
             let icon_str = item.icon.icon.to_string();
             let file_icon = if icon_str == "*" {
-                "".to_string() // Default file icon if devicon is '*'
+                "".to_string()
             } else {
                 icon_str
             };
-            let color =
-                u32::from_str_radix(item.icon.color.trim_start_matches('#'), 16).unwrap_or(0xFFFFFF);
-            Span::styled(file_icon, Style::default().fg(Color::from_u32(color)))
+            let color_u32 = u32::from_str_radix(item.icon.color.trim_start_matches('#'), 16).unwrap_or(0xFFFFFF);
+            let r = ((color_u32 >> 16) & 0xFF) as u8;
+            let g = ((color_u32 >> 8) & 0xFF) as u8;
+            let b = (color_u32 & 0xFF) as u8;
+            Span::styled(file_icon, Style::default().fg(Color::Rgb(r, g, b)))
         };
 
         let file_name = if item.is_parent_nav {
             "..".to_string()
         } else {
-            item.path.file_name().unwrap_or_default().to_string_lossy().to_string()
+            item.path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string()
         };
         let file_style = Style::default().fg(rgb_to_color(&theme.colors.text));
 
@@ -237,24 +619,15 @@ impl FileManager {
             KeyCode::Up => self.select_previous(),
             KeyCode::Down => self.select_next(),
             KeyCode::Right => self.expand_dir(),
+            KeyCode::Left => self.collapse_dir(),
             KeyCode::Enter => {
                 if let Some(item) = self.get_selected_item_mut() {
                     if item.is_dir {
-                        if item.is_parent_nav {
-                            // Handle ".." navigation
-                            if let Some(parent_path) = item.path.parent() {
-                                self.tree = FileItem::new(parent_path.to_path_buf(), true, true);
-                                Self::read_dir(&mut self.tree);
-                                self.tree.expanded = true;
-                                self.selected_index = 0;
-                            }
-                        } else { // It's a regular directory, not ".."
-                            let new_root_path = item.path.clone(); // Get the path of the selected directory
-                            self.tree = FileItem::new(new_root_path, true, false); // Make it the new root
-                            Self::read_dir(&mut self.tree); // Read its contents
-                            self.tree.expanded = true; // Ensure it's expanded
-                            self.selected_index = 0; // Reset selection to the top (which will be ".." if present)
-                        }
+                        let new_root_path = item.path.clone();
+                        self.tree = FileItem::new(new_root_path, true, false);
+                        Self::read_dir(&mut self.tree);
+                        self.tree.expanded = true;
+                        self.selected_index = 0;
                     } else {
                         return FileManagerEvent::FileSelectedForUpload(item.path.clone());
                     }
@@ -281,7 +654,7 @@ impl FileManager {
         let path = &self.displayed_items[self.selected_index];
         Self::find_item(&self.tree, path)
     }
-    
+
     fn find_item_mut<'a>(item: &'a mut FileItem, path: &Path) -> Option<&'a mut FileItem> {
         if item.path == path {
             return Some(item);
@@ -331,5 +704,73 @@ impl FileManager {
         }
     }
 
-    
+    fn collapse_dir(&mut self) {
+        if let Some(item) = self.get_selected_item_mut() {
+            if item.is_dir && item.expanded {
+                item.expanded = false;
+            }
+        }
+    }
+}
+
+async fn decode_gif_frames(path: &Path, width: u16, height: u16) -> Result<Vec<Text<'static>>, String> {
+    let file = fs::File::open(path).map_err(|e| format!("Failed to open GIF: {}", e))?;
+    let mut decoder = gif::DecodeOptions::new();
+    decoder.set_color_output(gif::ColorOutput::RGBA);
+    let mut decoder = decoder.read_info(file).map_err(|e| format!("Failed to read GIF info: {}", e))?;
+
+    let mut frames = Vec::new();
+    // Read all frames first to avoid borrowing issues
+    let mut gif_frames_data: Vec<gif::Frame> = Vec::new();
+    let (gif_width, gif_height) = (decoder.width() as u32, decoder.height() as u32);
+
+    while let Some(frame) = decoder.read_next_frame().map_err(|e| format!("Failed to read GIF frame: {}", e))? {
+        gif_frames_data.push(frame.to_owned());
+    }
+
+    for frame in gif_frames_data {
+        let mut image_buffer = image::RgbaImage::new(gif_width, gif_height);
+        // Copy the frame data into the correct position within the full buffer
+        image::imageops::overlay(&mut image_buffer, &image::RgbaImage::from_raw(frame.width as u32, frame.height as u32, frame.buffer.to_vec()).unwrap(), frame.left as i64, frame.top as i64);
+
+        let temp_image_path = PathBuf::from(format!("/tmp/gif_frame_{}.png", uuid::Uuid::new_v4()));
+        image_buffer.save(&temp_image_path).map_err(|e| format!("Failed to save GIF frame: {}", e))?;
+
+        let cmd = Command::new("chafa")
+            .arg("-f")
+            .arg("symbols")
+            .arg(format!("--size={}x{}", width, height))
+            .arg(&temp_image_path)
+            .output();
+
+        let output = cmd.map_err(|e| format!("Failed to execute chafa: {}", e))?;
+
+        fs::remove_file(&temp_image_path).map_err(|e| format!("Failed to remove temp file: {}", e))?;
+
+        if output.status.success() {
+            frames.push(String::from_utf8_lossy(&output.stdout).to_string().into_text().map_err(|e| format!("Failed to convert ANSI to Text: {:?}", e))?);
+        } else {
+            return Err(format!("Chafa error: {}", String::from_utf8_lossy(&output.stderr)));
+        }
+    }
+    Ok(frames)
+}
+
+impl FileManager {
+    fn format_file_size(size: u64) -> String {
+        const KIB: u64 = 1024;
+        const MIB: u64 = KIB * 1024;
+        const GIB: u64 = MIB * 1024;
+        const TIB: u64 = GIB * 1024;
+
+        if size < KIB {
+            format!("{} B", size)
+        } else if size < MIB {
+            format!("{:.2} KiB", size as f64 / KIB as f64)
+        } else if size < GIB {
+            format!("{:.2} MiB", size as f64 / MIB as f64)
+        } else {
+            format!("{:.2} TiB", size as f64 / TIB as f64)
+        }
+    }
 }
