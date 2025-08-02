@@ -24,6 +24,7 @@ use tokio::sync::Mutex;
 use crate::tui::chat::utils::{centered_rect, get_color_for_user};
 use ansi_to_tui::IntoText as _;
 use chrono::{TimeZone, Utc};
+use unicode_width::UnicodeWidthStr;
 
 use ratatui::Frame;
 use ratatui::{
@@ -31,7 +32,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Modifier, Style, Stylize},
     text::{Line, Span, Text},
-    widgets::{Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph, Padding},
+    widgets::{Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph},
 };
 use regex::Regex;
 
@@ -153,11 +154,9 @@ pub fn draw_chat_ui<B: Backend>(
     if let Some(current_channel) = &current_channel_clone {
         let channel_id = &current_channel.id;
         let mut all_rendered_lines: Vec<Line<'static>> = Vec::new();
-        let mut last_user: Option<String> = None;
-
-        if let Some(messages) = state.messages.get(channel_id) {
-            for msg in messages.iter() {
-                let message_id = msg
+ 
+         if let Some(messages) = state.messages.get(channel_id) {
+             for msg in messages.iter() {                let message_id = msg
                     .file_id
                     .clone()
                     .unwrap_or_else(|| msg.timestamp.to_string());
@@ -172,7 +171,6 @@ pub fn draw_chat_ui<B: Backend>(
                         msg,
                         &state.current_theme,
                         inner_messages_area.width,
-                        &last_user,
                         mention_regex,
                         emoji_regex,
                         &state.active_animations,
@@ -196,16 +194,14 @@ pub fn draw_chat_ui<B: Backend>(
                     {
                         all_rendered_lines.extend(lines.clone());
                     } else {
-                        let lines = format_message_lines(
+                         let lines = format_message_lines(
                             msg,
                             &state.current_theme,
                             inner_messages_area.width,
-                            &last_user,
                             mention_regex,
                             emoji_regex,
                             &state.active_animations,
-                        );
-                        state
+                        );                        state
                             .rendered_messages
                             .entry(channel_id.clone())
                             .or_default()
@@ -218,7 +214,7 @@ pub fn draw_chat_ui<B: Backend>(
                         all_rendered_lines.extend(lines);
                     }
                 }
-                last_user = Some(msg.user.clone());
+                
             }
         }
 
@@ -317,7 +313,7 @@ pub fn draw_chat_ui<B: Backend>(
             PopupType::CreateChannel => get_create_channel_popup_size(),
             PopupType::Mentions => get_mentions_popup_size(state),
             PopupType::Emojis => get_emojis_popup_size(state),
-            PopupType::FileManager => (140, 44),
+            PopupType::FileManager => (90, 90),
             PopupType::DownloadProgress => get_download_progress_popup_size(),
             PopupType::DebugJson => get_debug_json_popup_size(),
             _ => (0, 0),
@@ -337,21 +333,7 @@ pub fn draw_chat_ui<B: Backend>(
         };
 
         f.render_widget(Clear, popup_area);
-        if state.popup_state.popup_type == PopupType::FileManager {
-            // Render a transparent block for the file manager popup
-            let file_manager_popup_block = Block::default()
-                .borders(Borders::ALL)
-                .border_type(BorderType::Rounded)
-                .style(
-                    Style::default()
-                        .fg(rgb_to_color(&current_theme.colors.popup_border))
-                        .bg(rgb_to_color(&current_theme.colors.background)),
-                )
-                .padding(Padding::new(0, 0, 0, 0));
-            f.render_widget(&file_manager_popup_block, popup_area);
-        } else {
-            f.render_widget(&popup_block_widget, popup_area);
-        }
+        f.render_widget(&popup_block_widget, popup_area);
         match state.popup_state.popup_type {
             PopupType::CreateChannel => {
                 draw_create_channel_popup(
@@ -373,6 +355,7 @@ pub fn draw_chat_ui<B: Backend>(
                 draw_emojis_popup(f, state, popup_area, &popup_block_widget);
             }
             PopupType::FileManager => {
+                let popup_area = centered_rect(80, 80, size);
                 file_manager.ui(f, popup_area, state);
             }
             PopupType::DownloadProgress => {
@@ -398,13 +381,11 @@ pub fn format_message_lines(
     msg: &BroadcastMessage,
     theme: &Theme,
     width: u16,
-    last_user: &Option<String>,
     mention_regex: &Regex,
     emoji_regex: &Regex,
     active_animations: &HashMap<String, Arc<Mutex<GifAnimationState>>>,
 ) -> Vec<Line<'static>> {
-    let is_special_message = msg.file_id.is_some() || msg.is_image.unwrap_or(false);
-    let mut new_lines = Vec::new();
+    let mut content_lines = Vec::new();
     let timestamp_str = Utc
         .timestamp_opt(msg.timestamp, 0)
         .unwrap()
@@ -412,71 +393,33 @@ pub fn format_message_lines(
         .format("%H:%M")
         .to_string();
     let user_color = get_color_for_user(&msg.user);
+    let is_special_message = msg.file_id.is_some() || msg.is_image.unwrap_or(false);
 
-    if is_special_message {
-        if msg.is_image.unwrap_or(false) {
-            if let Some(_gif_frames) = &msg.gif_frames {
-                if let Some(file_id) = &msg.file_id {
-                    if let Some(animation_state_arc) = active_animations.get(file_id) {
-                        let animation_state = match animation_state_arc.try_lock() {
-                            Ok(state) => state,
-                            Err(_) => {
-                                // If we can't acquire the lock, it means another thread is holding it.
-                                // In this case, we'll just return an empty vector for now,
-                                // or ideally, return the last known frame if available in a non-locked structure.
-                                // For simplicity, returning empty for now to avoid blocking.
-                                return Vec::new();
-                            }
-                        };
-                        let mut gif_lines = Vec::new();
-                        let frame_count = animation_state.frames.len();
-                        let frame_index = animation_state.current_frame;
-                        if frame_count > 0 && frame_index < frame_count {
-                            let current_frame_content = &animation_state.frames[frame_index];
-                            let chafa_text: ratatui::text::Text = current_frame_content
-                                .clone()
-                                .as_str()
-                                .into_text()
-                                .expect("Failed to convert ANSI to Text");
-                            for mut line in chafa_text.lines.into_iter() {
-                                let prefix_span = Span::styled(
-                                    "│ ",
-                                    Style::default().fg(rgb_to_color(&theme.colors.dim)),
-                                );
-                                line.spans.insert(0, prefix_span);
-                                gif_lines.push(line);
-                            }
-                            gif_lines.push(Line::from(vec![Span::styled(
-                                "╰─",
-                                Style::default().fg(rgb_to_color(&theme.colors.dim)),
-                            )]));
-                            gif_lines.push(Line::from(vec![Span::styled(
-                                format!(
-                                    "Download with: /download {}",
-                                    msg.file_id.as_deref().unwrap_or("")
-                                ),
-                                Style::default()
-                                    .fg(rgb_to_color(&theme.colors.dim))
-                                    .add_modifier(Modifier::ITALIC),
-                            )]));
-                        } else {
-                            gif_lines.push(
-                                Line::from(vec![
-                                    Span::styled(
-                                        "│ ",
-                                        Style::default().fg(rgb_to_color(&theme.colors.dim)),
-                                    ),
-                                    Span::styled(
-                                        "[Error: GIF frame unavailable]",
-                                        Style::default()
-                                            .fg(rgb_to_color(&theme.colors.error))
-                                            .add_modifier(Modifier::ITALIC),
-                                    ),
-                                ])
-                                .to_owned(),
-                            );
-                        }
-                        return gif_lines;
+    if msg.is_image.unwrap_or(false) {
+        if let Some(_gif_frames) = &msg.gif_frames {
+            if let Some(file_id) = &msg.file_id {
+                if let Some(animation_state_arc) = active_animations.get(file_id) {
+                    let animation_state = match animation_state_arc.try_lock() {
+                        Ok(state) => state,
+                        Err(_) => return Vec::new(),
+                    };
+                    let frame_count = animation_state.frames.len();
+                    let frame_index = animation_state.current_frame;
+                    if frame_count > 0 && frame_index < frame_count {
+                        let current_frame_content = &animation_state.frames[frame_index];
+                        let chafa_text: ratatui::text::Text = current_frame_content
+                            .clone()
+                            .as_str()
+                            .into_text()
+                            .expect("Failed to convert ANSI to Text");
+                        content_lines.extend(chafa_text.lines);
+                    } else {
+                        content_lines.push(Line::from(Span::styled(
+                            "[Error: GIF frame unavailable]",
+                            Style::default()
+                                .fg(rgb_to_color(&theme.colors.error))
+                                .add_modifier(Modifier::ITALIC),
+                        )));
                     }
                 }
             }
@@ -485,120 +428,30 @@ pub fn format_message_lines(
                 .clone()
                 .into_text()
                 .expect("Failed to convert ANSI to Text");
-            for mut line in chafa_text.lines.into_iter() {
-                let prefix_span =
-                    Span::styled("│ ", Style::default().fg(rgb_to_color(&theme.colors.dim)));
-                line.spans.insert(0, prefix_span);
-                new_lines.push(line);
-            }
-            return new_lines;
-        } else if let Some(progress) = msg.download_progress {
-            new_lines.push(
-                Line::from(vec![
-                    Span::styled("│ ", Style::default().fg(rgb_to_color(&theme.colors.dim))),
-                    Span::styled(
-                        format!(
-                            "Downloading {}: {}%",
-                            msg.file_name.as_deref().unwrap_or("image"),
-                            progress
-                        ),
-                        Style::default()
-                            .fg(rgb_to_color(&theme.colors.accent))
-                            .add_modifier(Modifier::ITALIC),
-                    ),
-                ])
-                .to_owned(),
-            );
-        } else if msg.file_id.is_some() {
-            new_lines.push(
-                Line::from(vec![
-                    Span::styled("│ ", Style::default().fg(rgb_to_color(&theme.colors.dim))),
-                    Span::styled(
-                        format!(
-                            "Image not yet downloaded: {}",
-                            msg.file_name.as_deref().unwrap_or("image")
-                        ),
-                        Style::default()
-                            .fg(rgb_to_color(&theme.colors.dim))
-                            .add_modifier(Modifier::ITALIC),
-                    ),
-                ])
-                .to_owned(),
-            );
-            new_lines.push(
-                Line::from(vec![
-                    Span::styled("│ ", Style::default().fg(rgb_to_color(&theme.colors.dim))),
-                    Span::styled(
-                        format!(
-                            "Download with: /download {}",
-                            msg.file_id.as_deref().unwrap_or("")
-                        ),
-                        Style::default()
-                            .fg(rgb_to_color(&theme.colors.dim))
-                            .add_modifier(Modifier::ITALIC),
-                    ),
-                ])
-                .to_owned(),
-            );
-        } else {
-            new_lines.push(
-                Line::from(vec![
-                    Span::styled("│ ", Style::default().fg(rgb_to_color(&theme.colors.dim))),
-                    Span::styled(
-                        format!(
-                            "Could not display image: {}",
-                            msg.file_name.as_deref().unwrap_or("image")
-                        ),
-                        Style::default()
-                            .fg(rgb_to_color(&theme.colors.error))
-                            .add_modifier(Modifier::ITALIC),
-                    ),
-                ])
-                .to_owned(),
-            );
+            content_lines.extend(chafa_text.lines);
         }
-        return new_lines;
     } else if msg.file_id.is_some() {
-        let file_spans = vec![
-            Span::styled(
-                format!(
-                    "{} {}.{} ({} MB)",
-                    msg.file_icon.as_deref().unwrap_or("📁"),
-                    msg.file_name.as_deref().unwrap_or("Unknown"),
-                    msg.file_extension.as_deref().unwrap_or(""),
-                    msg.file_size_mb.unwrap_or(0.0)
-                ),
-                Style::default()
-                    .fg(rgb_to_color(&theme.colors.accent))
-                    .add_modifier(Modifier::BOLD),
+        content_lines.push(Line::from(vec![Span::styled(
+            format!(
+                "{} {}.{} ({} MB)",
+                msg.file_icon.as_deref().unwrap_or("📁"),
+                msg.file_name.as_deref().unwrap_or("Unknown"),
+                msg.file_extension.as_deref().unwrap_or(""),
+                msg.file_size_mb.unwrap_or(0.0)
             ),
-            Span::raw("\n"),
-            Span::styled(
-                format!(
-                    "Download with: /download {}",
-                    msg.file_id.as_deref().unwrap_or("")
-                ),
-                Style::default()
-                    .fg(rgb_to_color(&theme.colors.dim))
-                    .add_modifier(Modifier::ITALIC),
+            Style::default()
+                .fg(rgb_to_color(&theme.colors.accent))
+                .add_modifier(Modifier::BOLD),
+        )]));
+        content_lines.push(Line::from(vec![Span::styled(
+            format!(
+                "Download with: /download {}",
+                msg.file_id.as_deref().unwrap_or("")
             ),
-        ];
-        new_lines.push(
-            Line::from(
-                std::iter::once(Span::styled(
-                    "╭─",
-                    Style::default().fg(rgb_to_color(&theme.colors.dim)),
-                ))
-                .chain(file_spans.into_iter())
-                .chain(std::iter::once(Span::styled(
-                    "─╮",
-                    Style::default().fg(rgb_to_color(&theme.colors.dim)),
-                )))
-                .collect::<Vec<Span>>(),
-            )
-            .to_owned(),
-        );
-        return new_lines;
+            Style::default()
+                .fg(rgb_to_color(&theme.colors.dim))
+                .add_modifier(Modifier::ITALIC),
+        )]));
     }
 
     let mut message_content_spans: Vec<Span> = Vec::new();
@@ -667,63 +520,88 @@ pub fn format_message_lines(
         }
     }
 
-    if last_user.as_ref() == Some(&msg.user) {
-        new_lines.push(
-            Line::from(
-                std::iter::once(Span::styled(
-                    "│ ",
-                    Style::default().fg(rgb_to_color(&theme.colors.dim)),
-                ))
-                .chain(message_content_spans.clone().into_iter())
-                .collect::<Vec<Span>>(),
-            )
-            .to_owned(),
-        );
-    } else {
-        let header_spans = vec![
-            Span::styled("╭ ", Style::default().fg(user_color)),
-            Span::styled(
-                format!("{} ", msg.icon),
-                Style::default().fg(rgb_to_color(&theme.colors.text)),
-            ),
-            Span::styled(
-                msg.user.as_str().to_string(),
-                Style::default().fg(user_color).add_modifier(Modifier::BOLD),
-            ),
-        ];
-        let header_width = header_spans.iter().map(|s| s.width()).sum::<usize>();
-        let available_width = width as usize;
-        let timestamp_width = timestamp_str.len();
-        let mut header_line_spans = header_spans;
-        if available_width > header_width + timestamp_width + 1 {
-            let padding = available_width
-                .saturating_sub(header_width)
-                .saturating_sub(timestamp_width);
-            header_line_spans.push(Span::raw(" ".repeat(padding)));
-            header_line_spans.push(Span::styled(
-                timestamp_str.clone(),
-                Style::default().fg(rgb_to_color(&theme.colors.dim)),
-            ));
-        } else {
-            header_line_spans.push(Span::raw(" "));
-            header_line_spans.push(Span::styled(
-                timestamp_str.clone(),
-                Style::default().fg(rgb_to_color(&theme.colors.dim)),
-            ));
-        }
-        new_lines.push(Line::from(header_line_spans).to_owned());
-        new_lines.push(
-            Line::from(
-                std::iter::once(Span::styled(
-                    "│ ",
-                    Style::default().fg(rgb_to_color(&theme.colors.dim)),
-                ))
-                .chain(message_content_spans.into_iter())
-                .collect::<Vec<Span>>(),
-            )
-            .to_owned(),
-        );
+    if !is_special_message {
+        content_lines.push(Line::from(message_content_spans));
     }
+
+    let mut new_lines = Vec::new();
+    let available_width = width as usize;
+
+    let user_info_str = format!("{} {}", msg.icon, msg.user.as_str());
+    let user_info_width = user_info_str.width();
+    let user_box_width = user_info_width + 4;
+
+    let top_border = format!("╭{}╮", "─".repeat(user_box_width - 2));
+    new_lines.push(Line::from(Span::styled(
+        top_border,
+        Style::default().fg(user_color),
+    )));
+
+    let mut user_line_spans = vec![
+        Span::styled("│ ", Style::default().fg(user_color)),
+        Span::styled(
+            user_info_str,
+            Style::default()
+                .fg(user_color)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(" │", Style::default().fg(user_color)),
+    ];
+
+    let user_line_width = user_line_spans.iter().map(|s| s.width()).sum::<usize>();
+    let timestamp_width = timestamp_str.len();
+
+    if available_width > user_line_width + timestamp_width {
+        let padding = available_width - user_line_width - timestamp_width;
+        user_line_spans.push(Span::raw(" ".repeat(padding)));
+    }
+    user_line_spans.push(Span::styled(
+        timestamp_str.clone(),
+        Style::default().fg(rgb_to_color(&theme.colors.dim)),
+    ));
+    new_lines.push(Line::from(user_line_spans));
+
+    let separator_left = format!("├{}┴", "─".repeat(user_box_width - 2));
+    let separator_left_width = separator_left.width();
+    let separator_right_width = available_width.saturating_sub(separator_left_width + 1);
+    let separator_right = "─".repeat(separator_right_width);
+
+    new_lines.push(Line::from(vec![
+        Span::styled(
+            separator_left,
+            Style::default().fg(rgb_to_color(&theme.colors.dim)),
+        ),
+        Span::styled(
+            separator_right,
+            Style::default().fg(rgb_to_color(&theme.colors.dim)),
+        ),
+        Span::styled(
+            "╮",
+            Style::default().fg(rgb_to_color(&theme.colors.dim)),
+        ),
+    ]));
+
+    for line in content_lines.iter_mut() {
+        let prefix_span =
+            Span::styled("│ ", Style::default().fg(rgb_to_color(&theme.colors.dim)));
+        line.spans.insert(0, prefix_span);
+        let line_width = line.width();
+        if available_width > line_width {
+            let padding = available_width - line_width - 1;
+            line.spans.push(Span::raw(" ".repeat(padding)));
+        }
+        line.spans.push(Span::styled(
+            "│",
+            Style::default().fg(rgb_to_color(&theme.colors.dim)),
+        ));
+    }
+    new_lines.extend(content_lines);
+
+    let footer = format!("╰{}╯", "─".repeat(available_width.saturating_sub(2)));
+    new_lines.push(Line::from(Span::styled(
+        footer,
+        Style::default().fg(rgb_to_color(&theme.colors.dim)),
+    )));
 
     new_lines
 }

@@ -11,7 +11,7 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use ratatui::{backend::CrosstermBackend, Terminal};
+use ratatui::{backend::CrosstermBackend,prelude::Backend, Terminal};
 use std::io::{self};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -67,59 +67,62 @@ async fn main() -> io::Result<()> {
         log4rs::init_config(config).unwrap();
     }
 
+    enable_raw_mode()?;
+    let mut stdout = std::io::stdout();
+    execute!(stdout, EnterAlternateScreen)?;
+    let backend = CrosstermBackend::new(stdout);
+    let mut terminal = Terminal::new(backend)?;
 
-    let task = tokio::task::spawn_blocking(move || {
-        async move {
-            enable_raw_mode()?;
-            let mut stdout = std::io::stdout();
-            execute!(stdout, EnterAlternateScreen)?;
-            let backend = CrosstermBackend::new(stdout);
-            let mut terminal = Terminal::new(backend)?;
-            
-            let app_state = Arc::new(Mutex::new(AppState::new()));
-            let mut current_page = TuiPage::Home;
+    let app_state = Arc::new(Mutex::new(AppState::new()));
 
-            loop {
-                let next_page = match current_page {
-                    TuiPage::Home => {
-                        let result = run_home_page(&mut terminal, app_state.clone()).await?;
-                        if let Some(TuiPage::Settings) = result {
-                        }
-                        result
-                    }
-                    TuiPage::Auth => {
-                        let result = Some(run_auth_page(&mut terminal, app_state.clone()).await?);
-                        if let Some(TuiPage::Settings) = result {
-                        }
-                        result
-                    }
-                    TuiPage::Chat => {
-                        let result = tui::chat::run_chat_page(&mut terminal, app_state.clone()).await?;
-                        result
-                    }
-                    TuiPage::Settings => {
-                        tui::settings::run_settings_page(&mut terminal, app_state.clone()).await?
-                    }
-                    TuiPage::Exit => None,
-                };
-        
-                if let Some(page) = next_page {
-                    current_page = page;
-                } else {
-                    break;
+    run_app(&mut terminal, app_state).await?;
+
+    disable_raw_mode()?;
+    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+
+    Ok(())
+}
+
+async fn run_app<B: Backend>(
+    terminal: &mut Terminal<B>,
+    app_state: Arc<Mutex<AppState>>,
+) -> io::Result<()> {
+    let mut current_page = TuiPage::Home;
+
+    loop {
+        let next_page = match current_page {
+            TuiPage::Home => {
+                let result = run_home_page(terminal, app_state.clone()).await?;
+                if let Some(TuiPage::Settings) = result {
                 }
-        
-                if app_state.lock().await.should_exit_app {
-                    break;
-                }
+                result
             }
-            disable_raw_mode()?;
-            execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
-            Ok::<(), io::Error>(())
-        }
-    });
+            TuiPage::Auth => {
+                let result = Some(run_auth_page(terminal, app_state.clone()).await?);
+                if let Some(TuiPage::Settings) = result {
+                }
+                result
+            }
+            TuiPage::Chat => {
+                let result = tui::chat::run_chat_page(terminal, app_state.clone()).await?;
+                result
+            }
+            TuiPage::Settings => {
+                tui::settings::run_settings_page(terminal, app_state.clone()).await?
+            }
+            TuiPage::Exit => None,
+        };
 
-    task.await.unwrap().await?;
+        if let Some(page) = next_page {
+            current_page = page;
+        } else {
+            break;
+        }
+
+        if app_state.lock().await.should_exit_app {
+            break;
+        }
+    }
 
     Ok(())
 }
