@@ -207,18 +207,9 @@ pub async fn process_image_message(
                         // Optionally: handle frame_rx to update UI with new frames
                         update_and_log_message(&app_state, message, "gif_ok").await;
                     }
-                    Ok((frames, delays)) if !frames.is_empty() => {
+                    Ok((frames, _delays)) if !frames.is_empty() => {
                         message.content = (*frames[0]).clone();
-                        let frames_with_delays: Vec<(String, std::time::Duration)> = frames
-                            .iter()
-                            .map(|arc| (**arc).clone())
-                            .zip(
-                                delays
-                                    .iter()
-                                    .map(|d| std::time::Duration::from_millis(*d as u64)),
-                            )
-                            .collect();
-                        message.gif_frames = Some(frames_with_delays);
+                        message.gif_frames = None;
                         update_and_log_message(&app_state, message, "gif_static").await;
                     }
                     Err(e) => {
