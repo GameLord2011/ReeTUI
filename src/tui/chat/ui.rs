@@ -149,6 +149,7 @@ pub fn draw_chat_ui<B: Backend>(
                 .bg(rgb_to_color(&current_theme.colors.background)),
         );
     let inner_messages_area = messages_block.inner(chat_chunks[0]);
+    state.chat_width = inner_messages_area.width;
     f.render_widget(messages_block, chat_chunks[0]);
     let current_channel_clone = state.current_channel.clone();
     if let Some(current_channel) = &current_channel_clone {

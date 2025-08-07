@@ -34,7 +34,7 @@ pub fn draw_notification_popup(f: &mut Frame, app_state: &mut AppState) {
         };
 
         let popup_block = Block::default()
-            .title(format!(" {} ", notification.title))
+            .title(notification.title.clone())
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
             .border_style(Style::default().fg(rgb_to_color(&border_color)))

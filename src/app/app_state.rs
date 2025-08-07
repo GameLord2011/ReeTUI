@@ -38,6 +38,7 @@ pub struct AppState {
         String,
         std::sync::Arc<tokio::sync::Mutex<crate::tui::chat::gif_renderer::GifAnimationState>>,
     >,
+    pub chat_width: u16,
 }
 
 impl Default for AppState {
@@ -75,6 +76,7 @@ impl Default for AppState {
             show_settings: false,
             active_animations: HashMap::new(),
             needs_re_render: HashMap::new(),
+            chat_width: 80,
         }
     }
 }

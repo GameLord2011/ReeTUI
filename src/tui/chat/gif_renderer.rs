@@ -54,7 +54,7 @@ use futures::future::join_all;
 
 pub async fn convert_gif_to_chafa_frames_and_delays(
     gif_data: &[u8],
-    height: u16,
+    chat_width: u16,
 ) -> Result<(Vec<Arc<String>>, Vec<u16>), String> {
     use image::codecs::png::PngEncoder;
     use image::ImageEncoder;
@@ -68,6 +68,18 @@ pub async fn convert_gif_to_chafa_frames_and_delays(
 
     let mut chafa_futures = Vec::new();
     let mut delays = Vec::new();
+
+    let (width, height) = if let Some(frame) = all_frames.first() {
+        (frame.buffer().width(), frame.buffer().height())
+    } else {
+        return Ok((Vec::new(), Vec::new()));
+    };
+
+    let size = if height > width {
+        "x18".to_string()
+    } else {
+        format!("{}x", chat_width.saturating_sub(5))
+    };
 
     for frame in all_frames {
         let mut png_data = Vec::new();
@@ -85,9 +97,10 @@ pub async fn convert_gif_to_chafa_frames_and_delays(
         let delay = if denom == 0 { numer as u16 } else { (numer / denom) as u16 };
         delays.push(delay);
 
+        let size_clone = size.clone();
         // Spawn a tokio task for each chafa conversion
         chafa_futures.push(tokio::spawn(async move {
-            super::image_handler::run_chafa(&png_data, height).await
+            super::image_handler::run_chafa(&png_data, &size_clone).await
         }));
     }
 

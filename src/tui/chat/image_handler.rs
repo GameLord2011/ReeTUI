@@ -1,7 +1,7 @@
 use crate::api::models::BroadcastMessage;
 use crate::app::app_state::AppState;
-use image::ImageFormat;
 use image::ImageReader;
+use image::{GenericImageView, ImageFormat};
 use log::{error, info};
 use std::io::{self};
 use std::sync::Arc;
@@ -42,8 +42,8 @@ async fn update_and_log_message(
 }
 
 /// A robust, non-blocking function to execute the chafa command.
-pub async fn run_chafa(image_data: &[u8], height: u16) -> Result<String, String> {
-    let size_arg = format!("--size=x{}", height);
+pub async fn run_chafa(image_data: &[u8], size: &str) -> Result<String, String> {
+    let size_arg = format!("--size={}", size);
     let args = [size_arg.as_str(), "-f", "symbols"];
     let command_str = format!("chafa {}", args.join(" "));
     info!("Executing command: {}", &command_str);
@@ -104,10 +104,34 @@ pub async fn run_chafa(image_data: &[u8], height: u16) -> Result<String, String>
     }
 }
 
-pub async fn convert_image_to_chafa(image_data: &[u8], height: u16) -> Result<String, String> {
+pub async fn convert_image_to_chafa(image_data: &[u8], chat_width: u16) -> Result<String, String> {
     info!("Handling static image to Chafa conversion.");
-    // Assume PNG/JPEG input for static images
-    run_chafa(image_data, height).await
+    let image = image::load_from_memory(image_data).map_err(|e| e.to_string())?;
+    let (width, height) = image.dimensions();
+
+    let image = image::load_from_memory(image_data).map_err(|e| e.to_string())?;
+    let (original_width, original_height) = image.dimensions();
+
+    let max_display_width = chat_width.saturating_sub(4); // Usable width
+    let max_display_height = 50; // Max lines for image preview
+
+    // Calculate scaling factors for both width and height constraints
+    let width_scale_factor = max_display_width as f32 / original_width as f32;
+    let height_scale_factor = max_display_height as f32 / original_height as f32;
+
+    // Choose the smaller scale factor to ensure the image fits within both dimensions
+    let scale_factor = width_scale_factor.min(height_scale_factor);
+
+    let final_width = (original_width as f32 * scale_factor).round() as u16;
+    let final_height = (original_height as f32 * scale_factor).round() as u16;
+
+    // Ensure minimum dimensions if image is too small, or if scaling results in 0
+    let final_width = final_width.max(1);
+    let final_height = final_height.max(1);
+
+    let size = format!("{}x{}", final_width, final_height);
+
+    run_chafa(image_data, &size).await
 }
 
 #[allow(dead_code)]
@@ -123,14 +147,14 @@ pub async fn process_image_message(
     app_state: Arc<Mutex<AppState>>,
     mut message: BroadcastMessage,
     http_client: &reqwest::Client,
-    height: u16,
+    chat_width: u16,
     redraw_tx: mpsc::UnboundedSender<String>, // Add redraw_tx here
 ) {
     log::debug!(
-        "process_image_message: file_id={:?} timestamp={} height={}",
+        "process_image_message: file_id={:?} timestamp={} chat_width={}",
         message.file_id,
         message.timestamp,
-        height
+        chat_width
     );
     let file_id = message.file_id.clone().unwrap_or_default();
     let file_name = message.file_name.clone().unwrap_or_default();
@@ -163,7 +187,7 @@ pub async fn process_image_message(
             if crate::tui::chat::gif_renderer::is_gif(&image_data) {
                 match crate::tui::chat::gif_renderer::convert_gif_to_chafa_frames_and_delays(
                     &image_data,
-                    height,
+                    chat_width,
                 )
                 .await
                 {
@@ -224,7 +248,7 @@ pub async fn process_image_message(
                 }
             } else {
                 // Handle static images
-                match convert_image_to_chafa(&image_data, height).await {
+                match convert_image_to_chafa(&image_data, chat_width).await {
                     Ok(chafa_string) => {
                         message.content = chafa_string.clone();
                         message.image_preview = Some(chafa_string);

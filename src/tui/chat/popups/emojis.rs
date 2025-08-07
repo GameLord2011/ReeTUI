@@ -51,12 +51,12 @@ pub fn draw_emojis_popup(f: &mut Frame, state: &mut AppState, area: Rect, popup_
             } else {
                 Style::default().fg(rgb_to_color(&current_theme.colors.text))
             };
-            ListItem::new(format!(" {}  {}", emoji.as_str(), emoji.name())).style(style)
+            ListItem::new(format!("{}  {}", emoji.as_str(), emoji.name())).style(style)
         })
         .collect();
 
     let emojis_list = List::new(emoji_list)
-        .block(Block::default().title("Em󰞅ji"))
+        .block(Block::default())
         .highlight_style(
             Style::default()
                 .add_modifier(Modifier::REVERSED)
