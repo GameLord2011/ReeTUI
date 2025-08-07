@@ -90,6 +90,7 @@ pub async fn download_file(
     file_id: &str,
     file_name: &str,
     progress_sender: mpsc::UnboundedSender<(String, u8)>,
+    save_to_downloads: bool,
 ) -> Result<PathBuf, FileApiError> {
     let response = client
         .get(&format!("{}/files/download/{}", API_BASE_URL, file_id))
@@ -101,15 +102,39 @@ pub async fn download_file(
         let mut downloaded_size: u64 = 0;
         let mut stream = response.bytes_stream();
 
-        let temp_dir = std::env::temp_dir();
-        let file_path = temp_dir.join(file_name);
+        let file_path = if save_to_downloads {
+            let current_dir = std::env::current_dir()?;
+            let downloads_dir = current_dir.join("downloads");
+            tokio::fs::create_dir_all(&downloads_dir).await?;
+
+            let mut unique_file_path = downloads_dir.join(file_name);
+            let mut counter = 0;
+            while tokio::fs::metadata(&unique_file_path).await.is_ok() {
+                counter += 1;
+                let stem = PathBuf::from(file_name)
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("")
+                    .to_string();
+                let extension = PathBuf::from(file_name)
+                    .extension()
+                    .and_then(|s| s.to_str())
+                    .map(|s| format!(".{}", s))
+                    .unwrap_or_default();
+                unique_file_path = downloads_dir.join(format!("{}({}){}", stem, counter, extension));
+            }
+            unique_file_path
+        } else {
+            let temp_dir = std::env::temp_dir();
+            temp_dir.join(file_name)
+        };
         let mut file = File::create(&file_path).await?;
 
         while let Some(chunk_result) = stream.next().await {
             let chunk = chunk_result.unwrap();
             file.write_all(&chunk).await?;
             downloaded_size += chunk.len() as u64;
-            let progress = ((downloaded_size as f64 / total_size as f64) * 100.0) as u8;
+            let progress = (((downloaded_size as f64 / total_size as f64) * 100.0) as u8).min(100);
             let _ = progress_sender.send((file_id.to_string(), progress));
         }
         let _ = progress_sender.send((file_id.to_string(), 100));

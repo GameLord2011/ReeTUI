@@ -4,8 +4,6 @@ use crate::themes::{Theme, ThemeName, ThemesConfig};
 use std::collections::{HashMap, VecDeque};
 use std::time::{Duration, Instant};
 
-
-
 #[derive(Debug)]
 pub struct AppState {
     pub auth_token: Option<String>,
@@ -40,7 +38,6 @@ pub struct AppState {
         String,
         std::sync::Arc<tokio::sync::Mutex<crate::tui::chat::gif_renderer::GifAnimationState>>,
     >,
-    
 }
 
 impl Default for AppState {
@@ -58,7 +55,7 @@ impl Default for AppState {
             message_scroll_offset: 0,
             current_theme: crate::themes::ThemesConfig::get_all_themes()
                 .unwrap()
-                .remove(&crate::themes::ThemeName::Cyberpunk)
+                .remove(&crate::themes::ThemeName::CatppuccinMocha)
                 .unwrap(),
             themes: ThemesConfig::get_all_themes().unwrap(),
             active_users: Vec::new(),
@@ -78,7 +75,6 @@ impl Default for AppState {
             show_settings: false,
             active_animations: HashMap::new(),
             needs_re_render: HashMap::new(),
-            
         }
     }
 }
@@ -118,8 +114,6 @@ impl AppState {
 
     pub fn set_download_progress_popup(&mut self, progress: u8) {
         self.download_progress = progress;
-        self.popup_state.show = true;
-        self.popup_state.popup_type = PopupType::DownloadProgress;
     }
 
     #[allow(dead_code)]
@@ -175,6 +169,27 @@ impl AppState {
             .clone()
             .unwrap_or_else(|| message.timestamp.to_string());
         let channel_messages = self.messages.entry(channel_id.clone()).or_default();
+
+        // Check if the previous message needs re-rendering for grouping
+        if let Some(last_msg) = channel_messages.back() {
+            if last_msg.user == message.user
+                && (message.timestamp - last_msg.timestamp).abs() < 60
+                && last_msg.file_id.is_none()
+                && !last_msg.is_image.unwrap_or(false)
+                && message.file_id.is_none()
+                && !message.is_image.unwrap_or(false)
+            {
+                let last_message_id = last_msg
+                    .file_id
+                    .clone()
+                    .unwrap_or_else(|| last_msg.timestamp.to_string());
+                self.needs_re_render
+                    .entry(channel_id.clone())
+                    .or_default()
+                    .insert(last_message_id, true);
+            }
+        }
+
         channel_messages.push_back(message);
         self.rendered_messages
             .entry(channel_id.clone())
@@ -287,8 +302,6 @@ impl AppState {
             }
         }
     }
-
-    
 
     pub fn find_message_mut(&mut self, message_id: &str) -> Option<&mut BroadcastMessage> {
         for (_channel_id, messages) in self.messages.iter_mut() {

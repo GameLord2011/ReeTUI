@@ -140,6 +140,7 @@ pub async fn process_image_message(
         &file_id,
         &file_name,
         mpsc::unbounded_channel().0,
+        false,
     )
     .await
     {

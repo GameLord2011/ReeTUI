@@ -155,53 +155,60 @@ pub fn draw_chat_ui<B: Backend>(
         let channel_id = &current_channel.id;
         let mut all_rendered_lines: Vec<Line<'static>> = Vec::new();
  
-         if let Some(messages) = state.messages.get(channel_id) {
-             for msg in messages.iter() {                let message_id = msg
-                    .file_id
-                    .clone()
-                    .unwrap_or_else(|| msg.timestamp.to_string());
-                let needs_re_render_this_message = state
-                    .needs_re_render
-                    .get(channel_id)
-                    .and_then(|channel_map| channel_map.get(&message_id).copied())
-                    .unwrap_or(true);
-
-                if needs_re_render_this_message {
-                    let lines = format_message_lines(
-                        msg,
-                        &state.current_theme,
-                        inner_messages_area.width,
-                        mention_regex,
-                        emoji_regex,
-                        &state.active_animations,
-                    );
-                    state
-                        .rendered_messages
-                        .entry(channel_id.clone())
-                        .or_default()
-                        .insert(message_id.clone(), lines.clone());
-                    state
+             if let Some(messages) = state.messages.get(channel_id) {
+                for i in 0..messages.len() {
+                    let msg = &messages[i];
+                    let message_id = msg
+                        .file_id
+                        .clone()
+                        .unwrap_or_else(|| msg.timestamp.to_string());
+                    let needs_re_render_this_message = state
                         .needs_re_render
-                        .entry(channel_id.clone())
-                        .or_default()
-                        .insert(message_id.clone(), false);
-                    all_rendered_lines.extend(lines);
-                } else {
-                    if let Some(lines) = state
-                        .rendered_messages
                         .get(channel_id)
-                        .and_then(|channel_map| channel_map.get(&message_id))
-                    {
-                        all_rendered_lines.extend(lines.clone());
-                    } else {
-                         let lines = format_message_lines(
+                        .and_then(|channel_map| channel_map.get(&message_id).copied())
+                        .unwrap_or(true);
+
+                    let mut is_first_in_group = true;
+                    let mut is_last_in_group = true;
+
+                    if i > 0 {
+                        let prev_msg = &messages[i - 1];
+                        if prev_msg.user == msg.user
+                            && (msg.timestamp - prev_msg.timestamp).abs() < 60
+                            && prev_msg.file_id.is_none()
+                            && !prev_msg.is_image.unwrap_or(false)
+                            && msg.file_id.is_none()
+                            && !msg.is_image.unwrap_or(false)
+                        {
+                            is_first_in_group = false;
+                        }
+                    }
+
+                    if i < messages.len() - 1 {
+                        let next_msg = &messages[i + 1];
+                        if next_msg.user == msg.user
+                            && (next_msg.timestamp - msg.timestamp).abs() < 60
+                            && next_msg.file_id.is_none()
+                            && !next_msg.is_image.unwrap_or(false)
+                            && msg.file_id.is_none()
+                            && !msg.is_image.unwrap_or(false)
+                        {
+                            is_last_in_group = false;
+                        }
+                    }
+
+                    if needs_re_render_this_message || !is_first_in_group {
+                        let lines = format_message_lines(
                             msg,
                             &state.current_theme,
                             inner_messages_area.width,
                             mention_regex,
                             emoji_regex,
                             &state.active_animations,
-                        );                        state
+                            is_first_in_group,
+                            is_last_in_group,
+                        );
+                        state
                             .rendered_messages
                             .entry(channel_id.clone())
                             .or_default()
@@ -212,12 +219,39 @@ pub fn draw_chat_ui<B: Backend>(
                             .or_default()
                             .insert(message_id.clone(), false);
                         all_rendered_lines.extend(lines);
+                    } else {
+                        if let Some(lines) = state
+                            .rendered_messages
+                            .get(channel_id)
+                            .and_then(|channel_map| channel_map.get(&message_id))
+                        {
+                            all_rendered_lines.extend(lines.clone());
+                        } else {
+                            let lines = format_message_lines(
+                                msg,
+                                &state.current_theme,
+                                inner_messages_area.width,
+                                mention_regex,
+                                emoji_regex,
+                                &state.active_animations,
+                            is_first_in_group,
+                            is_last_in_group,
+                        );                            state
+                                .rendered_messages
+                                .entry(channel_id.clone())
+                                .or_default()
+                                .insert(message_id.clone(), lines.clone());
+                            state
+                                .needs_re_render
+                                .entry(channel_id.clone())
+                                .or_default()
+                                .insert(message_id.clone(), false);
+                            all_rendered_lines.extend(lines);
+                        }
                     }
-                }
-                
-            }
-        }
 
+                }
+            }
         state.total_chat_buffer_length = all_rendered_lines.len();
 
         let messages_paragraph = Paragraph::new({
@@ -384,6 +418,8 @@ pub fn format_message_lines(
     mention_regex: &Regex,
     emoji_regex: &Regex,
     active_animations: &HashMap<String, Arc<Mutex<GifAnimationState>>>,
+    is_first_in_group: bool,
+    is_last_in_group: bool,
 ) -> Vec<Line<'static>> {
     let mut content_lines = Vec::new();
     let timestamp_str = Utc
@@ -527,59 +563,86 @@ pub fn format_message_lines(
     let mut new_lines = Vec::new();
     let available_width = width as usize;
 
-    let user_info_str = format!("{} {}", msg.icon, msg.user.as_str());
-    let user_info_width = user_info_str.width();
-    let user_box_width = user_info_width + 4;
+    if is_first_in_group {
+        let user_info_str = format!("{} {}", msg.icon, msg.user.as_str());
+        let user_info_width = user_info_str.width();
+        let user_box_width = user_info_width + 4;
 
-    let top_border = format!("╭{}╮", "─".repeat(user_box_width - 2));
-    new_lines.push(Line::from(Span::styled(
-        top_border,
-        Style::default().fg(user_color),
-    )));
+        let top_border = format!("╭{}╮", "─".repeat(user_box_width - 2));
+        new_lines.push(Line::from(Span::styled(
+            top_border,
+            Style::default().fg(user_color),
+        )));
 
-    let mut user_line_spans = vec![
-        Span::styled("│ ", Style::default().fg(user_color)),
-        Span::styled(
-            user_info_str,
-            Style::default()
-                .fg(user_color)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(" │", Style::default().fg(user_color)),
-    ];
+        let mut user_line_spans = vec![
+            Span::styled("│ ", Style::default().fg(user_color)),
+            Span::styled(
+                user_info_str,
+                Style::default()
+                    .fg(user_color)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" │", Style::default().fg(user_color)),
+        ];
 
-    let user_line_width = user_line_spans.iter().map(|s| s.width()).sum::<usize>();
-    let timestamp_width = timestamp_str.len();
+        let user_line_width = user_line_spans.iter().map(|s| s.width()).sum::<usize>();
+        let timestamp_width = timestamp_str.len();
 
-    if available_width > user_line_width + timestamp_width {
-        let padding = available_width - user_line_width - timestamp_width;
-        user_line_spans.push(Span::raw(" ".repeat(padding)));
+        if available_width > user_line_width + timestamp_width {
+            let padding = available_width - user_line_width - timestamp_width;
+            user_line_spans.push(Span::raw(" ".repeat(padding)));
+        }
+        user_line_spans.push(Span::styled(
+            timestamp_str.clone(),
+            Style::default().fg(rgb_to_color(&theme.colors.dim)),
+        ));
+        new_lines.push(Line::from(user_line_spans));
+
+        let separator_left = format!("├{}┴", "─".repeat(user_box_width - 2));
+        let separator_left_width = separator_left.width();
+        let separator_right_width = available_width.saturating_sub(separator_left_width + 1);
+        let separator_right = "─".repeat(separator_right_width);
+
+        new_lines.push(Line::from(vec![
+            Span::styled(
+                separator_left,
+                Style::default().fg(rgb_to_color(&theme.colors.dim)),
+            ),
+            Span::styled(
+                separator_right,
+                Style::default().fg(rgb_to_color(&theme.colors.dim)),
+            ),
+            Span::styled(
+                "╮",
+                Style::default().fg(rgb_to_color(&theme.colors.dim)),
+            ),
+        ]));
+    } else if !is_first_in_group {
+        let separator_left = format!("├{}─", "─".repeat(2)); // Small separator for continuation
+        let separator_left_width = separator_left.width();
+        let separator_right_width = available_width.saturating_sub(separator_left_width + 1);
+        let separator_right = "─".repeat(separator_right_width);
+
+        new_lines.push(Line::from(vec![
+            Span::styled(
+                separator_left,
+                Style::default().fg(rgb_to_color(&theme.colors.dim)),
+            ),
+            Span::styled(
+                separator_right,
+                Style::default().fg(rgb_to_color(&theme.colors.dim)),
+            ),
+            Span::styled(
+                "┤",
+                Style::default().fg(rgb_to_color(&theme.colors.dim)),
+            ),
+        ]));
     }
-    user_line_spans.push(Span::styled(
-        timestamp_str.clone(),
-        Style::default().fg(rgb_to_color(&theme.colors.dim)),
-    ));
-    new_lines.push(Line::from(user_line_spans));
 
-    let separator_left = format!("├{}┴", "─".repeat(user_box_width - 2));
-    let separator_left_width = separator_left.width();
-    let separator_right_width = available_width.saturating_sub(separator_left_width + 1);
-    let separator_right = "─".repeat(separator_right_width);
 
-    new_lines.push(Line::from(vec![
-        Span::styled(
-            separator_left,
-            Style::default().fg(rgb_to_color(&theme.colors.dim)),
-        ),
-        Span::styled(
-            separator_right,
-            Style::default().fg(rgb_to_color(&theme.colors.dim)),
-        ),
-        Span::styled(
-            "╮",
-            Style::default().fg(rgb_to_color(&theme.colors.dim)),
-        ),
-    ]));
+
+
+
 
     for line in content_lines.iter_mut() {
         let prefix_span =
@@ -597,11 +660,13 @@ pub fn format_message_lines(
     }
     new_lines.extend(content_lines);
 
-    let footer = format!("╰{}╯", "─".repeat(available_width.saturating_sub(2)));
-    new_lines.push(Line::from(Span::styled(
-        footer,
-        Style::default().fg(rgb_to_color(&theme.colors.dim)),
-    )));
+    if is_last_in_group {
+        let footer = format!("╰{}╯", "─".repeat(available_width.saturating_sub(2)));
+        new_lines.push(Line::from(Span::styled(
+            footer,
+            Style::default().fg(rgb_to_color(&theme.colors.dim)),
+        )));
+    }
 
     new_lines
 }
