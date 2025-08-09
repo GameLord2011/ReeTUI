@@ -120,10 +120,18 @@ pub async fn convert_image_to_chafa(image_data: &[u8], chat_width: u16) -> Resul
     let height_scale_factor = max_display_height as f32 / original_height as f32;
 
     // Choose the smaller scale factor to ensure the image fits within both dimensions
-    let scale_factor = width_scale_factor.min(height_scale_factor);
+    let mut scale_factor = width_scale_factor.min(height_scale_factor);
 
-    let final_width = (original_width as f32 * scale_factor).round() as u16;
-    let final_height = (original_height as f32 * scale_factor).round() as u16;
+    let mut final_width = (original_width as f32 * scale_factor).round() as u16;
+    let mut final_height = (original_height as f32 * scale_factor).round() as u16;
+
+    // New logic: If height is constrained and width is still too large, reduce width
+    const MAX_DESIRED_WIDTH_FOR_TALL_IMAGES: u16 = 30; // A smaller max width for height-constrained images
+    if final_height == max_display_height && final_width > MAX_DESIRED_WIDTH_FOR_TALL_IMAGES {
+        scale_factor = MAX_DESIRED_WIDTH_FOR_TALL_IMAGES as f32 / original_width as f32;
+        final_width = (original_width as f32 * scale_factor).round() as u16;
+        final_height = (original_height as f32 * scale_factor).round() as u16;
+    }
 
     // Ensure minimum dimensions if image is too small, or if scaling results in 0
     let final_width = final_width.max(1);

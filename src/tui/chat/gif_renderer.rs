@@ -75,11 +75,24 @@ pub async fn convert_gif_to_chafa_frames_and_delays(
         return Ok((Vec::new(), Vec::new()));
     };
 
-    let size = if height > width {
-        "x18".to_string()
-    } else {
-        format!("{}x", chat_width.saturating_sub(5))
-    };
+    let max_display_width = chat_width.saturating_sub(4); // Usable width, similar to static images
+    let max_display_height = 50; // Max lines for GIF preview
+
+    // Calculate scaling factors for both width and height constraints
+    let width_scale_factor = max_display_width as f32 / width as f32;
+    let height_scale_factor = max_display_height as f32 / height as f32;
+
+    // Choose the smaller scale factor to ensure the image fits within both dimensions
+    let scale_factor = width_scale_factor.min(height_scale_factor);
+
+    let final_width = (width as f32 * scale_factor).round() as u16;
+    let final_height = (height as f32 * scale_factor).round() as u16;
+
+    // Ensure minimum dimensions if image is too small, or if scaling results in 0
+    let final_width = final_width.max(1);
+    let final_height = final_height.max(1);
+
+    let size = format!("{}x{}", final_width, final_height);
 
     for frame in all_frames {
         let mut png_data = Vec::new();
