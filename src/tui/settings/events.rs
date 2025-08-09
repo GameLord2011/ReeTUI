@@ -2,8 +2,8 @@ use crate::app::app_state::AppState;
 use crate::app::TuiPage;
 use crate::tui::auth::page::ICONS;
 use crate::tui::settings::state::{FocusedPane, SettingsScreen, SettingsState};
-use crossterm::event::{Event, KeyCode, KeyEventKind};
 use crate::tui::settings::SettingsEvent;
+use crossterm::event::{Event, KeyCode, KeyEventKind};
 
 pub fn handle_settings_event(
     settings_state: &mut SettingsState,
@@ -24,9 +24,8 @@ pub fn handle_settings_event(
                     }
                 }
             }
-        },
-        SettingsEvent::Tick => {
         }
+        SettingsEvent::Tick => {}
     }
     None
 }

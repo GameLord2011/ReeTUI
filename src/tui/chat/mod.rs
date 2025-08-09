@@ -10,15 +10,15 @@ pub mod ws_command;
 
 #[cfg(test)]
 pub mod tests;
-
 use crate::api::websocket;
-use crate::app::{AppState, NotificationType, PopupType};
+use crate::app::{AppState, PopupType};
 use crate::tui::chat::create_channel_form::{CreateChannelForm, CreateChannelInput};
 use crate::tui::chat::message_parsing::{
     replace_shortcodes_with_emojis, should_show_emoji_popup, should_show_mention_popup,
 };
 use crate::tui::chat::ui::draw_chat_ui;
 use crate::tui::chat::ws_command::WsCommand;
+use crate::tui::notification::notification::NotificationType;
 use crate::tui::settings::{self, state::SettingsState};
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers, MouseEventKind};
 use lazy_static::lazy_static;
@@ -121,9 +121,9 @@ pub async fn run_chat_page<B: Backend>(
                     channel_id,
                     file_path,
                 } => {
-                    let app_state_for_upload = app_state_for_file_commands.clone();
+                    let app_state_for_upload_clone = app_state_for_file_commands.clone();
                     let token = {
-                        let state = app_state_for_upload.lock().await;
+                        let state = app_state_for_upload_clone.lock().await;
                         state.auth_token.clone()
                     };
                     if let Some(token) = token {
@@ -137,22 +137,24 @@ pub async fn run_chat_page<B: Backend>(
                         .await
                         {
                             Ok(_file_id) => {
-                                let mut state = app_state_for_upload.lock().await;
-                                state.set_notification(
+                                let mut state = app_state_for_upload_clone.lock().await;
+                                state.notification_manager.add(
                                     "File Upload Success".to_string(),
                                     "File uploaded successfully!".to_string(),
                                     NotificationType::Success,
-                                    3,
-                                );
+                                    Some(Duration::from_secs(3)),
+                                    app_state_for_upload_clone.clone(),
+                                ).await;
                             }
                             Err(e) => {
-                                let mut state = app_state_for_upload.lock().await;
-                                state.set_notification(
+                                let mut state = app_state_for_upload_clone.lock().await;
+                                state.notification_manager.add(
                                     "File Upload Error".to_string(),
                                     format!("Failed to upload file: {}", e),
                                     NotificationType::Error,
-                                    3,
-                                );
+                                    Some(Duration::from_secs(3)),
+                                    app_state_for_upload_clone.clone(),
+                                ).await;
                             }
                         }
                     }
@@ -173,21 +175,23 @@ pub async fn run_chat_page<B: Backend>(
                         {
                             Ok(_) => {
                                 let mut state = app_state_for_download.lock().await;
-                                state.set_notification(
+                                state.notification_manager.add(
                                     "File Download Success".to_string(),
                                     format!("File '{}' downloaded successfully!", file_name),
                                     NotificationType::Success,
-                                    3,
-                                );
+                                    Some(Duration::from_secs(3)),
+                                    app_state_for_download.clone(),
+                                ).await;
                             }
                             Err(e) => {
                                 let mut state = app_state_for_download.lock().await;
-                                state.set_notification(
+                                state.notification_manager.add(
                                     "File Download Error".to_string(),
                                     format!("Failed to download file: {}", e),
                                     NotificationType::Error,
-                                    3,
-                                );
+                                    Some(Duration::from_secs(3)),
+                                    app_state_for_download.clone(),
+                                ).await;
                             }
                         }
                     });
@@ -202,7 +206,13 @@ pub async fn run_chat_page<B: Backend>(
     tokio::spawn(async move {
         while let Some((_file_id, progress)) = progress_rx.recv().await {
             let mut state = app_state_clone_for_progress.lock().await;
-            state.set_download_progress_popup(progress);
+            state.notification_manager.add(
+                "Download Progress".to_string(),
+                format!("Downloading: {}%", progress),
+                NotificationType::Info,
+                None,
+                app_state_clone_for_progress.clone(),
+            ).await;
             if progress == 100 {
                 state.popup_state.show = false;
                 state.popup_state.popup_type = PopupType::None;
@@ -212,6 +222,7 @@ pub async fn run_chat_page<B: Backend>(
 
     loop {
         let mut state_guard = app_state.lock().await;
+        state_guard.notification_manager.update();
 
         let _filtered_users: Vec<String> = state_guard.active_users.clone();
         let _filtered_emojis: Vec<String> = emojis::iter().map(|e| e.to_string()).collect();
@@ -353,31 +364,34 @@ pub async fn run_chat_page<B: Backend>(
                                                 })
                                                 .is_err()
                                             {
-                                                state_guard.set_notification(
+                                                state_guard.notification_manager.add(
                                                     "Channel Creation Error".to_string(),
                                                     "Failed to create channel".to_string(),
                                                     NotificationType::Error,
-                                                    3,
-                                                );
+                                                    Some(Duration::from_secs(3)),
+                                                    app_state.clone(),
+                                                ).await;
                                             } else {
-                                                state_guard.set_notification(
+                                                state_guard.notification_manager.add(
                                                     "Channel Creation Success".to_string(),
                                                     format!("Channel '{}' created!", channel_name),
                                                     NotificationType::Success,
-                                                    3,
-                                                );
+                                                    Some(Duration::from_secs(3)),
+                                                    app_state.clone(),
+                                                ).await;
                                                 state_guard.popup_state.show = false;
                                                 state_guard.popup_state.popup_type =
                                                     PopupType::None;
                                                 create_channel_form = CreateChannelForm::new();
                                             }
                                         } else {
-                                            state_guard.set_notification(
+                                            state_guard.notification_manager.add(
                                                 "Channel Creation Warning".to_string(),
                                                 "Channel name cannot be empty!".to_string(),
                                                 NotificationType::Warning,
-                                                3,
-                                            );
+                                                Some(Duration::from_secs(3)),
+                                                app_state.clone(),
+                                            ).await;
                                         }
                                     }
                                 },
@@ -574,12 +588,13 @@ pub async fn run_chat_page<B: Backend>(
                                                 })
                                                 .is_err()
                                             {
-                                                state_guard.set_notification(
+                                                state_guard.notification_manager.add(
                                                     "File Upload Error".to_string(),
                                                     "Failed to send upload command".to_string(),
                                                     NotificationType::Error,
-                                                    3,
-                                                );
+                                                    Some(Duration::from_secs(3)),
+                                                    app_state.clone(),
+                                                ).await;
                                             }
                                         }
                                         state_guard.popup_state.show = false;
@@ -612,17 +627,28 @@ pub async fn run_chat_page<B: Backend>(
                                                     let file_id = parts[1].to_string();
                                                     let file_name_to_download = {
                                                         let mut found_file_name = None;
-                                                        if let Some(current_channel) = &state_guard.current_channel {
-                                                            if let Some(messages_deque) = state_guard.messages.get(&current_channel.id) {
+                                                        if let Some(current_channel) =
+                                                            &state_guard.current_channel
+                                                        {
+                                                            if let Some(messages_deque) =
+                                                                state_guard
+                                                                    .messages
+                                                                    .get(&current_channel.id)
+                                                            {
                                                                 for msg in messages_deque.iter() {
-                                                                    if msg.file_id.as_deref() == Some(&file_id) {
-                                                                        found_file_name = msg.file_name.clone();
+                                                                    if msg.file_id.as_deref()
+                                                                        == Some(&file_id)
+                                                                    {
+                                                                        found_file_name =
+                                                                            msg.file_name.clone();
                                                                         break;
                                                                     }
                                                                 }
                                                             }
                                                         }
-                                                        found_file_name.unwrap_or_else(|| "downloaded_file".to_string())
+                                                        found_file_name.unwrap_or_else(|| {
+                                                            "downloaded_file".to_string()
+                                                        })
                                                     };
 
                                                     if filecommand_tx
@@ -632,21 +658,23 @@ pub async fn run_chat_page<B: Backend>(
                                                         })
                                                         .is_err()
                                                     {
-                                                        state_guard.set_notification(
+                                                        state_guard.notification_manager.add(
                                                             "Download Error".to_string(),
                                                             "Failed to send download command"
                                                                 .to_string(),
                                                             NotificationType::Error,
-                                                            3,
-                                                        );
+                                                            Some(Duration::from_secs(3)),
+                                                            app_state.clone(),
+                                                        ).await;
                                                     }
                                                 } else {
-                                                    state_guard.set_notification(
+                                                    state_guard.notification_manager.add(
                                                          "Download Error".to_string(),
                                                          "Invalid /download command format. Usage: /download <file_id>".to_string(),
                                                          NotificationType::Error,
-                                                         3,
-                                                     );
+                                                         Some(Duration::from_secs(3)),
+                                                         app_state.clone(),
+                                                     ).await;
                                                 }
                                             } else {
                                                 if let Some(current_channel) =
@@ -662,12 +690,13 @@ pub async fn run_chat_page<B: Backend>(
                                                         })
                                                         .is_err()
                                                     {
-                                                        state_guard.set_notification(
+                                                        state_guard.notification_manager.add(
                                                             "Message Send Error".to_string(),
                                                             "Failed to send message".to_string(),
                                                             NotificationType::Error,
-                                                            3,
-                                                        );
+                                                            Some(Duration::from_secs(3)),
+                                                            app_state.clone(),
+                                                        ).await;
                                                     }
                                                 }
                                             }
@@ -680,6 +709,13 @@ pub async fn run_chat_page<B: Backend>(
                                         state_guard.cursor_position += 1;
                                         state_guard.popup_state.show = true;
                                         state_guard.popup_state.popup_type = PopupType::Mentions;
+                                        state_guard.notification_manager.add(
+                                            "Mention".to_string(),
+                                            "Mentioning a user".to_string(),
+                                            NotificationType::Info,
+                                            Some(Duration::from_secs(3)),
+                                            app_state.clone(),
+                                        ).await;
                                         if command_tx
                                             .send(WsCommand::Message {
                                                 channel_id: "home".to_string(),
@@ -687,12 +723,13 @@ pub async fn run_chat_page<B: Backend>(
                                             })
                                             .is_err()
                                         {
-                                            state_guard.set_notification(
+                                            state_guard.notification_manager.add(
                                                 "Active Users Request Error".to_string(),
                                                 "Failed to request active users".to_string(),
                                                 NotificationType::Error,
-                                                3,
-                                            );
+                                                Some(Duration::from_secs(3)),
+                                                app_state.clone(),
+                                            ).await;
                                         }
                                     }
                                     KeyCode::Char(':') => {
@@ -701,6 +738,13 @@ pub async fn run_chat_page<B: Backend>(
                                         if should_show_emoji_popup(&input_text) {
                                             state_guard.popup_state.show = true;
                                             state_guard.popup_state.popup_type = PopupType::Emojis;
+                                            state_guard.notification_manager.add(
+                                                "Emoji".to_string(),
+                                                "Showing emoji suggestions".to_string(),
+                                                NotificationType::Info,
+                                                Some(Duration::from_secs(3)),
+                                                app_state.clone(),
+                                            ).await;
                                         }
                                     }
                                     KeyCode::Char('n')

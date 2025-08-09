@@ -30,7 +30,11 @@
         "instructions_text": [90, 90, 90],
         "popup_border": [230, 60, 60],
         "popup_text": [230, 60, 60],
-        "mention_bg": [255, 215, 0]
+        "mention_bg": [255, 215, 0],
+        "success_color": [80, 200, 80],
+        "warning_color": [255, 165, 0],
+        "info_color": [50, 150, 255],
+        "loading_color": [120, 120, 120]
       }
     },
     {
@@ -63,7 +67,11 @@
         "instructions_text": [44, 62, 80],
         "popup_border": [231, 76, 60],
         "popup_text": [231, 76, 60],
-        "mention_bg": [46, 204, 113]
+        "mention_bg": [46, 204, 113],
+        "success_color": [46, 204, 113],
+        "warning_color": [241, 196, 15],
+        "info_color": [52, 152, 219],
+        "loading_color": [52, 73, 94]
       }
     },
     {
@@ -96,7 +104,11 @@
         "instructions_text": [60, 80, 70],
         "popup_border": [210, 80, 80],
         "popup_text": [210, 80, 80],
-        "mention_bg": [128, 192, 176]
+        "mention_bg": [128, 192, 176],
+        "success_color": [160, 210, 180],
+        "warning_color": [180, 200, 170],
+        "info_color": [92, 162, 110],
+        "loading_color": [82, 114, 98]
       }
     },
     {
@@ -129,7 +141,11 @@
         "instructions_text": [60, 60, 60],
         "popup_border": [255, 0, 0],
         "popup_text": [255, 0, 0],
-        "mention_bg": [200, 200, 200]
+        "mention_bg": [200, 200, 200],
+        "success_color": [150, 150, 150],
+        "warning_color": [180, 180, 180],
+        "info_color": [80, 80, 80],
+        "loading_color": [100, 100, 100]
       }
     },
     {
@@ -162,7 +178,11 @@
         "instructions_text": [108, 112, 134],
         "popup_border": [243, 139, 168],
         "popup_text": [243, 139, 168],
-        "mention_bg": [250, 179, 135]
+        "mention_bg": [250, 179, 135],
+        "success_color": [166, 227, 161],
+        "warning_color": [250, 179, 135],
+        "info_color": [148, 226, 213],
+        "loading_color": [88, 91, 112]
       }
     },
     {
@@ -195,7 +215,11 @@
         "instructions_text": [68, 71, 90],
         "popup_border": [255, 85, 85],
         "popup_text": [255, 85, 85],
-        "mention_bg": [255, 121, 198]
+        "mention_bg": [255, 121, 198],
+        "success_color": [80, 250, 123],
+        "warning_color": [255, 184, 108],
+        "info_color": [189, 147, 249],
+        "loading_color": [98, 114, 164]
       }
     },
     {
@@ -228,7 +252,11 @@
         "instructions_text": [7, 54, 66],
         "popup_border": [220, 50, 47],
         "popup_text": [220, 50, 47],
-        "mention_bg": [108, 113, 196]
+        "mention_bg": [108, 113, 196],
+        "success_color": [42, 161, 152],
+        "warning_color": [203, 75, 22],
+        "info_color": [38, 139, 210],
+        "loading_color": [88, 110, 117]
       }
     },
     {
@@ -261,7 +289,11 @@
         "instructions_text": [102, 92, 84],
         "popup_border": [251, 73, 52],
         "popup_text": [251, 73, 52],
-        "mention_bg": [250, 184, 100]
+        "mention_bg": [250, 184, 100],
+        "success_color": [142, 192, 124],
+        "warning_color": [250, 125, 78],
+        "info_color": [184, 187, 38],
+        "loading_color": [146, 122, 97]
       }
     },
     {
@@ -294,7 +326,11 @@
         "instructions_text": [76, 86, 106],
         "popup_border": [191, 97, 106],
         "popup_text": [191, 97, 106],
-        "mention_bg": [136, 192, 208]
+        "mention_bg": [136, 192, 208],
+        "success_color": [163, 190, 140],
+        "warning_color": [235, 203, 139],
+        "info_color": [136, 192, 208],
+        "loading_color": [67, 76, 94]
       }
     },
     {
@@ -327,7 +363,11 @@
         "instructions_text": [180, 200, 220],
         "popup_border": [255, 50, 50],
         "popup_text": [255, 50, 50],
-        "mention_bg": [255, 0, 200]
+        "mention_bg": [255, 0, 200],
+        "success_color": [0, 255, 100],
+        "warning_color": [255, 150, 0],
+        "info_color": [0, 200, 255],
+        "loading_color": [0, 200, 255]
       }
     },
     {
@@ -360,7 +400,11 @@
         "instructions_text": [70, 40, 15],
         "popup_border": [150, 40, 40],
         "popup_text": [150, 40, 40],
-        "mention_bg": [255, 190, 0]
+        "mention_bg": [255, 190, 0],
+        "success_color": [220, 140, 70],
+        "warning_color": [200, 90, 30],
+        "info_color": [180, 70, 50],
+        "loading_color": [80, 120, 90]
       }
     },
     {
@@ -393,7 +437,11 @@
         "instructions_text": [180, 180, 180],
         "popup_border": [200, 0, 0],
         "popup_text": [200, 0, 0],
-        "mention_bg": [0, 120, 215]
+        "mention_bg": [0, 120, 215],
+        "success_color": [0, 128, 128],
+        "warning_color": [255, 100, 0],
+        "info_color": [0, 120, 215],
+        "loading_color": [100, 100, 100]
       }
     },
     {
@@ -426,7 +474,11 @@
         "instructions_text": [60, 30, 80],
         "popup_border": [200, 0, 100],
         "popup_text": [200, 0, 100],
-        "mention_bg": [180, 100, 255]
+        "mention_bg": [180, 100, 255],
+        "success_color": [50, 180, 100],
+        "warning_color": [210, 170, 50],
+        "info_color": [180, 100, 255],
+        "loading_color": [100, 80, 120]
       }
     }
   ]

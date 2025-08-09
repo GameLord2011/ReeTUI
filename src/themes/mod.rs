@@ -100,6 +100,10 @@ pub struct ThemeColors {
     pub popup_border: Rgb,
     pub popup_text: Rgb,
     pub mention_bg: Rgb,
+    pub success_color: Rgb,
+    pub warning_color: Rgb,
+    pub info_color: Rgb,
+    pub loading_color: Rgb,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

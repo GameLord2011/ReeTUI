@@ -1,16 +1,18 @@
 use crate::themes::{interpolate_rgb, rgb_to_color, Theme};
 use crate::tui::auth::state::{AuthMode, SelectedField};
+use crate::tui::notification::notification::NotificationType;
+use crate::tui::notification::ui::draw_notifications;
+use std::sync::Arc;
 use ratatui::{
     prelude::*,
-    widgets::{Block, BorderType, Borders, Clear, Paragraph},
+    widgets::{Block, BorderType, Borders, Paragraph},
 };
 
 pub const ICONS: [&str; 11] = ["󰱨", "󰱩", "󱃞", "󰱫", "󰱬", "󰱮", "󰱰", "󰽌", "󰱱", "󰱸", "󰇹"];
 
-pub fn get_validation_error(
+pub fn validate_input(
     username_input: &TextInput,
     password_input: &TextInput,
-    _current_mode: &AuthMode,
 ) -> Option<String> {
     if username_input.text.trim().is_empty() {
         return Some("Username cannot be empty.".to_string());
@@ -25,6 +27,26 @@ pub fn get_validation_error(
         return Some("Password cannot contain spaces.".to_string());
     }
     None
+}
+
+pub async fn get_validation_error(
+    username_input: &TextInput,
+    password_input: &TextInput,
+    _current_mode: &AuthMode,
+    notification_manager: &mut crate::tui::notification::NotificationManager,
+    app_state: Arc<tokio::sync::Mutex<crate::app::app_state::AppState>>,
+) -> Option<String> {
+    let error = validate_input(username_input, password_input);
+    if let Some(e) = &error {
+        notification_manager.add(
+            "Validation Error".to_string(),
+            e.clone(),
+            NotificationType::Error,
+            Some(std::time::Duration::from_secs(3)),
+            app_state,
+        ).await;
+    }
+    error
 }
 
 pub fn draw_ascii_title(f: &mut Frame, area: Rect, theme: &Theme, current_mode: &AuthMode) {
@@ -107,9 +129,8 @@ pub fn draw_auth_ui<'a, B: Backend>(
     selected_icon_index: usize,
     current_mode: &AuthMode,
     selected_field: &SelectedField,
-    message: &str,
     theme: &Theme,
-    app_state: &crate::app::app_state::AppState,
+    app_state: &mut crate::app::app_state::AppState,
     settings_state: &mut crate::tui::settings::state::SettingsState,
 ) {
     let size = f.area();
@@ -305,7 +326,7 @@ pub fn draw_auth_ui<'a, B: Backend>(
         _ => false,
     };
 
-    let validation_error = get_validation_error(username_input, password_input, current_mode);
+    let validation_error = validate_input(username_input, password_input);
     let button_border_color = if button_is_selected {
         rgb_to_color(&theme.colors.button_border_active)
     } else if validation_error.is_some() {
@@ -363,61 +384,10 @@ pub fn draw_auth_ui<'a, B: Backend>(
 
     f.render_widget(instructions, instructions_area);
 
-    let show_popup = !message.is_empty();
-
-    if show_popup {
-        let popup_message_content = message;
-        let popup_block = Block::default()
-            .title(" Error")
-            .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
-            .border_type(BorderType::Rounded)
-            .border_style(Style::default().fg(rgb_to_color(&theme.colors.popup_border)));
-
-        let popup_width: u16 = 40;
-        let mut estimated_height_from_text: u16 = 0;
-        let chars_per_line_estimate = popup_width.saturating_sub(2).max(1);
-
-        if !popup_message_content.is_empty() {
-            estimated_height_from_text = popup_message_content
-                .lines()
-                .map(|line| {
-                    let num_chars = line.chars().count() as u16;
-                    (num_chars + chars_per_line_estimate - 1) / chars_per_line_estimate
-                })
-                .sum();
-            estimated_height_from_text = estimated_height_from_text.max(1);
-        }
-
-        let popup_height = (estimated_height_from_text + 2)
-            .max(3)
-            .min(size.height.saturating_sub(2));
-
-        let popup_area = Rect::new(
-            size.width.saturating_sub(popup_width).saturating_sub(1),
-            size.y + 1,
-            popup_width,
-            popup_height,
-        );
-
-        f.render_widget(Clear, popup_area);
-        f.render_widget(popup_block, popup_area);
-
-        let popup_text_area = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Min(0)])
-            .margin(1)
-            .split(popup_area)[0];
-
-        let popup_paragraph = Paragraph::new(Line::from(popup_message_content))
-            .style(Style::default().fg(rgb_to_color(&theme.colors.popup_text)))
-            .alignment(Alignment::Left)
-            .wrap(ratatui::widgets::Wrap { trim: false });
-        f.render_widget(popup_paragraph, popup_text_area);
-    }
-
     if app_state.show_settings {
         crate::tui::settings::render_settings_popup::<B>(f, app_state, settings_state, f.area())
             .unwrap();
     }
+
+    draw_notifications(f, app_state);
 }

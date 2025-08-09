@@ -1,6 +1,4 @@
 use crate::tui::text_input::TextInput;
-use std::sync::Arc;
-use tokio::sync::Mutex;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum AuthMode {
@@ -23,7 +21,7 @@ pub struct AuthState {
     pub selected_icon_index: usize,
     pub current_mode: AuthMode,
     pub selected_field: SelectedField,
-    pub message_state: Arc<Mutex<String>>,
+    
 }
 
 impl AuthState {
@@ -41,7 +39,7 @@ impl AuthState {
             selected_icon_index: 0,
             current_mode: AuthMode::Register,
             selected_field: SelectedField::Username,
-            message_state: Arc::new(Mutex::new(String::new())),
+            
         }
     }
 

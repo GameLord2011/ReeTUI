@@ -4,10 +4,11 @@ pub mod page;
 pub mod state;
 
 use crate::app::app_state::AppState;
+use crate::app::TuiPage;
 use crate::tui::settings::events::handle_settings_event;
 use crate::tui::settings::page::draw_settings_ui;
 use crate::tui::settings::state::SettingsState;
-use crate::app::TuiPage;
+use crate::tui::notification::ui::draw_notifications;
 use crossterm::event::{self, Event, KeyCode};
 use ratatui::backend::Backend;
 use ratatui::layout::Rect;
@@ -55,9 +56,12 @@ pub async fn run_settings_page<B: Backend>(
 
         while let Some(event) = settings_rx.recv().await {
             let mut app_state_locked = app_state_clone.lock().await;
-            let result_page = handle_settings_key_event(event, &mut app_state_locked, &mut settings_state);
+            let result_page =
+                handle_settings_key_event(event, &mut app_state_locked, &mut settings_state);
 
-            command_tx.send(SettingsCommand::UpdateState(settings_state.clone())).unwrap();
+            command_tx
+                .send(SettingsCommand::UpdateState(settings_state.clone()))
+                .unwrap();
 
             if let Some(page) = result_page {
                 command_tx.send(SettingsCommand::ChangePage(page)).unwrap();
@@ -79,9 +83,11 @@ pub async fn run_settings_page<B: Backend>(
     };
 
     loop {
-        let app_state_locked = app_state.lock().await;
+        let mut app_state_locked = app_state.lock().await;
+        app_state_locked.notification_manager.update();
         terminal.draw(|f| {
-            render_settings_popup::<B>(f, &app_state_locked, &mut current_settings_state, f.area()).unwrap();
+            render_settings_popup::<B>(f, &app_state_locked, &mut current_settings_state, f.area())
+                .unwrap();
         })?;
         drop(app_state_locked);
 
@@ -130,6 +136,7 @@ pub fn render_settings_popup<B: Backend>(
     );
     draw_settings_ui::<B>(frame, settings_state, theme, app_state, area);
 
+    draw_notifications(frame, app_state);
     Ok(())
 }
 
@@ -140,7 +147,11 @@ pub fn handle_settings_key_event(
 ) -> Option<TuiPage> {
     match event {
         SettingsEvent::Key(key_event) => {
-            if let Some(page) = handle_settings_event(settings_state, app_state, SettingsEvent::Key(key_event.clone())) {
+            if let Some(page) = handle_settings_event(
+                settings_state,
+                app_state,
+                SettingsEvent::Key(key_event.clone()),
+            ) {
                 app_state.settings_main_selection = settings_state.main_selection;
                 app_state.settings_focused_pane = settings_state.focused_pane;
                 return Some(page);
@@ -150,9 +161,8 @@ pub fn handle_settings_key_event(
                     return Some(TuiPage::Chat);
                 }
             }
-        },
-        SettingsEvent::Tick => {
         }
+        SettingsEvent::Tick => {}
     }
     None
 }

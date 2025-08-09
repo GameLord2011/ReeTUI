@@ -4,22 +4,22 @@ mod themes;
 pub mod tui;
 
 use crate::app::app_state::AppState;
+use crate::app::TuiPage;
 use crate::tui::auth::run_auth_page;
 use crate::tui::home::run_home_page;
-use crate::app::TuiPage;
+use clap::Parser;
 use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use ratatui::{backend::CrosstermBackend,prelude::Backend, Terminal};
-use std::io::{self};
-use std::sync::Arc;
-use tokio::sync::Mutex;
-use clap::Parser; 
-use log::{LevelFilter};
+use log::LevelFilter;
 use log4rs::append::file::FileAppender;
 use log4rs::config::{Appender, Config, Root};
 use log4rs::encode::pattern::PatternEncoder;
+use ratatui::{backend::CrosstermBackend, prelude::Backend, Terminal};
+use std::io::{self};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -39,7 +39,9 @@ async fn main() -> io::Result<()> {
     if args.debug {
         log::info!("Debug logging enabled. Logs will be written to log.log");
         let file_appender = FileAppender::builder()
-            .encoder(Box::new(PatternEncoder::new("{d(%Y-%m-%d %H:%M:%S%.3f)} {h({l})} {M} - {m}{n}")))
+            .encoder(Box::new(PatternEncoder::new(
+                "{d(%Y-%m-%d %H:%M:%S%.3f)} {h({l})} {M} - {m}{n}",
+            )))
             .build("log.log")
             .unwrap();
 
@@ -58,11 +60,7 @@ async fn main() -> io::Result<()> {
         log::info!("Debug logging disabled. No logs will be written to log.log");
         let config = Config::builder()
             .appender(Appender::builder().build("stdout", Box::new(stdout_appender)))
-            .build(
-                Root::builder()
-                    .appender("stdout")
-                    .build(LevelFilter::Off),
-            )
+            .build(Root::builder().appender("stdout").build(LevelFilter::Off))
             .unwrap();
         log4rs::init_config(config).unwrap();
     }
@@ -93,14 +91,12 @@ async fn run_app<B: Backend>(
         let next_page = match current_page {
             TuiPage::Home => {
                 let result = run_home_page(terminal, app_state.clone()).await?;
-                if let Some(TuiPage::Settings) = result {
-                }
+                if let Some(TuiPage::Settings) = result {}
                 result
             }
             TuiPage::Auth => {
                 let result = Some(run_auth_page(terminal, app_state.clone()).await?);
-                if let Some(TuiPage::Settings) = result {
-                }
+                if let Some(TuiPage::Settings) = result {}
                 result
             }
             TuiPage::Chat => {

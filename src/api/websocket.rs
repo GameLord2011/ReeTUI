@@ -1,5 +1,5 @@
 use crate::api::models::{BroadcastMessage, Channel, ChannelCommand};
-use crate::app::AppState;
+use crate::app::app_state::AppState;
 use crate::tui::chat::ws_command::WsCommand;
 use futures_util::stream::{SplitSink, SplitStream};
 use futures_util::{SinkExt, StreamExt};
@@ -10,6 +10,8 @@ use tokio::sync::{mpsc, Mutex};
 use tokio_tungstenite::tungstenite::protocol::Message;
 use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
 use tokio_util::sync::CancellationToken;
+
+use std::time::Duration;
 
 pub type WsWriter = SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>;
 pub type WsReader = SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>;
@@ -87,7 +89,7 @@ pub enum ServerMessage {
         #[allow(dead_code)]
         message: String,
         #[allow(dead_code)]
-        notification_type: crate::app::NotificationType,
+        notification_type: crate::tui::notification::notification::NotificationType,
     },
 }
 
@@ -178,7 +180,7 @@ pub async fn handle_websocket_communication(
                                 message,
                                 notification_type,
                             } => {
-                                state.set_notification(title, message, notification_type, 3);
+                                state.notification_manager.add(title, message, notification_type, Some(Duration::from_secs(3)), app_state.clone()).await;
                             }
                             _ => {}
                         }

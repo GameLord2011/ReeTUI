@@ -15,7 +15,7 @@ use crate::tui::chat::popups::download_progress::{
 };
 use crate::tui::chat::popups::emojis::{draw_emojis_popup, get_emojis_popup_size};
 use crate::tui::chat::popups::mentions::{draw_mentions_popup, get_mentions_popup_size};
-use crate::tui::chat::popups::notification::draw_notification_popup;
+
 use crate::tui::file_manager_module::file_manager::FileManager;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -26,6 +26,8 @@ use ansi_to_tui::IntoText as _;
 use chrono::{TimeZone, Utc};
 use unicode_width::UnicodeWidthStr;
 
+use crate::tui::notification::ui::draw_notifications;
+use crate::tui::settings;
 use ratatui::Frame;
 use ratatui::{
     backend::Backend,
@@ -35,8 +37,6 @@ use ratatui::{
     widgets::{Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph},
 };
 use regex::Regex;
-
-use crate::tui::settings;
 
 pub fn draw_chat_ui<B: Backend>(
     f: &mut Frame<'_>,
@@ -155,50 +155,79 @@ pub fn draw_chat_ui<B: Backend>(
     if let Some(current_channel) = &current_channel_clone {
         let channel_id = &current_channel.id;
         let mut all_rendered_lines: Vec<Line<'static>> = Vec::new();
- 
-             if let Some(messages) = state.messages.get(channel_id) {
-                for i in 0..messages.len() {
-                    let msg = &messages[i];
-                    let message_id = msg
-                        .file_id
-                        .clone()
-                        .unwrap_or_else(|| msg.timestamp.to_string());
-                    let needs_re_render_this_message = state
+
+        if let Some(messages) = state.messages.get(channel_id) {
+            for i in 0..messages.len() {
+                let msg = &messages[i];
+                let message_id = msg
+                    .file_id
+                    .clone()
+                    .unwrap_or_else(|| msg.timestamp.to_string());
+                let needs_re_render_this_message = state
+                    .needs_re_render
+                    .get(channel_id)
+                    .and_then(|channel_map| channel_map.get(&message_id).copied())
+                    .unwrap_or(true);
+
+                let mut is_first_in_group = true;
+                let mut is_last_in_group = true;
+
+                if i > 0 {
+                    let prev_msg = &messages[i - 1];
+                    if prev_msg.user == msg.user
+                        && (msg.timestamp - prev_msg.timestamp).abs() < 60
+                        && prev_msg.file_id.is_none()
+                        && !prev_msg.is_image.unwrap_or(false)
+                        && msg.file_id.is_none()
+                        && !msg.is_image.unwrap_or(false)
+                    {
+                        is_first_in_group = false;
+                    }
+                }
+
+                if i < messages.len() - 1 {
+                    let next_msg = &messages[i + 1];
+                    if next_msg.user == msg.user
+                        && (next_msg.timestamp - msg.timestamp).abs() < 60
+                        && next_msg.file_id.is_none()
+                        && !next_msg.is_image.unwrap_or(false)
+                        && msg.file_id.is_none()
+                        && !msg.is_image.unwrap_or(false)
+                    {
+                        is_last_in_group = false;
+                    }
+                }
+
+                if needs_re_render_this_message || !is_first_in_group {
+                    let lines = format_message_lines(
+                        msg,
+                        &state.current_theme,
+                        inner_messages_area.width,
+                        mention_regex,
+                        emoji_regex,
+                        &state.active_animations,
+                        is_first_in_group,
+                        is_last_in_group,
+                    );
+                    state
+                        .rendered_messages
+                        .entry(channel_id.clone())
+                        .or_default()
+                        .insert(message_id.clone(), lines.clone());
+                    state
                         .needs_re_render
+                        .entry(channel_id.clone())
+                        .or_default()
+                        .insert(message_id.clone(), false);
+                    all_rendered_lines.extend(lines);
+                } else {
+                    if let Some(lines) = state
+                        .rendered_messages
                         .get(channel_id)
-                        .and_then(|channel_map| channel_map.get(&message_id).copied())
-                        .unwrap_or(true);
-
-                    let mut is_first_in_group = true;
-                    let mut is_last_in_group = true;
-
-                    if i > 0 {
-                        let prev_msg = &messages[i - 1];
-                        if prev_msg.user == msg.user
-                            && (msg.timestamp - prev_msg.timestamp).abs() < 60
-                            && prev_msg.file_id.is_none()
-                            && !prev_msg.is_image.unwrap_or(false)
-                            && msg.file_id.is_none()
-                            && !msg.is_image.unwrap_or(false)
-                        {
-                            is_first_in_group = false;
-                        }
-                    }
-
-                    if i < messages.len() - 1 {
-                        let next_msg = &messages[i + 1];
-                        if next_msg.user == msg.user
-                            && (next_msg.timestamp - msg.timestamp).abs() < 60
-                            && next_msg.file_id.is_none()
-                            && !next_msg.is_image.unwrap_or(false)
-                            && msg.file_id.is_none()
-                            && !msg.is_image.unwrap_or(false)
-                        {
-                            is_last_in_group = false;
-                        }
-                    }
-
-                    if needs_re_render_this_message || !is_first_in_group {
+                        .and_then(|channel_map| channel_map.get(&message_id))
+                    {
+                        all_rendered_lines.extend(lines.clone());
+                    } else {
                         let lines = format_message_lines(
                             msg,
                             &state.current_theme,
@@ -220,39 +249,10 @@ pub fn draw_chat_ui<B: Backend>(
                             .or_default()
                             .insert(message_id.clone(), false);
                         all_rendered_lines.extend(lines);
-                    } else {
-                        if let Some(lines) = state
-                            .rendered_messages
-                            .get(channel_id)
-                            .and_then(|channel_map| channel_map.get(&message_id))
-                        {
-                            all_rendered_lines.extend(lines.clone());
-                        } else {
-                            let lines = format_message_lines(
-                                msg,
-                                &state.current_theme,
-                                inner_messages_area.width,
-                                mention_regex,
-                                emoji_regex,
-                                &state.active_animations,
-                            is_first_in_group,
-                            is_last_in_group,
-                        );                            state
-                                .rendered_messages
-                                .entry(channel_id.clone())
-                                .or_default()
-                                .insert(message_id.clone(), lines.clone());
-                            state
-                                .needs_re_render
-                                .entry(channel_id.clone())
-                                .or_default()
-                                .insert(message_id.clone(), false);
-                            all_rendered_lines.extend(lines);
-                        }
                     }
-
                 }
             }
+        }
         state.total_chat_buffer_length = all_rendered_lines.len();
 
         let messages_paragraph = Paragraph::new({
@@ -405,11 +405,12 @@ pub fn draw_chat_ui<B: Backend>(
             _ => {}
         }
     }
-    draw_notification_popup(f, state);
 
     if state.show_settings {
         settings::render_settings_popup::<B>(f, &state, settings_state, f.area()).unwrap();
     }
+
+    draw_notifications(f, state);
 }
 
 pub fn format_message_lines(
@@ -579,9 +580,7 @@ pub fn format_message_lines(
             Span::styled("│ ", Style::default().fg(user_color)),
             Span::styled(
                 user_info_str,
-                Style::default()
-                    .fg(user_color)
-                    .add_modifier(Modifier::BOLD),
+                Style::default().fg(user_color).add_modifier(Modifier::BOLD),
             ),
             Span::styled(" │", Style::default().fg(user_color)),
         ];
@@ -613,10 +612,7 @@ pub fn format_message_lines(
                 separator_right,
                 Style::default().fg(rgb_to_color(&theme.colors.dim)),
             ),
-            Span::styled(
-                "╮",
-                Style::default().fg(rgb_to_color(&theme.colors.dim)),
-            ),
+            Span::styled("╮", Style::default().fg(rgb_to_color(&theme.colors.dim))),
         ]));
     } else if !is_first_in_group {
         let separator_left = format!("├{}─", "─".repeat(2)); // Small separator for continuation
@@ -633,21 +629,12 @@ pub fn format_message_lines(
                 separator_right,
                 Style::default().fg(rgb_to_color(&theme.colors.dim)),
             ),
-            Span::styled(
-                "┤",
-                Style::default().fg(rgb_to_color(&theme.colors.dim)),
-            ),
+            Span::styled("┤", Style::default().fg(rgb_to_color(&theme.colors.dim))),
         ]));
     }
 
-
-
-
-
-
     for line in content_lines.iter_mut() {
-        let prefix_span =
-            Span::styled("│ ", Style::default().fg(rgb_to_color(&theme.colors.dim)));
+        let prefix_span = Span::styled("│ ", Style::default().fg(rgb_to_color(&theme.colors.dim)));
         line.spans.insert(0, prefix_span);
         let line_width = line.width();
         if available_width > line_width {

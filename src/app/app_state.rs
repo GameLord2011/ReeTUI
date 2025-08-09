@@ -1,8 +1,7 @@
 use crate::api::models::{BroadcastMessage, Channel};
-use crate::app::{Notification, NotificationType, PopupState, PopupType};
+use crate::app::{PopupState, TuiPage};
 use crate::themes::{Theme, ThemeName, ThemesConfig};
 use std::collections::{HashMap, VecDeque};
-use std::time::{Duration, Instant};
 
 #[derive(Debug)]
 pub struct AppState {
@@ -31,8 +30,9 @@ pub struct AppState {
     pub cursor_position: usize,
     pub download_progress: u8,
     pub debug_json_content: String,
-    pub notification: Option<Notification>,
-    pub should_exit_app: bool,
+    pub notification_manager: crate::tui::notification::NotificationManager,
+        pub should_exit_app: bool,
+    pub next_page: Option<TuiPage>,
     pub channel_history_state: HashMap<String, (u64, bool)>,
     pub active_animations: std::collections::HashMap<
         String,
@@ -65,12 +65,13 @@ impl Default for AppState {
             mention_query: String::new(),
             emoji_query: String::new(),
             cursor_position: 0,
-            notification: None,
+            notification_manager: crate::tui::notification::NotificationManager::default(),
             download_progress: 0,
             debug_json_content: String::new(),
             last_chat_view_height: 10,
             total_chat_buffer_length: 0,
-            should_exit_app: false,
+                        should_exit_app: false,
+            next_page: None,
             settings_main_selection: 0,
             settings_focused_pane: crate::tui::settings::state::FocusedPane::Left,
             show_settings: false,
@@ -96,32 +97,7 @@ impl AppState {
         &self.current_theme
     }
 
-    pub fn set_notification(
-        &mut self,
-        title: String,
-        message: String,
-        notification_type: NotificationType,
-        duration_in_seconds: u64,
-    ) {
-        self.notification = Some(Notification {
-            title,
-            message,
-            notification_type,
-            created_at: Instant::now(),
-            duration: Duration::from_secs(duration_in_seconds),
-        });
-        self.popup_state.show = true;
-        self.popup_state.popup_type = PopupType::DownloadProgress;
-    }
-
-    pub fn set_download_progress_popup(&mut self, progress: u8) {
-        self.download_progress = progress;
-    }
-
-    #[allow(dead_code)]
-    pub fn clear_notification(&mut self) {
-        self.notification = None;
-    }
+    
 
     pub async fn clear_user_auth(&mut self) {
         self.auth_token = None;
@@ -132,8 +108,9 @@ impl AppState {
         self.messages.clear();
         self.rendered_messages.clear();
         self.channel_history_state.clear();
-        self.popup_state = PopupState::default();
-        self.notification = None;
+                self.popup_state = PopupState::default();
+        self.next_page = None;
+        
         self.message_scroll_offset = 0;
         self.current_theme = self.themes.get(&ThemeName::Default).unwrap().clone();
         self.needs_re_render.clear();
@@ -296,14 +273,7 @@ impl AppState {
         self.message_scroll_offset = self.message_scroll_offset.saturating_sub(scroll_amount);
     }
 
-    #[allow(dead_code)]
-    pub fn clear_expired_notification(&mut self) {
-        if let Some(notification) = &self.notification {
-            if notification.created_at.elapsed() > std::time::Duration::from_secs(5) {
-                self.notification = None;
-            }
-        }
-    }
+    
 
     pub fn find_message_mut(&mut self, message_id: &str) -> Option<&mut BroadcastMessage> {
         for (_channel_id, messages) in self.messages.iter_mut() {

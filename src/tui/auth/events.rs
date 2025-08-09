@@ -13,7 +13,7 @@ pub struct AuthEventResult {
     pub selected_icon_index: usize,
     pub current_mode: AuthMode,
     pub selected_field: SelectedField,
-    pub message: Option<String>,
+
     pub should_submit: bool, // New field to signal a submission
     pub show_settings: bool,
 }
@@ -25,10 +25,8 @@ pub fn handle_auth_event(
     mut selected_icon_index: usize,
     mut current_mode: AuthMode,
     mut selected_field: SelectedField,
-    message: Option<String>,
     _app_state: Arc<Mutex<crate::app::app_state::AppState>>,
 ) -> io::Result<AuthEventResult> {
-    let mut msg = message;
     let mut next_page = None;
     let mut should_submit = false; // Initialize to false
 
@@ -44,7 +42,6 @@ pub fn handle_auth_event(
                         AuthMode::Login => AuthMode::Register,
                     };
                     selected_field = SelectedField::Username;
-                    msg = None;
                 }
                 KeyCode::Up => {
                     selected_field = match (current_mode, selected_field) {
@@ -57,15 +54,10 @@ pub fn handle_auth_event(
                         }
                         (_, SelectedField::Password) => SelectedField::Username,
                         (AuthMode::Register, SelectedField::Icon) => SelectedField::Password,
-                        (AuthMode::Register, SelectedField::RegisterButton) => {
-                            SelectedField::Icon
-                        }
-                        (AuthMode::Login, SelectedField::LoginButton) => {
-                            SelectedField::Password
-                        }
+                        (AuthMode::Register, SelectedField::RegisterButton) => SelectedField::Icon,
+                        (AuthMode::Login, SelectedField::LoginButton) => SelectedField::Password,
                         _ => selected_field,
                     };
-                    msg = None;
                 }
                 KeyCode::Down => {
                     selected_field = match (current_mode, selected_field) {
@@ -77,29 +69,22 @@ pub fn handle_auth_event(
                                 SelectedField::LoginButton
                             }
                         }
-                        (AuthMode::Register, SelectedField::Icon) => {
-                            SelectedField::RegisterButton
-                        }
+                        (AuthMode::Register, SelectedField::Icon) => SelectedField::RegisterButton,
                         (AuthMode::Register, SelectedField::RegisterButton) => {
                             SelectedField::Username
                         }
-                        (AuthMode::Login, SelectedField::LoginButton) => {
-                            SelectedField::Username
-                        }
+                        (AuthMode::Login, SelectedField::LoginButton) => SelectedField::Username,
                         _ => selected_field,
                     };
-                    msg = None;
                 }
                 KeyCode::Left => {
                     if matches!(selected_field, SelectedField::Icon) {
-                        selected_icon_index =
-                            (selected_icon_index + ICONS.len() - 1) % ICONS.len();
+                        selected_icon_index = (selected_icon_index + ICONS.len() - 1) % ICONS.len();
                     } else if matches!(selected_field, SelectedField::Username) {
                         username_input.move_cursor_left();
                     } else if matches!(selected_field, SelectedField::Password) {
                         password_input.move_cursor_left();
                     }
-                    msg = None;
                 }
                 KeyCode::Right => {
                     if matches!(selected_field, SelectedField::Icon) {
@@ -109,10 +94,8 @@ pub fn handle_auth_event(
                     } else if matches!(selected_field, SelectedField::Password) {
                         password_input.move_cursor_right();
                     }
-                    msg = None;
                 }
                 KeyCode::Enter => {
-                    msg = None;
                     match selected_field {
                         SelectedField::Username => selected_field = SelectedField::Password,
                         SelectedField::Password => {
@@ -128,25 +111,21 @@ pub fn handle_auth_event(
                         }
                     }
                 }
-                KeyCode::Backspace => {
-                    msg = None;
-                    match selected_field {
-                        SelectedField::Username => {
-                            username_input.delete_char();
-                        }
-                        SelectedField::Password => {
-                            password_input.delete_char();
-                        }
-                        _ => {}
+                KeyCode::Backspace => match selected_field {
+                    SelectedField::Username => {
+                        username_input.delete_char();
                     }
-                }
+                    SelectedField::Password => {
+                        password_input.delete_char();
+                    }
+                    _ => {}
+                },
                 KeyCode::Char(c) => {
                     if key.modifiers.contains(KeyModifiers::CONTROL)
                         || key.modifiers.contains(KeyModifiers::ALT)
                     {
                         // funny
                     } else {
-                        msg = None;
                         match selected_field {
                             SelectedField::Username => {
                                 username_input.insert_char(c);
@@ -158,9 +137,7 @@ pub fn handle_auth_event(
                         }
                     }
                 }
-                _ => {
-                    msg = None;
-                }
+                _ => {}
             }
         }
     }
@@ -169,7 +146,6 @@ pub fn handle_auth_event(
         selected_icon_index,
         current_mode,
         selected_field,
-        message: msg,
         should_submit, // Return the new flag
         show_settings: false,
     })

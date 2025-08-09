@@ -107,7 +107,7 @@ pub async fn run_chafa(image_data: &[u8], size: &str) -> Result<String, String> 
 pub async fn convert_image_to_chafa(image_data: &[u8], chat_width: u16) -> Result<String, String> {
     info!("Handling static image to Chafa conversion.");
     let image = image::load_from_memory(image_data).map_err(|e| e.to_string())?;
-    let (width, height) = image.dimensions();
+    let (_width, _height) = image.dimensions();
 
     let image = image::load_from_memory(image_data).map_err(|e| e.to_string())?;
     let (original_width, original_height) = image.dimensions();

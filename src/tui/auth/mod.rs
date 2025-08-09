@@ -4,17 +4,16 @@ pub mod state;
 
 use crate::api::auth_api;
 use crate::app::app_state::AppState;
+use crate::app::TuiPage;
 use crate::tui::auth::events::handle_auth_event;
 use crate::tui::auth::page::{draw_auth_ui, get_validation_error, ICONS};
 use crate::tui::auth::state::{AuthMode, AuthState, SelectedField};
-use crate::TuiPage;
+use crate::tui::notification::notification::NotificationType;
 use crossterm::event;
-
 use ratatui::Terminal;
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use std::{io, time::Duration};
-use tokio::time::sleep;
 
 pub async fn run_auth_page<B: ratatui::backend::Backend>(
     terminal: &mut Terminal<B>,
@@ -37,9 +36,10 @@ pub async fn run_auth_page<B: ratatui::backend::Backend>(
 
     loop {
         let mut app_state_guard = app_state.lock().await;
+        app_state_guard.notification_manager.update();
 
+        let theme = app_state_guard.current_theme.clone();
         terminal.draw(|f| {
-            let msg_to_draw = auth_state.message_state.try_lock().map(|g| g.clone()).unwrap_or_default();
             draw_auth_ui::<B>(
                 f,
                 &auth_state.username_input,
@@ -47,9 +47,8 @@ pub async fn run_auth_page<B: ratatui::backend::Backend>(
                 auth_state.selected_icon_index,
                 &auth_state.current_mode,
                 &auth_state.selected_field,
-                &msg_to_draw,
-                &app_state_guard.current_theme,
-                &app_state_guard,
+                &theme,
+                &mut app_state_guard,
                 &mut settings_state,
             );
         })?;
@@ -71,7 +70,11 @@ pub async fn run_auth_page<B: ratatui::backend::Backend>(
                         continue;
                     }
                 }
-                if let Some(target_page) = crate::tui::settings::handle_settings_key_event(crate::tui::settings::SettingsEvent::Key(event.clone()), &mut app_state_guard, &mut settings_state) {
+                if let Some(target_page) = crate::tui::settings::handle_settings_key_event(
+                    crate::tui::settings::SettingsEvent::Key(event.clone()),
+                    &mut app_state_guard,
+                    &mut settings_state,
+                ) {
                     if target_page == TuiPage::Auth {
                         app_state_guard.show_settings = false;
                     } else if target_page == TuiPage::Exit {
@@ -82,7 +85,9 @@ pub async fn run_auth_page<B: ratatui::backend::Backend>(
                 }
             } else {
                 if let event::Event::Key(key) = event {
-                    if key.code == event::KeyCode::Char('s') && key.modifiers.contains(event::KeyModifiers::CONTROL) {
+                    if key.code == event::KeyCode::Char('s')
+                        && key.modifiers.contains(event::KeyModifiers::CONTROL)
+                    {
                         app_state_guard.show_settings = true;
                         continue;
                     }
@@ -95,7 +100,6 @@ pub async fn run_auth_page<B: ratatui::backend::Backend>(
                     auth_state.selected_icon_index,
                     auth_state.current_mode,
                     auth_state.selected_field,
-                    None,
                     app_state.clone(),
                 )?;
 
@@ -103,12 +107,9 @@ pub async fn run_auth_page<B: ratatui::backend::Backend>(
                 auth_state.current_mode = event_result.current_mode;
                 auth_state.selected_field = event_result.selected_field;
                 auth_state.update_focus();
-                if let Some(msg) = event_result.message {
-                    *auth_state.message_state.lock().await = msg;
-                }
 
-                if let Some(page) = event_result.next_page {
-                    return Ok(page);
+                                if let Some(page) = event_result.next_page {
+                    app_state_guard.next_page = Some(page);
                 }
 
                 if event_result.should_submit {
@@ -119,9 +120,11 @@ pub async fn run_auth_page<B: ratatui::backend::Backend>(
                                     &auth_state.username_input,
                                     &auth_state.password_input,
                                     &auth_state.current_mode,
-                                );
-                                if let Some(err_msg) = validation_error {
-                                    *auth_state.message_state.lock().await = err_msg;
+                                    &mut app_state_guard.notification_manager,
+                                    app_state.clone(),
+                                )
+                                .await;
+                                if validation_error.is_some() {
                                     continue;
                                 }
 
@@ -129,31 +132,107 @@ pub async fn run_auth_page<B: ratatui::backend::Backend>(
                                     "{:x}",
                                     Sha256::digest(auth_state.password_input.text.as_bytes())
                                 );
-                                *auth_state.message_state.lock().await = "Registering...".to_string();
+                                let loading_notification = app_state_guard
+                                    .notification_manager
+                                    .add(
+                                        "Registering...".to_string(),
+                                        "Please wait...".to_string(),
+                                        NotificationType::Loading,
+                                        None,
+                                        app_state.clone(),
+                                    )
+                                    .await;
 
-                                match auth_api::register(
+                                terminal.draw(|f| {
+                                    draw_auth_ui::<B>(
+                                        f,
+                                        &auth_state.username_input,
+                                        &auth_state.password_input,
+                                        auth_state.selected_icon_index,
+                                        &auth_state.current_mode,
+                                        &auth_state.selected_field,
+                                        &theme,
+                                        &mut app_state_guard,
+                                        &mut settings_state,
+                                    );
+                                })?;
+
+                                drop(app_state_guard); // Release the lock before async calls that might re-acquire it
+
+                                let register_result = auth_api::register(
                                     &client,
                                     &auth_state.username_input.text,
                                     &hashed_password,
                                     ICONS[auth_state.selected_icon_index],
                                 )
-                                .await
+                                .await;
+
+                                let mut app_state_guard = app_state.lock().await; // Re-acquire the lock once after the API call
+
+                                match register_result
                                 {
                                     Ok(token_response) => {
+                                        if let Some(loading) = loading_notification {
+                                            tokio::spawn(async move { loading.remove().await; });
+                                        }
+                                        app_state_guard
+                                            .notification_manager
+                                            .add(
+                                                "Registration Success".to_string(),
+                                                "You have been successfully registered."
+                                                    .to_string(),
+                                                NotificationType::Success,
+                                                Some(Duration::from_secs(3)),
+                                                app_state.clone(),
+                                            )
+                                            .await;
                                         app_state_guard.set_user_auth(
                                             token_response.token,
                                             auth_state.username_input.text.clone(),
                                             token_response.icon,
                                         );
+                                        terminal.draw(|f| {
+                                            draw_auth_ui::<B>(
+                                                f,
+                                                &auth_state.username_input,
+                                                &auth_state.password_input,
+                                                auth_state.selected_icon_index,
+                                                &auth_state.current_mode,
+                                                &auth_state.selected_field,
+                                                &theme,
+                                                &mut app_state_guard,
+                                                &mut settings_state,
+                                            );
+                                        })?;
                                         return Ok(TuiPage::Chat);
                                     }
                                     Err(e) => {
-                                        *auth_state.message_state.lock().await = e.to_string();
-                                        let msg_clone = auth_state.message_state.clone();
-                                        tokio::spawn(async move {
-                                            sleep(Duration::from_secs(3)).await;
-                                            *msg_clone.lock().await = String::new();
-                                        });
+                                        if let Some(loading) = loading_notification {
+                                            tokio::spawn(async move { loading.remove().await; });
+                                        }
+                                        app_state_guard
+                                            .notification_manager
+                                            .add(
+                                                "Registration Error".to_string(),
+                                                e.to_string(),
+                                                NotificationType::Error,
+                                                Some(Duration::from_secs(3)),
+                                                app_state.clone(),
+                                            )
+                                            .await;
+                                        terminal.draw(|f| {
+                                            draw_auth_ui::<B>(
+                                                f,
+                                                &auth_state.username_input,
+                                                &auth_state.password_input,
+                                                auth_state.selected_icon_index,
+                                                &auth_state.current_mode,
+                                                &auth_state.selected_field,
+                                                &theme,
+                                                &mut app_state_guard,
+                                                &mut settings_state,
+                                            );
+                                        })?;
                                     }
                                 }
                             }
@@ -164,40 +243,117 @@ pub async fn run_auth_page<B: ratatui::backend::Backend>(
                                     &auth_state.username_input,
                                     &auth_state.password_input,
                                     &auth_state.current_mode,
-                                );
-                                if let Some(err_msg) = validation_error {
-                                    *auth_state.message_state.lock().await = err_msg;
+                                    &mut app_state_guard.notification_manager,
+                                    app_state.clone(),
+                                )
+                                .await;
+                                if validation_error.is_some() {
                                     continue;
                                 }
 
-                                *auth_state.message_state.lock().await = "Logging in...".to_string();
+                                let loading_notification = app_state_guard
+                                    .notification_manager
+                                    .add(
+                                        "Logging in...".to_string(),
+                                        "Please wait...".to_string(),
+                                        NotificationType::Loading,
+                                        None,
+                                        app_state.clone(),
+                                    )
+                                    .await;
+
+                                terminal.draw(|f| {
+                                    draw_auth_ui::<B>(
+                                        f,
+                                        &auth_state.username_input,
+                                        &auth_state.password_input,
+                                        auth_state.selected_icon_index,
+                                        &auth_state.current_mode,
+                                        &auth_state.selected_field,
+                                        &theme,
+                                        &mut app_state_guard,
+                                        &mut settings_state,
+                                    );
+                                })?;
+
+                                drop(app_state_guard); // Release the lock before async calls that might re-acquire it
 
                                 let hashed_password = format!(
                                     "{:x}",
                                     Sha256::digest(auth_state.password_input.text.as_bytes())
                                 );
-                                match auth_api::login(
+                                let login_result = auth_api::login(
                                     &client,
                                     &auth_state.username_input.text,
                                     &hashed_password,
                                 )
-                                .await
+                                .await;
+
+                                let mut app_state_guard = app_state.lock().await; // Re-acquire the lock once after the API call
+
+                                match login_result
                                 {
                                     Ok(token_response) => {
+                                        if let Some(loading) = loading_notification {
+                                            tokio::spawn(async move { loading.remove().await; });
+                                        }
+                                        app_state_guard
+                                            .notification_manager
+                                            .add(
+                                                "Login Success".to_string(),
+                                                "You have been successfully logged in.".to_string(),
+                                                NotificationType::Success,
+                                                Some(Duration::from_secs(3)),
+                                                app_state.clone(),
+                                            )
+                                            .await;
                                         app_state_guard.set_user_auth(
                                             token_response.token,
                                             auth_state.username_input.text.clone(),
                                             token_response.icon,
                                         );
+                                        terminal.draw(|f| {
+                                            draw_auth_ui::<B>(
+                                                f,
+                                                &auth_state.username_input,
+                                                &auth_state.password_input,
+                                                auth_state.selected_icon_index,
+                                                &auth_state.current_mode,
+                                                &auth_state.selected_field,
+                                                &theme,
+                                                &mut app_state_guard,
+                                                &mut settings_state,
+                                            );
+                                        })?;
                                         return Ok(TuiPage::Chat);
                                     }
                                     Err(e) => {
-                                        *auth_state.message_state.lock().await = e.to_string();
-                                        let msg_clone = auth_state.message_state.clone();
-                                        tokio::spawn(async move {
-                                            sleep(Duration::from_secs(3)).await;
-                                            *msg_clone.lock().await = String::new();
-                                        });
+                                        if let Some(loading) = loading_notification {
+                                            tokio::spawn(async move { loading.remove().await; });
+                                        }
+                                        app_state_guard
+                                            .notification_manager
+                                            .add(
+                                                "Login Error".to_string(),
+                                                e.to_string(),
+                                                NotificationType::Error,
+                                                Some(Duration::from_secs(3)),
+                                                app_state.clone(),
+                                            )
+                                            .await;
+                                        terminal.draw(|f| {
+                                            draw_auth_ui::<B>(
+                                                f,
+                                                &auth_state.username_input,
+                                                &auth_state.password_input,
+                                                auth_state.selected_icon_index,
+                                                &auth_state.current_mode,
+                                                &auth_state.selected_field,
+                                                &theme,
+                                                &mut app_state_guard,
+                                                &mut settings_state,
+                                            );
+                                        })?;
                                     }
                                 }
                             }
