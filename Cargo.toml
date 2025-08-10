@@ -39,3 +39,4 @@ tokio-stream = "0.1.15"
 tungstenite = "0.21.0"
 uuid = { version = "1.8.0", features = ["v4"] }
 unicode-width = "=0.2.0"
+sysinfo = "0.29"

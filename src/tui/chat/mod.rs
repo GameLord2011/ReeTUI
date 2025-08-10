@@ -12,9 +12,10 @@ pub mod ws_command;
 pub mod tests;
 use crate::api::websocket;
 use crate::app::{AppState, PopupType};
+
 use crate::tui::chat::create_channel_form::{CreateChannelForm, CreateChannelInput};
 use crate::tui::chat::message_parsing::{
-    replace_shortcodes_with_emojis, should_show_emoji_popup, should_show_mention_popup,
+    replace_shortcodes_with_emojis, should_show_emoji_popup, should_show_mention_popup, get_emoji_query,
 };
 use crate::tui::chat::ui::draw_chat_ui;
 use crate::tui::chat::ws_command::WsCommand;
@@ -60,6 +61,8 @@ pub async fn run_chat_page<B: Backend>(
             state.user_icon.as_deref().unwrap_or(""),
             state.settings_main_selection,
             state.settings_focused_pane,
+            state.quit_confirmation_state,
+            state.quit_selection,
         )
     };
 
@@ -540,38 +543,45 @@ pub async fn run_chat_page<B: Backend>(
                                             input_text.replace_range(new_pos..old_pos, "");
                                             state_guard.cursor_position = new_pos;
                                         }
-                                        if !should_show_emoji_popup(&input_text) {
-                                            state_guard.popup_state.show = false;
-                                            state_guard.popup_state.popup_type = PopupType::None;
-                                        }
-                                    }
-                                    KeyCode::Char(c) => {
-                                        input_text.insert(state_guard.cursor_position, c);
-                                        state_guard.cursor_position += c.len_utf8();
-                                        if let Some(last_colon_idx) = input_text.rfind(':') {
-                                            let potential_shortcode = &input_text[last_colon_idx..];
-                                            if potential_shortcode.ends_with(':')
-                                                && potential_shortcode.len() > 1
-                                            {
-                                                let shortcode = &potential_shortcode
-                                                    [1..potential_shortcode.len() - 1];
-                                                if let Some(emoji) =
-                                                    emojis::get_by_shortcode(shortcode)
-                                                {
-                                                    input_text.replace_range(
-                                                        last_colon_idx..,
-                                                        emoji.as_str(),
-                                                    );
-                                                    state_guard.cursor_position =
-                                                        last_colon_idx + emoji.as_str().len();
-                                                    state_guard.popup_state.show = false;
-                                                    state_guard.popup_state.popup_type =
-                                                        PopupType::None;
-                                                }
-                                            }
-                                        }
-                                    }
-                                    _ => {}
+                                         if !should_show_emoji_popup(&input_text) {
+                                             state_guard.popup_state.show = false;
+                                             state_guard.popup_state.popup_type = PopupType::None;
+                                         } else {
+                                             state_guard.emoji_query = get_emoji_query(&input_text);
+                                         }                                    }
+                                     KeyCode::Char(c) => {
+                                         input_text.insert(state_guard.cursor_position, c);
+                                         state_guard.cursor_position += c.len_utf8();
+                                         state_guard.emoji_query = get_emoji_query(&input_text);
+                                         if !should_show_emoji_popup(&input_text) {
+                                             state_guard.popup_state.show = false;
+                                             state_guard.popup_state.popup_type = PopupType::None;
+                                         } else {
+                                             // Check for completed shortcode only if popup is still active
+                                             if let Some(last_colon_idx) = input_text.rfind(':') {
+                                                 let potential_shortcode = &input_text[last_colon_idx..];
+                                                 if potential_shortcode.ends_with(':')
+                                                     && potential_shortcode.len() > 1
+                                                 {
+                                                     let shortcode = &potential_shortcode
+                                                         [1..potential_shortcode.len() - 1];
+                                                     if let Some(emoji) =
+                                                         emojis::get_by_shortcode(shortcode)
+                                                     {
+                                                         input_text.replace_range(
+                                                             last_colon_idx..,
+                                                             emoji.as_str(),
+                                                         );
+                                                         state_guard.cursor_position =
+                                                             last_colon_idx + emoji.as_str().len();
+                                                         state_guard.popup_state.show = false;
+                                                         state_guard.popup_state.popup_type =
+                                                             PopupType::None;
+                                                     }
+                                                 }
+                                             }
+                                         }
+                                     }                                    _ => {}
                                 }
                             }
                             PopupType::FileManager => {
@@ -607,6 +617,7 @@ pub async fn run_chat_page<B: Backend>(
                                     FileManagerEvent::None => {}
                                 }
                             }
+                            
                             _ => {}
                         }
 
@@ -735,9 +746,10 @@ pub async fn run_chat_page<B: Backend>(
                                     KeyCode::Char(':') => {
                                         input_text.insert(state_guard.cursor_position, ':');
                                         state_guard.cursor_position += 1;
-                                        if should_show_emoji_popup(&input_text) {
-                                            state_guard.popup_state.show = true;
-                                            state_guard.popup_state.popup_type = PopupType::Emojis;
+                                          if should_show_emoji_popup(&input_text) {
+                                              state_guard.popup_state.show = true;
+                                              state_guard.popup_state.popup_type = PopupType::Emojis;
+                                              state_guard.emoji_query = String::new(); // Initialize emoji_query when popup is shown
                                             state_guard.notification_manager.add(
                                                 "Emoji".to_string(),
                                                 "Showing emoji suggestions".to_string(),
@@ -763,91 +775,91 @@ pub async fn run_chat_page<B: Backend>(
                                         file_manager =
                                             FileManager::new(redraw_tx.clone(), app_state.clone());
                                     }
-                                    KeyCode::Char('j')
-                                        if key.modifiers.contains(KeyModifiers::CONTROL) =>
-                                    {
-                                        if let Some(current_channel) = &state_guard.current_channel
-                                        {
-                                            if let Some(messages) =
-                                                state_guard.messages.get(&current_channel.id)
-                                            {
-                                                if let Some(last_message) = messages.back() {
-                                                    if let Ok(json_string) =
-                                                        serde_json::to_string_pretty(last_message)
-                                                    {
-                                                        state_guard.debug_json_content =
-                                                            json_string;
-                                                        state_guard.popup_state.show = true;
-                                                        state_guard.popup_state.popup_type =
-                                                            PopupType::DebugJson;
+                                    
+                                    KeyCode::Tab => {
+                                        match state_guard.chat_focused_pane {
+                                            crate::app::app_state::ChatFocusedPane::ChannelList => {
+                                                let i = match channel_list_state.selected() {
+                                                    Some(i) => {
+                                                        if i >= state_guard.channels.len() - 1 {
+                                                            0
+                                                        } else {
+                                                            i + 1
+                                                        }
+                                                    }
+                                                    None => 0,
+                                                };
+                                                channel_list_state.select(Some(i));
+                                                if let Some(selected_channel) =
+                                                    state_guard.channels.get(i).cloned()
+                                                {
+                                                    let channel_id = selected_channel.id.clone();
+                                                    state_guard.set_current_channel(selected_channel);
+                                                    if state_guard.messages.get(&channel_id).map_or(true, |m| m.is_empty()) && state_guard.channel_history_state.get(&channel_id).map_or(true, |&(_, _, initial_fetched)| !initial_fetched) {
+                                                        if command_tx
+                                                            .send(WsCommand::Message {
+                                                                channel_id: channel_id.clone(),
+                                                                content: format!("/get_history {}", channel_id),
+                                                            })
+                                                            .is_err()
+                                                        {
+                                                            log::error!("Failed to send /get_history command");
+                                                        } else {
+                                                            if let Some(state) = state_guard.channel_history_state.get_mut(&channel_id) {
+                                                                state.2 = true;
+                                                            }
+                                                        }
                                                     }
                                                 }
                                             }
-                                        }
-                                    }
-                                    KeyCode::Tab => {
-                                        let i = match channel_list_state.selected() {
-                                            Some(i) => {
-                                                if i >= state_guard.channels.len() - 1 {
-                                                    0
-                                                } else {
-                                                    i + 1
-                                                }
+                                            _ => {
+                                                state_guard.chat_focused_pane = match state_guard.chat_focused_pane {
+                                                    crate::app::app_state::ChatFocusedPane::Input => crate::app::app_state::ChatFocusedPane::ChannelList,
+                                                    crate::app::app_state::ChatFocusedPane::ChannelList => crate::app::app_state::ChatFocusedPane::Messages,
+                                                    crate::app::app_state::ChatFocusedPane::Messages => crate::app::app_state::ChatFocusedPane::Input,
+                                                };
                                             }
-                                            None => 0,
-                                        };
-                                        channel_list_state.select(Some(i));
-                                        if let Some(selected_channel) =
-                                            state_guard.channels.get(i).cloned()
-                                        {
-                                            state_guard.set_current_channel(selected_channel);
                                         }
                                     }
                                     KeyCode::Up => {
-                                        if key.modifiers.contains(KeyModifiers::CONTROL) {
-                                            let scroll_amount =
-                                                state_guard.last_chat_view_height / 2;
-                                            state_guard.scroll_messages_up(scroll_amount);
-                                        } else {
-                                            let i = match channel_list_state.selected() {
-                                                Some(i) => {
-                                                    if i == 0 {
-                                                        state_guard.channels.len() - 1
-                                                    } else {
-                                                        i - 1
-                                                    }
+                                        match state_guard.chat_focused_pane {
+                                            crate::app::app_state::ChatFocusedPane::Messages => {
+                                                let scroll_amount =
+                                                    state_guard.last_chat_view_height / 2;
+                                                state_guard.scroll_messages_up(scroll_amount);
+                                            }
+                                            _ => {
+                                                // Default behavior for input or other panes
+                                                if state_guard.cursor_position > 0 {
+                                                    let old_pos = state_guard.cursor_position;
+                                                    let new_pos = input_text[..old_pos]
+                                                        .grapheme_indices(true)
+                                                        .last()
+                                                        .map(|(i, _)| i)
+                                                        .unwrap_or(0);
+                                                    state_guard.cursor_position = new_pos;
                                                 }
-                                                None => 0,
-                                            };
-                                            channel_list_state.select(Some(i));
-                                            if let Some(selected_channel) =
-                                                state_guard.channels.get(i).cloned()
-                                            {
-                                                state_guard.set_current_channel(selected_channel);
                                             }
                                         }
                                     }
                                     KeyCode::Down => {
-                                        if key.modifiers.contains(KeyModifiers::CONTROL) {
-                                            let scroll_amount =
-                                                state_guard.last_chat_view_height / 2;
-                                            state_guard.scroll_messages_down(scroll_amount);
-                                        } else {
-                                            let i = match channel_list_state.selected() {
-                                                Some(i) => {
-                                                    if i >= state_guard.channels.len() - 1 {
-                                                        0
-                                                    } else {
-                                                        i + 1
-                                                    }
+                                        match state_guard.chat_focused_pane {
+                                            crate::app::app_state::ChatFocusedPane::Messages => {
+                                                let scroll_amount =
+                                                    state_guard.last_chat_view_height / 2;
+                                                state_guard.scroll_messages_down(scroll_amount);
+                                            }
+                                            _ => {
+                                                // Default behavior for input or other panes
+                                                let old_pos = state_guard.cursor_position;
+                                                if old_pos < input_text.len() {
+                                                    let new_pos = input_text[old_pos..]
+                                                        .grapheme_indices(true)
+                                                        .nth(1)
+                                                        .map(|(i, _)| old_pos + i)
+                                                        .unwrap_or_else(|| input_text.len());
+                                                    state_guard.cursor_position = new_pos;
                                                 }
-                                                None => 0,
-                                            };
-                                            channel_list_state.select(Some(i));
-                                            if let Some(selected_channel) =
-                                                state_guard.channels.get(i).cloned()
-                                            {
-                                                state_guard.set_current_channel(selected_channel);
                                             }
                                         }
                                     }
@@ -868,32 +880,40 @@ pub async fn run_chat_page<B: Backend>(
                                         state_guard.cursor_position += c.len_utf8();
                                     }
                                     KeyCode::Left => {
-                                        if state_guard.cursor_position > 0 {
-                                            let old_pos = state_guard.cursor_position;
-                                            let new_pos = input_text[..old_pos]
-                                                .grapheme_indices(true)
-                                                .last()
-                                                .map(|(i, _)| i)
-                                                .unwrap_or(0);
-                                            state_guard.cursor_position = new_pos;
+                                        if state_guard.chat_focused_pane == crate::app::app_state::ChatFocusedPane::Input {
+                                            if state_guard.cursor_position > 0 {
+                                                let old_pos = state_guard.cursor_position;
+                                                let new_pos = input_text[..old_pos]
+                                                    .grapheme_indices(true)
+                                                    .last()
+                                                    .map(|(i, _)| i)
+                                                    .unwrap_or(0);
+                                                state_guard.cursor_position = new_pos;
+                                            }
                                         }
                                     }
                                     KeyCode::Right => {
-                                        let old_pos = state_guard.cursor_position;
-                                        if old_pos < input_text.len() {
-                                            let new_pos = input_text[old_pos..]
-                                                .grapheme_indices(true)
-                                                .nth(1)
-                                                .map(|(i, _)| old_pos + i)
-                                                .unwrap_or_else(|| input_text.len());
-                                            state_guard.cursor_position = new_pos;
+                                        if state_guard.chat_focused_pane == crate::app::app_state::ChatFocusedPane::Input {
+                                            let old_pos = state_guard.cursor_position;
+                                            if old_pos < input_text.len() {
+                                                let new_pos = input_text[old_pos..]
+                                                    .grapheme_indices(true)
+                                                    .nth(1)
+                                                    .map(|(i, _)| old_pos + i)
+                                                    .unwrap_or_else(|| input_text.len());
+                                                state_guard.cursor_position = new_pos;
+                                            }
                                         }
                                     }
                                     KeyCode::Home => {
-                                        state_guard.cursor_position = 0;
+                                        if state_guard.chat_focused_pane == crate::app::app_state::ChatFocusedPane::Input {
+                                            state_guard.cursor_position = 0;
+                                        }
                                     }
                                     KeyCode::End => {
-                                        state_guard.cursor_position = input_text.len();
+                                        if state_guard.chat_focused_pane == crate::app::app_state::ChatFocusedPane::Input {
+                                            state_guard.cursor_position = input_text.len();
+                                        }
                                     }
                                     _ => {}
                                 }

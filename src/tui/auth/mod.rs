@@ -29,6 +29,8 @@ pub async fn run_auth_page<B: ratatui::backend::Backend>(
             state.user_icon.as_deref().unwrap_or(""),
             state.settings_main_selection,
             state.settings_focused_pane,
+            state.quit_confirmation_state,
+            state.quit_selection,
         )
     };
     let client = reqwest::Client::new();

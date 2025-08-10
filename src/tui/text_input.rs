@@ -72,7 +72,7 @@ impl TextInput {
 
             let final_cursor_pos = (cursor_char_pos as u16).saturating_sub(scroll_offset as u16);
 
-            f.set_cursor(area.x + 1 + final_cursor_pos, area.y + 1);
+            f.set_cursor_position((area.x + 1 + final_cursor_pos, area.y + 1));
         }
     }
 

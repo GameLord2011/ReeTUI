@@ -6,7 +6,7 @@ use crate::tui::chat::gif_renderer::GifAnimationState;
 use crate::tui::chat::popups::create_channel::{
     draw_create_channel_popup, get_create_channel_popup_size,
 };
-use crate::tui::chat::popups::debug_json::{draw_debug_json_popup, get_debug_json_popup_size};
+
 use crate::tui::chat::popups::deconnection::{
     draw_deconnection_popup, get_deconnection_popup_size,
 };
@@ -349,7 +349,7 @@ pub fn draw_chat_ui<B: Backend>(
             PopupType::Emojis => "Emojis",
             PopupType::FileManager => "File Manager",
             PopupType::DownloadProgress => "Downloading",
-            PopupType::DebugJson => "Debug JSON",
+            
             PopupType::Downloads => "Downloads",
             PopupType::Notification => "Notification",
             PopupType::Settings => "Settings",
@@ -372,7 +372,7 @@ pub fn draw_chat_ui<B: Backend>(
             PopupType::Emojis => get_emojis_popup_size(state),
             PopupType::FileManager => get_file_manager_popup_size(),
             PopupType::DownloadProgress => get_download_progress_popup_size(),
-            PopupType::DebugJson => get_debug_json_popup_size(),
+            
             _ => (0, 0),
         };
 
@@ -417,9 +417,7 @@ pub fn draw_chat_ui<B: Backend>(
             PopupType::DownloadProgress => {
                 draw_download_progress_popup(f, popup_area, state.download_progress);
             }
-            PopupType::DebugJson => {
-                draw_debug_json_popup(f, popup_area, &state.debug_json_content);
-            }
+            
             PopupType::Downloads => {
                 crate::tui::chat::popups::downloads::draw_downloads_popup(f, state);
             }

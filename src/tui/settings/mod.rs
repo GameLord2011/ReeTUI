@@ -51,6 +51,8 @@ pub async fn run_settings_page<B: Backend>(
                 state.user_icon.as_deref().unwrap_or(""),
                 state.settings_main_selection,
                 state.settings_focused_pane,
+                state.quit_confirmation_state,
+                state.quit_selection,
             )
         };
 
@@ -79,6 +81,8 @@ pub async fn run_settings_page<B: Backend>(
             state.user_icon.as_deref().unwrap_or(""),
             state.settings_main_selection,
             state.settings_focused_pane,
+            state.quit_confirmation_state,
+            state.quit_selection,
         )
     };
 
@@ -147,14 +151,20 @@ pub fn handle_settings_key_event(
 ) -> Option<TuiPage> {
     match event {
         SettingsEvent::Key(key_event) => {
-            if let Some(page) = handle_settings_event(
+            handle_settings_event(
                 settings_state,
                 app_state,
                 SettingsEvent::Key(key_event.clone()),
-            ) {
-                app_state.settings_main_selection = settings_state.main_selection;
-                app_state.settings_focused_pane = settings_state.focused_pane;
-                return Some(page);
+            );
+            app_state.settings_main_selection = settings_state.main_selection;
+            app_state.settings_focused_pane = settings_state.focused_pane;
+            app_state.quit_confirmation_state = settings_state.quit_confirmation_state;
+            app_state.quit_selection = settings_state.quit_selection;
+            if app_state.should_exit_app {
+                return Some(TuiPage::Exit);
+            }
+            if app_state.next_page.is_some() {
+                return app_state.next_page.take(); // Take the page and return it
             }
             if let Event::Key(key) = key_event {
                 if key.code == KeyCode::Esc {

@@ -2,11 +2,11 @@ use std::time::{Duration, Instant};
 use std::sync::Arc;
 
 use ratatui::style::Color;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 const SPINNER_FRAMES: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum NotificationType {
     Success,
     Warning,
@@ -15,13 +15,14 @@ pub enum NotificationType {
     Loading,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Notification {
     pub id: usize,
     pub title: String,
     pub content: String,
     pub notification_type: NotificationType,
     pub timeout: Option<Duration>,
+    #[serde(skip, default = "Instant::now")]
     pub created_at: Instant,
     pub current_animation_frame_index: Option<usize>,
 }
@@ -94,7 +95,7 @@ impl LoadingNotification {
     }
 }
 
-#[derive(Clone, Default, Debug)]
+#[derive(Clone, Default, Debug, Serialize, Deserialize)]
 pub struct NotificationManager {
     notifications: Vec<Notification>,
     next_id: usize,

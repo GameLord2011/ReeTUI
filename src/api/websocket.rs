@@ -150,7 +150,7 @@ pub async fn handle_websocket_communication(
                                 state.prepend_history(&channel_id, messages.clone());
                                 state
                                     .channel_history_state
-                                    .insert(channel_id, (history.offset as u64, history.has_more));
+                                    .insert(channel_id, (history.offset as u64, history.has_more, true));
                                 for message in messages {
                                      if message.is_image.unwrap_or(false) {
                                          let app_state_clone = app_state.clone();

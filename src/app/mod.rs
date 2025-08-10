@@ -1,4 +1,5 @@
-#[derive(Debug, Clone, Copy, PartialEq)]
+use serde::{Deserialize, Serialize};
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum TuiPage {
     Home,
     Chat,
@@ -10,7 +11,7 @@ pub enum TuiPage {
 pub mod app_state;
 pub use app_state::AppState;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum PopupType {
     CreateChannel,
     Deconnection,
@@ -18,14 +19,14 @@ pub enum PopupType {
     Emojis,
     FileManager,
     DownloadProgress,
-    DebugJson,
+    
     Settings,
     Downloads,
     None,
     Notification,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct PopupState {
     pub show: bool,
     pub popup_type: PopupType,

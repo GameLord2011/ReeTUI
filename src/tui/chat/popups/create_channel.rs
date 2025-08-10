@@ -13,8 +13,8 @@ use crate::tui::chat::create_channel_form::{CreateChannelForm, CreateChannelInpu
 pub fn get_create_channel_popup_size() -> (u16, u16) {
     let hint_text = "(Enter) Seal the Deal  / (Esc) Abort Mission ";
     let icons_row_width = (ICONS.len() * 3) as u16;
-    let height = 11;
-    let width = hint_text.len().max(icons_row_width as usize) as u16 + 4;
+    let height = 3 + 3 + 1 + 4 + 1 + 2; // Name, Icon, Spacer, Button, Hint, and 2 for margins
+    let width = icons_row_width + 4;
     (width, height)
 }
 
@@ -34,7 +34,7 @@ pub fn draw_create_channel_popup(
             Constraint::Length(3),
             Constraint::Length(3),
             Constraint::Length(1),
-            Constraint::Length(3),
+            Constraint::Length(4),
             Constraint::Min(0),
         ])
         .margin(1)
@@ -46,7 +46,7 @@ pub fn draw_create_channel_popup(
         .direction(Direction::Horizontal)
         .constraints([
             Constraint::Min(0),
-            Constraint::Length(icons_row_width),
+            Constraint::Min(0),
             Constraint::Min(0),
         ])
         .split(form_layout[0]);
@@ -155,7 +155,7 @@ pub fn draw_create_channel_popup(
         .direction(Direction::Horizontal)
         .constraints([
             Constraint::Min(0),
-            Constraint::Length(icons_row_width),
+            Constraint::Length(20),
             Constraint::Min(0),
         ])
         .split(form_layout[3]);

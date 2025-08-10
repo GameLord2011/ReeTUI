@@ -1,9 +1,27 @@
+use serde::{Deserialize, Serialize};
 use crate::api::models::{BroadcastMessage, Channel};
 use crate::app::{PopupState, TuiPage};
 use crate::themes::{Theme, ThemeName, ThemesConfig};
 use std::collections::{HashMap, VecDeque};
+use std::time::Duration;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
+pub enum DebugView {
+    Overview,
+    WebSocket,
+    Logs,
+    AppState,
+    Messages,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
+pub enum ChatFocusedPane {
+    ChannelList,
+    Messages,
+    Input,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct AppState {
     pub auth_token: Option<String>,
     pub username: Option<String>,
@@ -11,6 +29,7 @@ pub struct AppState {
     pub channels: Vec<Channel>,
     pub current_channel: Option<Channel>,
     pub messages: HashMap<String, VecDeque<BroadcastMessage>>,
+    #[serde(skip_serializing, skip_deserializing)]
     pub rendered_messages: HashMap<String, HashMap<String, Vec<ratatui::text::Line<'static>>>>,
     pub needs_re_render: HashMap<String, HashMap<String, bool>>,
     pub last_chat_view_height: usize,
@@ -20,6 +39,8 @@ pub struct AppState {
     pub current_theme: Theme,
     pub settings_main_selection: usize,
     pub settings_focused_pane: crate::tui::settings::state::FocusedPane,
+    pub quit_confirmation_state: crate::tui::settings::state::QuitConfirmationState,
+    pub quit_selection: usize,
     pub show_settings: bool,
     pub popup_state: crate::app::PopupState,
     pub active_users: Vec<String>,
@@ -33,12 +54,21 @@ pub struct AppState {
     pub notification_manager: crate::tui::notification::NotificationManager,
         pub should_exit_app: bool,
     pub next_page: Option<TuiPage>,
-    pub channel_history_state: HashMap<String, (u64, bool)>,
+    pub channel_history_state: HashMap<String, (u64, bool, bool)>,
+    #[serde(skip)]
     pub active_animations: std::collections::HashMap<
         String,
         std::sync::Arc<tokio::sync::Mutex<crate::tui::chat::gif_renderer::GifAnimationState>>,
     >,
     pub chat_width: u16,
+    pub chat_focused_pane: ChatFocusedPane,
+    pub websocket_latencies: Vec<(String, Duration)>,
+    pub current_debug_view: DebugView,
+    pub log_content: String,
+    pub log_scroll_offset: usize,
+    pub fps: f64,
+    pub cpu_usage: f64,
+    pub memory_usage: u64,
 }
 
 impl Default for AppState {
@@ -74,10 +104,20 @@ impl Default for AppState {
             next_page: None,
             settings_main_selection: 0,
             settings_focused_pane: crate::tui::settings::state::FocusedPane::Left,
+            quit_confirmation_state: crate::tui::settings::state::QuitConfirmationState::Inactive,
+            quit_selection: 0,
             show_settings: false,
             active_animations: HashMap::new(),
             needs_re_render: HashMap::new(),
             chat_width: 80,
+            chat_focused_pane: ChatFocusedPane::Input,
+            websocket_latencies: Vec::new(),
+            current_debug_view: DebugView::Overview,
+            log_content: String::new(),
+            log_scroll_offset: 0,
+            fps: 0.0,
+            cpu_usage: 0.0,
+            memory_usage: 0,
         }
     }
 }
@@ -124,7 +164,7 @@ impl AppState {
             .or_default();
         self.channel_history_state
             .entry(channel_id.clone())
-            .or_insert((0, true));
+            .or_insert((0, true, false));
         self.needs_re_render.entry(channel_id.clone()).or_default();
         self.message_scroll_offset = 0;
         // Mark all messages in the new channel for re-rendering

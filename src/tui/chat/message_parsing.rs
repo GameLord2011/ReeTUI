@@ -33,13 +33,7 @@ pub fn should_show_emoji_popup(input_text: &str) -> bool {
     if let Some(last_colon_idx) = input_text.rfind(':') {
         let potential_shortcode_segment_from_last_colon = &input_text[last_colon_idx..];
 
-        // funny
-        if potential_shortcode_segment_from_last_colon == ":"
-            && last_colon_idx > 0
-            && input_text.chars().nth(last_colon_idx - 1).unwrap_or(' ') == ':'
-        {
-            return false;
-        }
+        
 
         // Rule: If there's a space immediately after the last colon (e.g., ": ")
         if potential_shortcode_segment_from_last_colon.len() > 1
@@ -53,12 +47,10 @@ pub fn should_show_emoji_popup(input_text: &str) -> bool {
         }
 
         // Rule: If the last colon is part of a closed shortcode like ":smile:"
-        // We need to look backwards to find the opening colon.
         if potential_shortcode_segment_from_last_colon.ends_with(':') {
             if let Some(open_colon_idx) = input_text[..last_colon_idx].rfind(':') {
                 let segment = &input_text[open_colon_idx..=last_colon_idx];
                 if segment.starts_with(':') && segment.ends_with(':') && segment.len() > 1 {
-                    // Ensure the content between colons doesn't contain spaces or other colons
                     let inner_content = &segment[1..segment.len() - 1];
                     if !inner_content.contains(' ') && !inner_content.contains(':') {
                         return false; // It's a valid, completed shortcode
@@ -68,8 +60,6 @@ pub fn should_show_emoji_popup(input_text: &str) -> bool {
         }
 
         // Rule: If the last colon is part of a word (e.g., "foo:bar")
-        // If the character before the last colon is alphanumeric and the segment is not just a single trailing colon,
-        // it's likely not the start of an emoji shortcode.
         if potential_shortcode_segment_from_last_colon.len() > 1
             && last_colon_idx > 0
             && input_text
@@ -81,11 +71,21 @@ pub fn should_show_emoji_popup(input_text: &str) -> bool {
             return false;
         }
 
-        // If none of the "don't show" rules triggered, then show the popup.
         true
     } else {
         false // No colon found
     }
+}
+
+pub fn get_emoji_query(input_text: &str) -> String {
+    if let Some(last_colon_idx) = input_text.rfind(':') {
+        let potential_query = &input_text[last_colon_idx + 1..];
+        // Only consider it a query if it doesn't contain a space or another colon
+        if !potential_query.contains(' ') && !potential_query.contains(':') {
+            return potential_query.to_string();
+        }
+    }
+    String::new()
 }
 
 pub fn should_show_mention_popup(input_text: &str) -> bool {

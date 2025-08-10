@@ -1,7 +1,7 @@
 use crate::app::app_state::AppState;
 use crate::app::TuiPage;
-use crate::tui::auth::page::ICONS;
-use crate::tui::settings::state::{FocusedPane, SettingsScreen, SettingsState};
+
+use crate::tui::settings::state::{FocusedPane, SettingsScreen, SettingsState, QuitConfirmationState};
 use crate::tui::settings::SettingsEvent;
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 
@@ -38,13 +38,14 @@ fn handle_left_pane_events(
     match key_code {
         KeyCode::Up => settings_state.previous_main_setting(),
         KeyCode::Down => settings_state.next_main_setting(),
-        KeyCode::Right => settings_state.focused_pane = FocusedPane::Right,
         KeyCode::Enter => {
-            if settings_state.main_selection == 3 {
-                app_state.should_exit_app = true;
-                return Some(TuiPage::Exit);
+            if settings_state.main_selection == 3 { // 3 is Quit
+                app_state.quit_confirmation_state = QuitConfirmationState::Active; // Directly update app_state
+                settings_state.focused_pane = FocusedPane::Right;
+                return Some(TuiPage::Settings); // Force redraw of settings page
+            } else {
+                settings_state.focused_pane = FocusedPane::Right;
             }
-            settings_state.focused_pane = FocusedPane::Right
         }
         KeyCode::Esc => return Some(TuiPage::Chat),
         _ => {}
@@ -69,12 +70,16 @@ fn handle_right_pane_events(
                     handle_help_events(settings_state, key_code);
                     ()
                 }
-                SettingsScreen::UserSettings => {
-                    handle_user_settings_events(settings_state, key_code, app_state);
+                SettingsScreen::Disconnect => {
+                    handle_disconnect_events(settings_state, key_code, app_state);
                     ()
                 }
                 SettingsScreen::Quit => {
-                    handle_quit_events(settings_state, key_code, app_state);
+                    if app_state.quit_confirmation_state == QuitConfirmationState::Active { // Check app_state
+                        handle_quit_confirmation_events(settings_state, key_code, app_state);
+                    } else {
+                        handle_quit_events(settings_state, key_code, app_state);
+                    }
                     ()
                 }
             }
@@ -91,7 +96,7 @@ fn handle_themes_events(
     match key_code {
         KeyCode::Up => settings_state.previous_theme(),
         KeyCode::Down => settings_state.next_theme(),
-        KeyCode::Left => settings_state.focused_pane = FocusedPane::Left,
+        KeyCode::Left => settings_state.focused_pane = FocusedPane::Left, // Re-added
         KeyCode::Enter => {
             if let Some(selected_index) = settings_state.theme_list_state.selected() {
                 app_state.current_theme = app_state
@@ -107,73 +112,88 @@ fn handle_themes_events(
     None
 }
 
-fn handle_help_events(settings_state: &mut SettingsState, key_code: KeyCode) -> Option<TuiPage> {
+fn handle_help_events(settings_state: &mut SettingsState, key_code: KeyCode) -> Option<TuiPage> { // Removed underscore
     match key_code {
-        KeyCode::Left => settings_state.focused_pane = FocusedPane::Left,
+        KeyCode::Left => settings_state.focused_pane = FocusedPane::Left, // Re-added
         KeyCode::Esc => return Some(TuiPage::Chat),
         _ => {}
     }
     None
 }
 
-fn handle_user_settings_events(
+
+
+fn handle_disconnect_events(
     settings_state: &mut SettingsState,
     key_code: KeyCode,
     app_state: &mut AppState,
 ) -> Option<TuiPage> {
-    if !settings_state.is_user_logged_in() {
-        if key_code == KeyCode::Left {
-            settings_state.focused_pane = FocusedPane::Left;
-        }
-        return None;
-    }
-
     match key_code {
-        KeyCode::Left => {
-            if settings_state.new_username.is_empty() {
-                let mut current_icon_index = ICONS
-                    .iter()
-                    .position(|&i| i == settings_state.new_icon)
-                    .unwrap_or(0);
-                current_icon_index = if current_icon_index == 0 {
-                    ICONS.len() - 1
-                } else {
-                    current_icon_index - 1
-                };
-                settings_state.new_icon = ICONS[current_icon_index].to_string();
-            } else {
-                settings_state.focused_pane = FocusedPane::Left;
-            }
-        }
-        KeyCode::Right => {
-            if settings_state.new_username.is_empty() {
-                let mut current_icon_index = ICONS
-                    .iter()
-                    .position(|&i| i == settings_state.new_icon)
-                    .unwrap_or(0);
-                current_icon_index = (current_icon_index + 1) % ICONS.len();
-                settings_state.new_icon = ICONS[current_icon_index].to_string();
-            }
-        }
-        KeyCode::Char(c) => {
-            settings_state.new_username.push(c);
-        }
-        KeyCode::Backspace => {
-            settings_state.new_username.pop();
-        }
         KeyCode::Enter => {
-            app_state.username = Some(settings_state.new_username.clone());
-            app_state.user_icon = Some(settings_state.new_icon.clone());
+            app_state.username = None;
+            app_state.user_icon = None;
+            settings_state.original_username = String::new();
+            settings_state.original_icon = String::new();
+            // Optionally, navigate back to the authentication page or home page
+            return Some(TuiPage::Auth); // Assuming TuiPage::Auth exists
         }
+        KeyCode::Left => settings_state.focused_pane = FocusedPane::Left, // Re-added
         KeyCode::Esc => return Some(TuiPage::Chat),
         _ => {}
     }
+    None
+}
 
+use log::debug; // Add this import
+
+fn handle_quit_confirmation_events(
+    _settings_state: &mut SettingsState, // No longer directly modifying settings_state
+    key_code: KeyCode,
+    app_state: &mut AppState,
+) -> Option<TuiPage> {
+    debug!("handle_quit_confirmation_events: KeyCode: {:?}, quit_selection: {}", key_code, app_state.quit_selection); // Use app_state.quit_selection
+    match key_code {
+        KeyCode::Left => {
+            if app_state.quit_selection == 1 { // If "Hell no" is selected
+                app_state.quit_selection = 0; // Select "Ye"
+                debug!("handle_quit_confirmation_events: Selected Ye");
+            }
+        }
+        KeyCode::Right => {
+            if app_state.quit_selection == 0 { // If "Ye" is selected
+                app_state.quit_selection = 1; // Select "Hell no"
+                debug!("handle_quit_confirmation_events: Selected Hell no");
+            }
+        }
+        KeyCode::Enter => {
+            debug!("handle_quit_confirmation_events: Enter pressed");
+            if app_state.quit_selection == 0 {
+                // "Ye" selected
+                debug!("handle_quit_confirmation_events: Ye selected, setting should_exit_app to true");
+                app_state.should_exit_app = true;
+                app_state.next_page = Some(TuiPage::Exit);
+                return None; // Return None, let the main loop handle next_page
+            } else {
+                // "Hell no" selected
+                debug!("handle_quit_confirmation_events: Hell no selected, going back");
+                app_state.quit_confirmation_state = QuitConfirmationState::Inactive;
+                // app_state.focused_pane = FocusedPane::Left; // This should be handled by the main settings state
+            }
+        }
+        KeyCode::Esc => {
+            debug!("handle_quit_confirmation_events: Esc pressed, going back");
+            app_state.quit_confirmation_state = QuitConfirmationState::Inactive;
+            // app_state.focused_pane = FocusedPane::Left; // This should be handled by the main settings state
+        }
+        _ => {
+            debug!("handle_quit_confirmation_events: Other key pressed: {:?}", key_code);
+        }
+    }
     None
 }
 
 fn handle_quit_events(
-    settings_state: &mut SettingsState,
+    settings_state: &mut SettingsState, // Removed underscore
     key_code: KeyCode,
     app_state: &mut AppState,
 ) -> Option<TuiPage> {
@@ -182,7 +202,7 @@ fn handle_quit_events(
             app_state.should_exit_app = true;
             return Some(TuiPage::Exit);
         }
-        KeyCode::Left => settings_state.focused_pane = FocusedPane::Left,
+        KeyCode::Left => settings_state.focused_pane = FocusedPane::Left, // Re-added
         KeyCode::Esc => return Some(TuiPage::Chat),
         _ => {}
     }

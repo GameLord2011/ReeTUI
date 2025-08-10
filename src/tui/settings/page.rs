@@ -1,7 +1,7 @@
 use crate::app::app_state::AppState;
 use crate::themes::Theme;
-use crate::tui::auth::page::ICONS;
-use crate::tui::settings::state::{FocusedPane, SettingsScreen, SettingsState};
+
+use crate::tui::settings::state::{FocusedPane, SettingsScreen, SettingsState, QuitConfirmationState};
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Modifier, Style, Stylize},
@@ -9,7 +9,7 @@ use ratatui::{
     Frame,
 };
 
-const SETTINGS_OPTIONS: &[&str] = &[" Themes", "󰞋 Help", " User Settings", "  Quit"];
+const SETTINGS_OPTIONS: &[&str] = &[" Themes", "󰞋 Help", "  Disconnect", "  Quit"];
 
 const HELP_CONTENT: &[&str] = &[
     "Settings Navigation:",
@@ -39,7 +39,7 @@ pub fn draw_settings_ui<B: ratatui::backend::Backend>(
 
     f.render_widget(main_block.clone(), area);
 
-    let main_area = centered_rect(80, 80, area); // Use the passed area as the base for centering
+    let main_area = centered_rect(60, 60, area); // Use the passed area as the base for centering
     f.render_widget(main_block, main_area);
 
     let max_menu_item_width = SETTINGS_OPTIONS.iter().map(|s| s.len()).max().unwrap_or(0);
@@ -88,10 +88,14 @@ fn draw_left_pane(f: &mut Frame, settings_state: &mut SettingsState, theme: &The
 
     for (i, &name) in SETTINGS_OPTIONS.iter().enumerate() {
         let is_selected = i == settings_state.main_selection;
-        let is_disabled = i == 2 && !settings_state.is_user_logged_in();
+        let is_disabled = false; // Disconnect button is always enabled
 
         let item_style = if is_disabled {
             Style::default().fg(crate::themes::rgb_to_color(&theme.colors.dim))
+        } else if is_selected && is_focused {
+            Style::default().fg(crate::themes::rgb_to_color(&theme.colors.accent)).add_modifier(Modifier::BOLD)
+        } else if is_selected {
+            Style::default().fg(crate::themes::rgb_to_color(&theme.colors.border_focus))
         } else {
             Style::default().fg(crate::themes::rgb_to_color(&theme.colors.text))
         };
@@ -149,10 +153,14 @@ fn draw_right_pane<B: ratatui::backend::Backend>(
             draw_themes_pane::<B>(f, settings_state, theme, inner_area, app_state)
         }
         SettingsScreen::Help => draw_help_pane(f, theme, inner_area),
-        SettingsScreen::UserSettings => {
-            draw_user_settings_pane::<B>(f, settings_state, theme, inner_area, app_state)
+        SettingsScreen::Disconnect => draw_disconnect_pane(f, theme, inner_area),
+        SettingsScreen::Quit => {
+            if settings_state.quit_confirmation_state == QuitConfirmationState::Active {
+                draw_quit_confirmation_pane(f, settings_state, theme, inner_area, app_state);
+            } else {
+                draw_quit_message_pane(f, theme, inner_area);
+            }
         }
-        SettingsScreen::Quit => draw_quit_pane(f, theme, inner_area),
     }
 }
 
@@ -265,110 +273,104 @@ fn draw_help_pane(f: &mut Frame, theme: &Theme, area: Rect) {
     f.render_widget(paragraph, area);
 }
 
-fn draw_user_settings_pane<B: ratatui::backend::Backend>(
-    f: &mut Frame,
-    settings_state: &mut SettingsState,
-    theme: &Theme,
-    area: Rect,
-    _app_state: &AppState,
-) {
-    if !settings_state.is_user_logged_in() {
-        let message = "You must be logged in to change user settings.";
-        let paragraph = Paragraph::new(message)
-            .style(
-                Style::default()
-                    .fg(crate::themes::rgb_to_color(&theme.colors.dim))
-                    .bg(crate::themes::rgb_to_color(&theme.colors.background)),
-            )
-            .alignment(Alignment::Center);
-        f.render_widget(paragraph, area);
-        return;
-    }
-
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .margin(1)
-        .constraints(
-            [
-                Constraint::Length(3),
-                Constraint::Length(3),
-                Constraint::Length(3),
-                Constraint::Min(1),
-                Constraint::Length(1),
-            ]
-            .as_ref(),
-        )
-        .split(area);
-
-    // Username Input
-    let username_block = Block::default()
-        .title("Username")
-        .borders(Borders::ALL)
-        .border_type(BorderType::Rounded)
-        .border_type(ratatui::widgets::BorderType::Rounded)
-        .border_style(Style::default().fg(crate::themes::rgb_to_color(
-            &theme.colors.input_border_inactive,
-        )))
-        .bg(crate::themes::rgb_to_color(&theme.colors.background));
-    let username_p = Paragraph::new(settings_state.new_username.as_str())
-        .block(username_block)
-        .style(Style::default().bg(crate::themes::rgb_to_color(&theme.colors.background)));
-    f.render_widget(username_p, chunks[0]);
-
-    // Icon Selector
-    let icon_block = Block::default()
-        .title("Icon")
-        .borders(Borders::ALL)
-        .border_type(BorderType::Rounded)
-        .border_type(ratatui::widgets::BorderType::Rounded)
-        .border_style(Style::default().fg(crate::themes::rgb_to_color(
-            &theme.colors.input_border_inactive,
-        )))
-        .bg(crate::themes::rgb_to_color(&theme.colors.background));
-
-    let current_icon_index = ICONS
-        .iter()
-        .position(|&i| i == settings_state.new_icon)
-        .unwrap_or(0);
-    let icon_p = Paragraph::new(ICONS[current_icon_index])
-        .block(icon_block)
-        .alignment(Alignment::Center)
-        .style(Style::default().bg(crate::themes::rgb_to_color(&theme.colors.background)));
-    f.render_widget(icon_p, chunks[1]);
-
-    // Save Button
-    let save_button_block = Block::default()
-        .title("Save")
-        .borders(Borders::ALL)
-        .border_type(BorderType::Rounded)
-        .border_type(ratatui::widgets::BorderType::Rounded)
-        .border_style(Style::default().fg(crate::themes::rgb_to_color(
-            &theme.colors.button_border_active,
-        )))
-        .bg(crate::themes::rgb_to_color(&theme.colors.background));
-    let save_button_p = Paragraph::new("Save Changes")
-        .block(save_button_block)
-        .alignment(Alignment::Center)
-        .style(Style::default().bg(crate::themes::rgb_to_color(&theme.colors.background)));
-    f.render_widget(save_button_p, chunks[2]);
-
-    let hint = Paragraph::new("NOTE: User settings are not yet saved to the server.")
-        .style(
-            Style::default()
-                .fg(crate::themes::rgb_to_color(&theme.colors.dim))
-                .italic()
-                .bg(crate::themes::rgb_to_color(&theme.colors.background)),
-        )
-        .alignment(Alignment::Center);
-    f.render_widget(hint, chunks[4]);
-}
-
-fn draw_quit_pane(f: &mut Frame, theme: &Theme, area: Rect) {
+fn draw_quit_message_pane(f: &mut Frame, theme: &Theme, area: Rect) {
     let text = "Are you sure you want to quit?";
     let p = Paragraph::new(text)
         .style(
             Style::default()
                 .fg(crate::themes::rgb_to_color(&theme.colors.error))
+                .bg(crate::themes::rgb_to_color(&theme.colors.background)),
+        )
+        .alignment(Alignment::Center);
+    f.render_widget(p, area);
+}
+
+fn draw_quit_confirmation_pane(
+    f: &mut Frame,
+    _settings_state: &mut SettingsState, // No longer directly using settings_state
+    theme: &Theme,
+    area: Rect,
+    app_state: &AppState, // Added app_state
+) {
+    let confirmation_block = Block::default()
+        .title("Confirm Quit")
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(crate::themes::rgb_to_color(&theme.colors.border_focus)))
+        .bg(crate::themes::rgb_to_color(&theme.colors.background));
+
+    let inner_area = confirmation_block.inner(area); // Revert to original
+    f.render_widget(confirmation_block, area); // Revert to original
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Min(0), // Message
+            Constraint::Length(3), // Buttons
+        ])
+        .split(inner_area);
+
+    // Message
+            let message = "Ya really want to get out?";
+    let p = Paragraph::new(message)
+        .style(
+            Style::default()
+                .fg(crate::themes::rgb_to_color(&theme.colors.text))
+                .bg(crate::themes::rgb_to_color(&theme.colors.background)),
+        )
+        .alignment(Alignment::Center);
+    f.render_widget(p, chunks[0]);
+
+    // Buttons
+    let button_chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage(50),
+            Constraint::Percentage(50),
+        ])
+        .split(chunks[1]);
+
+    let ye_button_style = if app_state.quit_selection == 0 {
+        Style::default()
+            .fg(crate::themes::rgb_to_color(&theme.colors.button_text_active))
+            .bg(crate::themes::rgb_to_color(&theme.colors.button_bg_active))
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default()
+            .fg(crate::themes::rgb_to_color(&theme.colors.text))
+            .bg(crate::themes::rgb_to_color(&theme.colors.button))
+    };
+
+    let no_button_style = if app_state.quit_selection == 1 {
+        Style::default()
+            .fg(crate::themes::rgb_to_color(&theme.colors.button_text_active))
+            .bg(crate::themes::rgb_to_color(&theme.colors.button_bg_active))
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default()
+            .fg(crate::themes::rgb_to_color(&theme.colors.text))
+            .bg(crate::themes::rgb_to_color(&theme.colors.button))
+    };
+
+    let ye_button = Paragraph::new("Ye")
+        .style(ye_button_style)
+        .alignment(Alignment::Center)
+        .block(Block::default().borders(Borders::ALL).border_type(BorderType::Rounded));
+    f.render_widget(ye_button, button_chunks[0]);
+
+    let no_button = Paragraph::new("Hell no")
+        .style(no_button_style)
+        .alignment(Alignment::Center)
+        .block(Block::default().borders(Borders::ALL).border_type(BorderType::Rounded));
+    f.render_widget(no_button, button_chunks[1]);
+}
+
+fn draw_disconnect_pane(f: &mut Frame, theme: &Theme, area: Rect) {
+    let text = "Press Enter to disconnect.";
+    let p = Paragraph::new(text)
+        .style(
+            Style::default()
+                .fg(crate::themes::rgb_to_color(&theme.colors.text))
                 .bg(crate::themes::rgb_to_color(&theme.colors.background)),
         )
         .alignment(Alignment::Center);

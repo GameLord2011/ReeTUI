@@ -7,7 +7,7 @@ use devicons::{icon_for_file, FileIcon, Theme};
 use image::{GenericImageView, ImageReader};
 use ratatui::{
     prelude::*,
-    widgets::{Block, Borders, Padding, Paragraph},
+    widgets::{Block, Borders, Clear, Padding, Paragraph},
 };
 use std::{
     collections::HashMap,
@@ -237,7 +237,25 @@ impl FileManager {
 
         if let Some(item) = self.get_selected_item() {
             if item.is_dir {
-                let p = Paragraph::new("Directory selected")
+                f.render_widget(Clear, inner_preview_area);
+                let folder_ascii_lines: Vec<&str> = "\n╭───────────╮             \n│           ╰──────────╮  \n│ ╭──────────────────────╮\n│ │                      │\n│ │                      │\n│ │                      │\n│ │                      │\n│ │                      │\n│ │                      │\n│ │                      │\n│ │                      │\n╰─╰──────────────────────╯".lines().collect();
+                let ascii_height = folder_ascii_lines.len() as u16;
+                let preview_height = inner_preview_area.height;
+                let padding_top = preview_height.saturating_sub(ascii_height) / 2;
+                let ascii_width = 24; // Max width of folder ASCII art
+                let preview_width = inner_preview_area.width;
+                let padding_left = preview_width.saturating_sub(ascii_width) / 2;
+                let horizontal_padding_str = " ".repeat(padding_left as usize);
+
+                let mut text_lines = Vec::new();
+                for _ in 0..padding_top {
+                    text_lines.push(Line::raw(""));
+                }
+                for line_str in folder_ascii_lines {
+                    text_lines.push(Line::raw(format!("{}{}", horizontal_padding_str, line_str)));
+                }
+
+                let p = Paragraph::new(Text::from(text_lines))
                     .style(Style::default().bg(rgb_to_color(&theme.colors.background)));
                 f.render_widget(p, inner_preview_area);
             } else {
@@ -348,7 +366,23 @@ impl FileManager {
                                     }
                                 }
                             } else if is_likely_binary_file {
-                                Ok(Text::raw("Cannot preview binary file."))
+                                let binary_ascii_lines: Vec<&str> = "\n╭───────────────╮\n│100010110101010│\n│010110101010100│\n│101101010110101│\n│101010101101010│\n│101010101101010│\n│010100010101100│\n│111110010100101│\n│101010101010100│\n├─────╮101011010│\n│     │001001101│\n│.BIN │101010101│\n╰─────┴─────────╯".lines().collect();
+                                let ascii_height = binary_ascii_lines.len() as u16;
+                                let preview_height = inner_preview_area.height;
+                                let padding_top = preview_height.saturating_sub(ascii_height) / 2;
+                                let ascii_width = 17; // Max width of binary ASCII art
+                                let preview_width = inner_preview_area.width;
+                                let padding_left = preview_width.saturating_sub(ascii_width) / 2;
+                                let horizontal_padding_str = " ".repeat(padding_left as usize);
+
+                                let mut text_lines = Vec::new();
+                                for _ in 0..padding_top {
+                                    text_lines.push(Line::raw(""));
+                                }
+                                for line_str in binary_ascii_lines {
+                                    text_lines.push(Line::raw(format!("{}{}", horizontal_padding_str, line_str)));
+                                }
+                                Ok(Text::from(text_lines))
                             } else {
                                 let syntax = syntax_set
                                     .find_syntax_by_extension(

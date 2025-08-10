@@ -1,31 +1,43 @@
+use serde::{Deserialize, Serialize};
 use crate::themes::ThemeName;
 use ratatui::widgets::ListState;
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
 pub enum FocusedPane {
     Left,
     Right,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
+pub enum QuitConfirmationState {
+    Active,
+    Inactive,
+    Confirm,
+    Cancel,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
 pub enum SettingsScreen {
     Themes,
     Help,
-    UserSettings,
+    Disconnect,
     Quit,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SettingsState {
     pub screen: SettingsScreen,
     pub focused_pane: FocusedPane,
     pub main_selection: usize,
+    #[serde(skip)]
     pub theme_list_state: ListState,
     pub themes: Vec<ThemeName>,
     pub new_username: String,
     pub new_icon: String,
     pub original_username: String,
     pub original_icon: String,
+    pub quit_confirmation_state: QuitConfirmationState,
+    pub quit_selection: usize,
 }
 
 impl SettingsState {
@@ -36,6 +48,8 @@ impl SettingsState {
         icon: &str,
         main_selection: usize,
         focused_pane: FocusedPane,
+        _quit_confirmation_state: QuitConfirmationState,
+        _quit_selection: usize,
     ) -> Self {
         let mut theme_list_state = ListState::default();
         let theme_selection = themes
@@ -54,6 +68,8 @@ impl SettingsState {
             new_icon: icon.to_string(),
             original_username: username.to_string(),
             original_icon: icon.to_string(),
+            quit_confirmation_state: QuitConfirmationState::Inactive,
+            quit_selection: 0,
         }
     }
 
@@ -79,7 +95,7 @@ impl SettingsState {
         self.screen = match self.main_selection {
             0 => SettingsScreen::Themes,
             1 => SettingsScreen::Help,
-            2 => SettingsScreen::UserSettings,
+            2 => SettingsScreen::Disconnect,
             3 => SettingsScreen::Quit,
             _ => unreachable!(),
         };
