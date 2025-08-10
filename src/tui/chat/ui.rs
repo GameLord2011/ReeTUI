@@ -14,8 +14,8 @@ use crate::tui::chat::popups::download_progress::{
     draw_download_progress_popup, get_download_progress_popup_size,
 };
 use crate::tui::chat::popups::emojis::{draw_emojis_popup, get_emojis_popup_size};
-use crate::tui::chat::popups::mentions::{draw_mentions_popup, get_mentions_popup_size};
 use crate::tui::chat::popups::helpers::get_file_manager_popup_size;
+use crate::tui::chat::popups::mentions::{draw_mentions_popup, get_mentions_popup_size};
 
 use crate::tui::file_manager_module::file_manager::FileManager;
 use std::collections::HashMap;
@@ -25,7 +25,7 @@ use tokio::sync::Mutex;
 use crate::tui::chat::utils::{centered_rect, get_color_for_user};
 use ansi_to_tui::IntoText as _;
 use chrono::{TimeZone, Utc};
-use unicode_width::UnicodeWidthStr;
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use crate::tui::notification::ui::draw_notifications;
 use crate::tui::settings;
@@ -38,6 +38,27 @@ use ratatui::{
     widgets::{Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph},
 };
 use regex::Regex;
+
+fn wrap_spans<'a>(spans: Vec<Span<'a>>, max_width: u16) -> Vec<Line<'a>> {
+    let mut lines = vec![Line::default()];
+    let mut current_width = 0;
+
+    for span in spans {
+        for c in span.content.chars() {
+            let char_width = c.width().unwrap_or(0) as u16;
+            if current_width + char_width > max_width && current_width > 0 {
+                lines.push(Line::default());
+                current_width = 0;
+            }
+            let last_line = lines.last_mut().unwrap();
+            last_line
+                .spans
+                .push(Span::styled(c.to_string(), span.style));
+            current_width += char_width;
+        }
+    }
+    lines
+}
 
 pub fn draw_chat_ui<B: Backend>(
     f: &mut Frame<'_>,
@@ -559,7 +580,8 @@ pub fn format_message_lines(
     }
 
     if !is_special_message {
-        content_lines.push(Line::from(message_content_spans));
+        let available_text_width = width.saturating_sub(4);
+        content_lines.extend(wrap_spans(message_content_spans, available_text_width));
     }
 
     let mut new_lines = Vec::new();
