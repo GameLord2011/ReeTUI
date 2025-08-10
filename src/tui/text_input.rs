@@ -46,10 +46,10 @@ impl TextInput {
         let text_width = area.width.saturating_sub(2) as usize;
         let display_text = if self.is_password {
             let char_to_repeat = self.password_char.unwrap_or('*');
-            String::from(char_to_repeat).repeat(self.text.len())
-        } else if self.text.len() > text_width {
-            let start = self.text.len().saturating_sub(text_width);
-            self.text[start..].to_string()
+            String::from(char_to_repeat).repeat(self.text.chars().count())
+        } else if self.text.chars().count() > text_width {
+            let start_char_index = self.text.chars().count() - text_width;
+            self.text.chars().skip(start_char_index).collect::<String>()
         } else {
             self.text.clone()
         };
@@ -60,31 +60,55 @@ impl TextInput {
         f.render_widget(input_paragraph, area);
 
         if self.is_focused {
-            f.set_cursor_position((area.x + 1 + self.cursor_position as u16, area.y + 1));
+            let text_before_cursor = &self.text[..self.cursor_position];
+            let cursor_char_pos = text_before_cursor.chars().count();
+            
+            let text_len_chars = self.text.chars().count();
+            let scroll_offset = if text_len_chars > text_width {
+                text_len_chars - text_width
+            } else {
+                0
+            };
+
+            let final_cursor_pos = (cursor_char_pos as u16).saturating_sub(scroll_offset as u16);
+
+            f.set_cursor(area.x + 1 + final_cursor_pos, area.y + 1);
         }
     }
 
     pub fn insert_char(&mut self, c: char) {
         self.text.insert(self.cursor_position, c);
-        self.cursor_position += 1;
+        self.cursor_position += c.len_utf8();
     }
 
     pub fn delete_char(&mut self) {
         if self.cursor_position > 0 {
-            self.cursor_position -= 1;
-            self.text.remove(self.cursor_position);
+            let mut prev_char_boundary = self.cursor_position - 1;
+            while prev_char_boundary > 0 && !self.text.is_char_boundary(prev_char_boundary) {
+                prev_char_boundary -= 1;
+            }
+            self.text.drain(prev_char_boundary..self.cursor_position);
+            self.cursor_position = prev_char_boundary;
         }
     }
 
     pub fn move_cursor_left(&mut self) {
         if self.cursor_position > 0 {
-            self.cursor_position -= 1;
+            let mut new_pos = self.cursor_position - 1;
+            while new_pos > 0 && !self.text.is_char_boundary(new_pos) {
+                new_pos -= 1;
+            }
+            self.cursor_position = new_pos;
         }
     }
 
     pub fn move_cursor_right(&mut self) {
         if self.cursor_position < self.text.len() {
-            self.cursor_position += 1;
+            let mut new_pos = self.cursor_position + 1;
+            while new_pos < self.text.len() && !self.text.is_char_boundary(new_pos) {
+                new_pos += 1;
+            }
+            self.cursor_position = new_pos;
         }
     }
 

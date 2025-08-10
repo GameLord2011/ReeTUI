@@ -81,6 +81,10 @@ pub fn get_dialog_popup_size(title: &str, hint: &str) -> (u16, u16) {
     (width, height)
 }
 
+pub fn get_file_manager_popup_size() -> (u16, u16) {
+    (135, 35)
+}
+
 pub fn draw_dialog_popup(
     f: &mut Frame,
     theme: &Theme,

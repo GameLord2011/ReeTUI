@@ -156,7 +156,7 @@ impl FileManager {
 
         let chunks = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Length(40), Constraint::Min(0)].as_ref())
+            .constraints([Constraint::Percentage(25), Constraint::Percentage(75)].as_ref())
             .split(area);
 
         let left_area = chunks[0];
@@ -164,7 +164,7 @@ impl FileManager {
 
         let main_chunks = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(70), Constraint::Percentage(30)].as_ref())
+            .constraints([Constraint::Percentage(80), Constraint::Percentage(20)].as_ref())
             .split(right_area);
 
         let preview_area = main_chunks[0];

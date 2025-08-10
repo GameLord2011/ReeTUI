@@ -15,6 +15,7 @@ use crate::tui::chat::popups::download_progress::{
 };
 use crate::tui::chat::popups::emojis::{draw_emojis_popup, get_emojis_popup_size};
 use crate::tui::chat::popups::mentions::{draw_mentions_popup, get_mentions_popup_size};
+use crate::tui::chat::popups::helpers::get_file_manager_popup_size;
 
 use crate::tui::file_manager_module::file_manager::FileManager;
 use std::collections::HashMap;
@@ -348,7 +349,7 @@ pub fn draw_chat_ui<B: Backend>(
             PopupType::CreateChannel => get_create_channel_popup_size(),
             PopupType::Mentions => get_mentions_popup_size(state),
             PopupType::Emojis => get_emojis_popup_size(state),
-            PopupType::FileManager => (90, 90),
+            PopupType::FileManager => get_file_manager_popup_size(),
             PopupType::DownloadProgress => get_download_progress_popup_size(),
             PopupType::DebugJson => get_debug_json_popup_size(),
             _ => (0, 0),
@@ -390,7 +391,6 @@ pub fn draw_chat_ui<B: Backend>(
                 draw_emojis_popup(f, state, popup_area, &popup_block_widget);
             }
             PopupType::FileManager => {
-                let popup_area = centered_rect(80, 80, size);
                 file_manager.ui(f, popup_area, state);
             }
             PopupType::DownloadProgress => {
