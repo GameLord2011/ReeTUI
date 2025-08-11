@@ -53,6 +53,8 @@ pub async fn run_settings_page<B: Backend>(
                 state.settings_focused_pane,
                 state.quit_confirmation_state,
                 state.quit_selection,
+                state.disconnect_confirmation_state,
+                state.disconnect_selection,
             )
         };
 
@@ -83,6 +85,8 @@ pub async fn run_settings_page<B: Backend>(
             state.settings_focused_pane,
             state.quit_confirmation_state,
             state.quit_selection,
+            state.disconnect_confirmation_state,
+            state.disconnect_selection,
         )
     };
 
@@ -160,6 +164,8 @@ pub async fn handle_settings_key_event(
             app_state.settings_focused_pane = settings_state.focused_pane;
             app_state.quit_confirmation_state = settings_state.quit_confirmation_state;
             app_state.quit_selection = settings_state.quit_selection;
+            app_state.disconnect_confirmation_state = settings_state.disconnect_confirmation_state;
+            app_state.disconnect_selection = settings_state.disconnect_selection;
             if app_state.should_exit_app {
                 return Some(TuiPage::Exit);
             }

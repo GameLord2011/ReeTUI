@@ -17,6 +17,12 @@ pub enum QuitConfirmationState {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
+pub enum DisconnectConfirmationState {
+    Active,
+    Inactive,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
 pub enum SettingsScreen {
     Themes,
     Help,
@@ -38,6 +44,8 @@ pub struct SettingsState {
     pub original_icon: String,
     pub quit_confirmation_state: QuitConfirmationState,
     pub quit_selection: usize,
+    pub disconnect_confirmation_state: DisconnectConfirmationState,
+    pub disconnect_selection: usize,
 }
 
 impl SettingsState {
@@ -50,6 +58,8 @@ impl SettingsState {
         focused_pane: FocusedPane,
         _quit_confirmation_state: QuitConfirmationState,
         _quit_selection: usize,
+        _disconnect_confirmation_state: DisconnectConfirmationState,
+        _disconnect_selection: usize,
     ) -> Self {
         let mut theme_list_state = ListState::default();
         let theme_selection = themes
@@ -70,6 +80,8 @@ impl SettingsState {
             original_icon: icon.to_string(),
             quit_confirmation_state: QuitConfirmationState::Inactive,
             quit_selection: 0,
+            disconnect_confirmation_state: DisconnectConfirmationState::Inactive,
+            disconnect_selection: 0,
         }
     }
 

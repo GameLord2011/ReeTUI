@@ -131,6 +131,7 @@ pub async fn handle_websocket_communication(
                                     let downloadable_file = crate::app::app_state::DownloadableFile {
                                         file_id: message.file_id.clone().unwrap(),
                                         file_name: message.file_name.clone().unwrap_or_default(),
+                                        file_extension: message.file_extension.clone().unwrap_or_default(),
                                         file_size: (message.file_size_mb.unwrap_or(0.0) * 1024.0 * 1024.0) as u64,
                                         sender_username: message.user.clone(),
                                         sender_icon: message.icon.clone(),
@@ -169,6 +170,7 @@ pub async fn handle_websocket_communication(
                                         let downloadable_file = crate::app::app_state::DownloadableFile {
                                             file_id: message.file_id.clone().unwrap(),
                                             file_name: message.file_name.clone().unwrap_or_default(),
+                                            file_extension: message.file_extension.clone().unwrap_or_default(),
                                             file_size: (message.file_size_mb.unwrap_or(0.0) * 1024.0 * 1024.0) as u64,
                                             sender_username: message.user.clone(),
                                             sender_icon: message.icon.clone(),

@@ -63,6 +63,8 @@ pub async fn run_chat_page<B: Backend>(
             state.settings_focused_pane,
             state.quit_confirmation_state,
             state.quit_selection,
+            state.disconnect_confirmation_state,
+            state.disconnect_selection,
         )
     };
 
@@ -213,7 +215,7 @@ pub async fn run_chat_page<B: Backend>(
                 "Download Progress".to_string(),
                 format!("Downloading: {}%", progress),
                 NotificationType::Info,
-                None,
+                Some(Duration::from_secs(3)),
                 app_state_clone_for_progress.clone(),
             ).await;
             if progress == 100 {

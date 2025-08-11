@@ -1,7 +1,7 @@
 use crate::app::app_state::AppState;
 use crate::app::TuiPage;
 
-use crate::tui::settings::state::{FocusedPane, SettingsScreen, SettingsState, QuitConfirmationState};
+use crate::tui::settings::state::{FocusedPane, SettingsScreen, SettingsState, QuitConfirmationState, DisconnectConfirmationState};
 use crate::tui::settings::SettingsEvent;
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 
@@ -43,6 +43,10 @@ fn handle_left_pane_events(
                 app_state.quit_confirmation_state = QuitConfirmationState::Active; // Directly update app_state
                 settings_state.focused_pane = FocusedPane::Right;
                 return Some(TuiPage::Settings); // Force redraw of settings page
+            } else if settings_state.main_selection == 2 { // 2 is Disconnect
+                app_state.disconnect_confirmation_state = DisconnectConfirmationState::Active;
+                settings_state.focused_pane = FocusedPane::Right;
+                return Some(TuiPage::Settings);
             } else {
                 settings_state.focused_pane = FocusedPane::Right;
             }
@@ -69,7 +73,11 @@ async fn handle_right_pane_events(
                     handle_help_events(settings_state, key_code);
                 }
                 SettingsScreen::Disconnect => {
-                    handle_disconnect_events(settings_state, key_code, app_state).await;
+                    if app_state.disconnect_confirmation_state == DisconnectConfirmationState::Active {
+                        handle_disconnect_confirmation_events(settings_state, key_code, app_state).await;
+                    } else {
+                        handle_disconnect_events(settings_state, key_code, app_state).await;
+                    }
                 }
                 SettingsScreen::Quit => {
                     if app_state.quit_confirmation_state == QuitConfirmationState::Active {
@@ -198,6 +206,47 @@ fn handle_quit_events(
         KeyCode::Left => settings_state.focused_pane = FocusedPane::Left, // Re-added
         KeyCode::Esc => return Some(TuiPage::Chat),
         _ => {}
+    }
+    None
+}
+
+async fn handle_disconnect_confirmation_events(
+    _settings_state: &mut SettingsState,
+    key_code: KeyCode,
+    app_state: &mut AppState,
+) -> Option<TuiPage> {
+    debug!("handle_disconnect_confirmation_events: KeyCode: {:?}, disconnect_selection: {}", key_code, app_state.disconnect_selection);
+    match key_code {
+        KeyCode::Left => {
+            if app_state.disconnect_selection == 1 {
+                app_state.disconnect_selection = 0;
+                debug!("handle_disconnect_confirmation_events: Selected Ye");
+            }
+        }
+        KeyCode::Right => {
+            if app_state.disconnect_selection == 0 {
+                app_state.disconnect_selection = 1;
+                debug!("handle_disconnect_confirmation_events: Selected Hell no");
+            }
+        }
+        KeyCode::Enter => {
+            debug!("handle_disconnect_confirmation_events: Enter pressed");
+            if app_state.disconnect_selection == 0 {
+                debug!("handle_disconnect_confirmation_events: Ye selected, clearing user auth and returning TuiPage::Auth");
+                app_state.clear_user_auth().await;
+                return Some(TuiPage::Auth);
+            } else {
+                debug!("handle_disconnect_confirmation_events: Hell no selected, going back");
+                app_state.disconnect_confirmation_state = DisconnectConfirmationState::Inactive;
+            }
+        }
+        KeyCode::Esc => {
+            debug!("handle_disconnect_confirmation_events: Esc pressed, going back");
+            app_state.disconnect_confirmation_state = DisconnectConfirmationState::Inactive;
+        }
+        _ => {
+            debug!("handle_disconnect_confirmation_events: Other key pressed: {:?}", key_code);
+        }
     }
     None
 }

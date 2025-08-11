@@ -1,7 +1,7 @@
 use crate::app::app_state::AppState;
 use crate::themes::Theme;
 
-use crate::tui::settings::state::{FocusedPane, SettingsScreen, SettingsState, QuitConfirmationState};
+use crate::tui::settings::state::{FocusedPane, SettingsScreen, SettingsState, QuitConfirmationState, DisconnectConfirmationState};
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Modifier, Style, Stylize},
@@ -162,7 +162,7 @@ fn draw_right_pane<B: ratatui::backend::Backend>(
             draw_themes_pane::<B>(f, settings_state, theme, inner_area, app_state)
         }
         SettingsScreen::Help => draw_help_pane(f, theme, inner_area),
-        SettingsScreen::Disconnect => draw_disconnect_pane(f, theme, inner_area),
+        SettingsScreen::Disconnect => draw_disconnect_pane(f, settings_state, theme, inner_area, app_state),
         SettingsScreen::Quit => {
             if settings_state.quit_confirmation_state == QuitConfirmationState::Active {
                 draw_quit_confirmation_pane(f, settings_state, theme, inner_area, app_state);
@@ -320,7 +320,7 @@ fn draw_quit_confirmation_pane(
         .split(inner_area);
 
     // Message
-            let message = "Ya really want to get out?";
+            let message = "do ya really want to disconnect/quit";
     let p = Paragraph::new(message)
         .style(
             Style::default()
@@ -374,16 +374,96 @@ fn draw_quit_confirmation_pane(
     f.render_widget(no_button, button_chunks[1]);
 }
 
-fn draw_disconnect_pane(f: &mut Frame, theme: &Theme, area: Rect) {
-    let text = "Press Enter to disconnect.";
-    let p = Paragraph::new(text)
-        .style(
+fn draw_disconnect_pane(
+    f: &mut Frame,
+    settings_state: &mut SettingsState,
+    theme: &Theme,
+    area: Rect,
+    app_state: &AppState,
+) {
+    if settings_state.disconnect_confirmation_state == DisconnectConfirmationState::Active {
+        let confirmation_block = Block::default()
+            .title("Confirm Disconnect")
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(crate::themes::rgb_to_color(&theme.colors.border_focus)))
+            .bg(crate::themes::rgb_to_color(&theme.colors.background));
+
+        let inner_area = confirmation_block.inner(area);
+        f.render_widget(confirmation_block, area);
+
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Min(0), // Message
+                Constraint::Length(3), // Buttons
+            ])
+            .split(inner_area);
+
+        // Message
+        let message = "do ya really want to disconnect/quit";
+        let p = Paragraph::new(message)
+            .style(
+                Style::default()
+                    .fg(crate::themes::rgb_to_color(&theme.colors.text))
+                    .bg(crate::themes::rgb_to_color(&theme.colors.background)),
+            )
+            .alignment(Alignment::Center);
+        f.render_widget(p, chunks[0]);
+
+        // Buttons
+        let button_chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Percentage(50),
+                Constraint::Percentage(50),
+            ])
+            .split(chunks[1]);
+
+        let ye_button_style = if app_state.disconnect_selection == 0 {
+            Style::default()
+                .fg(crate::themes::rgb_to_color(&theme.colors.button_text_active))
+                .bg(crate::themes::rgb_to_color(&theme.colors.button_bg_active))
+                .add_modifier(Modifier::BOLD)
+        } else {
             Style::default()
                 .fg(crate::themes::rgb_to_color(&theme.colors.text))
-                .bg(crate::themes::rgb_to_color(&theme.colors.background)),
-        )
-        .alignment(Alignment::Center);
-    f.render_widget(p, area);
+                .bg(crate::themes::rgb_to_color(&theme.colors.button))
+        };
+
+        let no_button_style = if app_state.disconnect_selection == 1 {
+            Style::default()
+                .fg(crate::themes::rgb_to_color(&theme.colors.button_text_active))
+                .bg(crate::themes::rgb_to_color(&theme.colors.button_bg_active))
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default()
+                .fg(crate::themes::rgb_to_color(&theme.colors.text))
+                .bg(crate::themes::rgb_to_color(&theme.colors.button))
+        };
+
+        let ye_button = Paragraph::new("Ye")
+            .style(ye_button_style)
+            .alignment(Alignment::Center)
+            .block(Block::default().borders(Borders::ALL).border_type(BorderType::Rounded));
+        f.render_widget(ye_button, button_chunks[0]);
+
+        let no_button = Paragraph::new("Hell no")
+            .style(no_button_style)
+            .alignment(Alignment::Center)
+            .block(Block::default().borders(Borders::ALL).border_type(BorderType::Rounded));
+        f.render_widget(no_button, button_chunks[1]);
+    } else {
+        let text = "Press Enter to disconnect.";
+        let p = Paragraph::new(text)
+            .style(
+                Style::default()
+                    .fg(crate::themes::rgb_to_color(&theme.colors.text))
+                    .bg(crate::themes::rgb_to_color(&theme.colors.background)),
+            )
+            .alignment(Alignment::Center);
+        f.render_widget(p, area);
+    }
 }
 
 pub fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {

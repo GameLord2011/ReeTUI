@@ -25,6 +25,7 @@ pub enum ChatFocusedPane {
 pub struct DownloadableFile {
     pub file_id: String,
     pub file_name: String,
+    pub file_extension: String,
     pub file_size: u64,
     pub sender_username: String,
     pub sender_icon: String,
@@ -53,6 +54,8 @@ pub struct AppState {
     pub settings_focused_pane: crate::tui::settings::state::FocusedPane,
     pub quit_confirmation_state: crate::tui::settings::state::QuitConfirmationState,
     pub quit_selection: usize,
+    pub disconnect_confirmation_state: crate::tui::settings::state::DisconnectConfirmationState,
+    pub disconnect_selection: usize,
     pub show_settings: bool,
     pub popup_state: crate::app::PopupState,
     pub active_users: Vec<String>,
@@ -81,9 +84,10 @@ pub struct AppState {
     pub fps: f64,
     pub cpu_usage: f64,
     pub memory_usage: u64,
-    pub downloadable_files: Vec<DownloadableFile>, // New field
+    pub downloadable_files: Vec<DownloadableFile>,
     #[serde(skip_serializing, skip_deserializing)]
-    pub selected_download_index: ratatui::widgets::TableState, // New field
+    pub selected_download_index: ratatui::widgets::TableState,
+    pub download_scroll_offset: usize,
 }
 
 impl Default for AppState {
@@ -122,6 +126,8 @@ impl Default for AppState {
             settings_focused_pane: crate::tui::settings::state::FocusedPane::Left,
             quit_confirmation_state: crate::tui::settings::state::QuitConfirmationState::Inactive,
             quit_selection: 0,
+            disconnect_confirmation_state: crate::tui::settings::state::DisconnectConfirmationState::Inactive,
+            disconnect_selection: 0,
             show_settings: false,
             active_animations: HashMap::new(),
             needs_re_render: HashMap::new(),
@@ -135,7 +141,8 @@ impl Default for AppState {
             cpu_usage: 0.0,
             memory_usage: 0,
             downloadable_files: Vec::new(),
-            selected_download_index: ratatui::widgets::TableState::default(), // Initialize new field
+            selected_download_index: ratatui::widgets::TableState::default(),
+            download_scroll_offset: 0,
         }
     }
 }
