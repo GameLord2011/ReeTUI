@@ -45,6 +45,11 @@ fn wrap_spans<'a>(spans: Vec<Span<'a>>, max_width: u16) -> Vec<Line<'a>> {
 
     for span in spans {
         for c in span.content.chars() {
+            if c == '\n' {
+                lines.push(Line::default());
+                current_width = 0;
+                continue;
+            }
             let char_width = c.width().unwrap_or(0) as u16;
             if current_width + char_width > max_width && current_width > 0 {
                 lines.push(Line::default());
