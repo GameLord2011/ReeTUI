@@ -38,6 +38,16 @@ use ratatui::{
     widgets::{Block, BorderType, Borders, Clear, ListState, Paragraph},
 };
 use regex::Regex;
+use std::fs::OpenOptions;
+use std::io::Write;
+
+#[derive(Debug)]
+pub struct RenderedMessage {
+    pub id: String,
+    pub lines: Vec<Line<'static>>,
+    pub is_first_in_group: bool,
+    pub is_last_in_group: bool,
+}
 
 fn wrap_spans<'a>(spans: Vec<Span<'a>>, max_width: u16) -> Vec<Line<'a>> {
     let mut lines = vec![Line::default()];
@@ -256,12 +266,19 @@ pub fn draw_chat_ui<B: Backend>(
         let mut all_rendered_lines: Vec<Line<'static>> = Vec::new();
 
         if let Some(messages) = state.messages.get(channel_id) {
+            let mut log_file = OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open("message.log")
+                .unwrap();
+            writeln!(log_file, "\n--- Channel: {} ---", channel_id).unwrap();
+
             for i in 0..messages.len() {
                 let msg = &messages[i];
                 let message_id = msg
                     .file_id
                     .clone()
-                    .unwrap_or_else(|| msg.timestamp.to_string());
+                    .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
                 let needs_re_render_this_message = state
                     .needs_re_render
                     .get(channel_id)
@@ -297,8 +314,25 @@ pub fn draw_chat_ui<B: Backend>(
                     }
                 }
 
-                if needs_re_render_this_message || !is_first_in_group {
-                    let lines = format_message_lines(
+                writeln!(
+                    log_file,
+                    "Message: {} (ID: {}), First: {}, Last: {}, Needs Re-render: {}",
+                    msg.content,
+                    message_id,
+                    is_first_in_group,
+                    is_last_in_group,
+                    needs_re_render_this_message
+                )
+                .unwrap();
+
+                let rendered_message_entry = state
+                    .rendered_messages
+                    .entry(channel_id.clone())
+                    .or_default()
+                    .get(&message_id);
+
+                if needs_re_render_this_message || rendered_message_entry.is_none() {
+                    let rendered_message = format_message_lines(
                         msg,
                         &state.current_theme,
                         inner_messages_area.width,
@@ -308,47 +342,43 @@ pub fn draw_chat_ui<B: Backend>(
                         is_first_in_group,
                         is_last_in_group,
                     );
+                    writeln!(
+                        log_file,
+                        "  -> Re-rendered. RenderedMessage: ID: {}, First: {}, Last: {}, Lines: {}",
+                        rendered_message.id,
+                        rendered_message.is_first_in_group,
+                        rendered_message.is_last_in_group,
+                        rendered_message.lines.len()
+                    )
+                    .unwrap();
                     state
                         .rendered_messages
                         .entry(channel_id.clone())
                         .or_default()
-                        .insert(message_id.clone(), lines.clone());
+                        .insert(message_id.clone(), rendered_message);
                     state
                         .needs_re_render
                         .entry(channel_id.clone())
                         .or_default()
                         .insert(message_id.clone(), false);
-                    all_rendered_lines.extend(lines);
                 } else {
-                    if let Some(lines) = state
-                        .rendered_messages
-                        .get(channel_id)
-                        .and_then(|channel_map| channel_map.get(&message_id))
-                    {
-                        all_rendered_lines.extend(lines.clone());
-                    } else {
-                        let lines = format_message_lines(
-                            msg,
-                            &state.current_theme,
-                            inner_messages_area.width,
-                            mention_regex,
-                            emoji_regex,
-                            &state.active_animations,
-                            is_first_in_group,
-                            is_last_in_group,
-                        );
-                        state
-                            .rendered_messages
-                            .entry(channel_id.clone())
-                            .or_default()
-                            .insert(message_id.clone(), lines.clone());
-                        state
-                            .needs_re_render
-                            .entry(channel_id.clone())
-                            .or_default()
-                            .insert(message_id.clone(), false);
-                        all_rendered_lines.extend(lines);
-                    }
+                    writeln!(
+                        log_file,
+                        "  -> From cache. RenderedMessage: ID: {}, First: {}, Last: {}, Lines: {}",
+                        rendered_message_entry.unwrap().id,
+                        rendered_message_entry.unwrap().is_first_in_group,
+                        rendered_message_entry.unwrap().is_last_in_group,
+                        rendered_message_entry.unwrap().lines.len()
+                    )
+                    .unwrap();
+                }
+
+                if let Some(rendered_message) = state
+                    .rendered_messages
+                    .get(channel_id)
+                    .and_then(|channel_map| channel_map.get(&message_id))
+                {
+                    all_rendered_lines.extend(rendered_message.lines.clone());
                 }
             }
         }
@@ -522,7 +552,11 @@ pub fn format_message_lines(
     active_animations: &HashMap<String, Arc<Mutex<GifAnimationState>>>,
     is_first_in_group: bool,
     is_last_in_group: bool,
-) -> Vec<Line<'static>> {
+) -> RenderedMessage {
+    let message_id = msg
+        .file_id
+        .clone()
+        .unwrap_or_else(|| msg.timestamp.to_string());
     let mut content_lines = Vec::new();
     let timestamp_str = Utc
         .timestamp_opt(msg.timestamp, 0)
@@ -543,12 +577,17 @@ pub fn format_message_lines(
                     let animation_state = match animation_state_arc.try_lock() {
                         Ok(state) => state,
                         Err(_) => {
-                            return vec![Line::from(Span::styled(
-                                "[GIF loading...]",
-                                Style::default()
-                                    .fg(rgb_to_color(&theme.colors.dim))
-                                    .add_modifier(Modifier::ITALIC),
-                            ))];
+                            return RenderedMessage {
+                                id: message_id.clone(),
+                                lines: vec![Line::from(Span::styled(
+                                    "[GIF loading...]",
+                                    Style::default()
+                                        .fg(rgb_to_color(&theme.colors.dim))
+                                        .add_modifier(Modifier::ITALIC),
+                                ))],
+                                is_first_in_group,
+                                is_last_in_group,
+                            };
                         }
                     };
                     let frame_count = animation_state.frames.len();
@@ -859,5 +898,10 @@ pub fn format_message_lines(
         new_lines.push(Line::from(footer_spans));
     }
 
-    new_lines
+    RenderedMessage {
+        id: message_id,
+        lines: new_lines,
+        is_first_in_group,
+        is_last_in_group,
+    }
 }

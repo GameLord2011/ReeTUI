@@ -4,6 +4,7 @@ use crate::app::{PopupState, TuiPage};
 use crate::themes::{Theme, ThemeName, ThemesConfig};
 use std::collections::{HashMap, VecDeque};
 use std::time::Duration;
+use uuid;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
 pub enum DebugView {
@@ -41,7 +42,7 @@ pub struct AppState {
     pub current_channel: Option<Channel>,
     pub messages: HashMap<String, VecDeque<BroadcastMessage>>,
     #[serde(skip_serializing, skip_deserializing)]
-    pub rendered_messages: HashMap<String, HashMap<String, Vec<ratatui::text::Line<'static>>>>,
+    pub rendered_messages: HashMap<String, HashMap<String, crate::tui::chat::ui::RenderedMessage>>,
     pub needs_re_render: HashMap<String, HashMap<String, bool>>,
     pub last_chat_view_height: usize,
     pub total_chat_buffer_length: usize,
@@ -211,7 +212,7 @@ impl AppState {
         let message_id = message
             .file_id
             .clone()
-            .unwrap_or_else(|| message.timestamp.to_string());
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
         let channel_messages = self.messages.entry(channel_id.clone()).or_default();
 
         // Check if the previous message needs re-rendering for grouping
@@ -269,7 +270,7 @@ impl AppState {
             let message_id = msg
                 .file_id
                 .clone()
-                .unwrap_or_else(|| msg.timestamp.to_string());
+                .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
             channel_messages.push_front(msg);
             needs_re_render_for_channel.insert(message_id.clone(), true);
             rendered_messages_for_channel.remove(&message_id);
@@ -367,7 +368,7 @@ impl AppState {
         let message_id = updated_message
             .file_id
             .clone()
-            .unwrap_or_else(|| updated_message.timestamp.to_string());
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
         if let Some(channel_messages) = self.messages.get_mut(&updated_message.channel_id) {
             for (i, msg) in channel_messages.iter().enumerate() {
                 // 1. prefer file_id if both present
