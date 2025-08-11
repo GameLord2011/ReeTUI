@@ -305,7 +305,10 @@ pub async fn run_chat_page<B: Backend>(
                 }
 
                 if let Event::Key(key) = event {
+                    log::debug!("Raw Key Event: {:?}", key);
                     if key.kind == KeyEventKind::Press {
+                        log::debug!("Key pressed: {:?}, Modifiers: {:?}", key.code, key.modifiers);
+                        log::debug!("Current chat_focused_pane: {:?}", state_guard.chat_focused_pane);
                         let current_popup_type = state_guard.popup_state.popup_type;
 
                         match current_popup_type {
@@ -822,46 +825,19 @@ pub async fn run_chat_page<B: Backend>(
                                         }
                                     }
                                     KeyCode::Up => {
-                                        match state_guard.chat_focused_pane {
-                                            crate::app::app_state::ChatFocusedPane::Messages => {
-                                                let scroll_amount =
-                                                    state_guard.last_chat_view_height / 2;
-                                                state_guard.scroll_messages_up(scroll_amount);
-                                            }
-                                            _ => {
-                                                // Default behavior for input or other panes
-                                                if state_guard.cursor_position > 0 {
-                                                    let old_pos = state_guard.cursor_position;
-                                                    let new_pos = input_text[..old_pos]
-                                                        .grapheme_indices(true)
-                                                        .last()
-                                                        .map(|(i, _)| i)
-                                                        .unwrap_or(0);
-                                                    state_guard.cursor_position = new_pos;
-                                                }
-                                            }
-                                        }
+                                        state_guard.scroll_messages_up(1);
                                     }
                                     KeyCode::Down => {
-                                        match state_guard.chat_focused_pane {
-                                            crate::app::app_state::ChatFocusedPane::Messages => {
-                                                let scroll_amount =
-                                                    state_guard.last_chat_view_height / 2;
-                                                state_guard.scroll_messages_down(scroll_amount);
-                                            }
-                                            _ => {
-                                                // Default behavior for input or other panes
-                                                let old_pos = state_guard.cursor_position;
-                                                if old_pos < input_text.len() {
-                                                    let new_pos = input_text[old_pos..]
-                                                        .grapheme_indices(true)
-                                                        .nth(1)
-                                                        .map(|(i, _)| old_pos + i)
-                                                        .unwrap_or_else(|| input_text.len());
-                                                    state_guard.cursor_position = new_pos;
-                                                }
-                                            }
-                                        }
+                                        log::debug!("Attempting to scroll DOWN by 1.");
+                                        state_guard.scroll_messages_down(1);
+                                    }
+                                    KeyCode::PageUp => {
+                                        log::debug!("PageUp key pressed. Chat focused pane: {:?}", state_guard.chat_focused_pane);
+                                        state_guard.scroll_messages_page_up();
+                                    }
+                                    KeyCode::PageDown => {
+                                        log::debug!("PageDown key pressed. Chat focused pane: {:?}", state_guard.chat_focused_pane);
+                                        state_guard.scroll_messages_page_down();
                                     }
                                     KeyCode::Backspace => {
                                         if state_guard.cursor_position > 0 {

@@ -35,7 +35,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Modifier, Style, Stylize},
     text::{Line, Span, Text},
-    widgets::{Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph},
+    widgets::{Block, BorderType, Borders, Clear, ListState, Paragraph},
 };
 use regex::Regex;
 
@@ -89,37 +89,101 @@ pub fn draw_chat_ui<B: Backend>(
         .title("Channels")
         .style(
             Style::default()
-                .fg(rgb_to_color(&current_theme.colors.border_focus))
+                .fg(if state.chat_focused_pane == crate::app::app_state::ChatFocusedPane::ChannelList {
+                    rgb_to_color(&current_theme.colors.accent)
+                } else {
+                    rgb_to_color(&current_theme.colors.border)
+                })
                 .bg(rgb_to_color(&current_theme.colors.background)),
         );
-    let channel_items: Vec<ListItem> = state
-        .channels
-        .iter()
-        .map(|channel| {
-            let is_current = state
-                .current_channel
-                .as_ref()
-                .map_or(false, |c| c.id == channel.id);
-            let style = if is_current {
-                Style::default()
-                    .add_modifier(Modifier::BOLD)
-                    .fg(rgb_to_color(&current_theme.colors.accent))
-            } else {
-                Style::default().fg(rgb_to_color(&current_theme.colors.text))
-            };
-            ListItem::new(format!("{} {}", channel.icon, channel.name.as_str())).style(style)
-        })
-        .collect();
-    let channels_list = List::new(channel_items)
-        .block(channels_block)
-        .highlight_style(
+    f.render_widget(channels_block.clone(), left_chunks[0]); // Render the outer block
+
+    let inner_channels_area = channels_block.inner(left_chunks[0]);
+    let item_height = 3; // User requested 3 lines of height per channel button
+
+    let _num_channels = state.channels.len();
+    let visible_items_count = (inner_channels_area.height / item_height) as usize;
+
+    // Calculate scroll offset for the channel list
+    let channel_scroll_offset = channel_list_state.selected().unwrap_or(0);
+    let start_channel_index = if channel_scroll_offset >= visible_items_count {
+        channel_scroll_offset - visible_items_count + 1
+    } else {
+        0
+    };
+
+    for (i, channel) in state.channels.iter().enumerate().skip(start_channel_index).take(visible_items_count) {
+        let is_selected = channel_list_state.selected().map_or(false, |s| s == i);
+
+        let item_rect = Rect::new(
+            inner_channels_area.x,
+            inner_channels_area.y + (i - start_channel_index) as u16 * item_height,
+            inner_channels_area.width,
+            item_height,
+        );
+
+        let border_color = if is_selected {
+            rgb_to_color(&current_theme.colors.accent)
+        } else {
+            rgb_to_color(&current_theme.colors.dim)
+        };
+        let border_style = Style::default().fg(border_color);
+
+        let icon_inner_width = channel.icon.width() as u16 + 2;
+        let name_inner_width = inner_channels_area.width.saturating_sub(icon_inner_width + 3);
+
+        let top_border = Line::from(vec![
+            Span::styled("╭", border_style),
+            Span::styled("─".repeat(icon_inner_width as usize), border_style),
+            Span::styled("┬", border_style),
+            Span::styled("─".repeat(name_inner_width as usize), border_style),
+            Span::styled("╮", border_style),
+        ]);
+
+        let channel_name = channel.name.clone();
+        let max_name_width = if name_inner_width > 1 { name_inner_width - 1 } else { 0 } as usize;
+        
+        let mut truncated_name = String::new();
+        let mut current_width = 0;
+        for c in channel_name.chars() {
+            let char_width = c.width().unwrap_or(1);
+            if current_width + char_width > max_name_width {
+                break;
+            }
+            truncated_name.push(c);
+            current_width += char_width;
+        }
+        
+        let padding_width = max_name_width.saturating_sub(truncated_name.width());
+        let padded_name = format!(" {}{}", truncated_name, " ".repeat(padding_width));
+
+        let text_style = if is_selected {
             Style::default()
-                .add_modifier(Modifier::REVERSED)
-                .fg(rgb_to_color(&current_theme.colors.button_text_active))
-                .bg(rgb_to_color(&current_theme.colors.button_bg_active)),
-        )
-        .highlight_symbol(" ");
-    f.render_stateful_widget(channels_list, left_chunks[0], channel_list_state);
+                .fg(rgb_to_color(&current_theme.colors.accent))
+        } else {
+            Style::default().fg(rgb_to_color(&current_theme.colors.text))
+        };
+
+        let middle_line = Line::from(vec![
+            Span::styled("│", border_style),
+            Span::styled(format!(" {} ", channel.icon), text_style),
+            Span::styled("│", border_style),
+            Span::styled(padded_name, text_style),
+            Span::styled("│", border_style),
+        ]);
+
+        let bottom_border = Line::from(vec![
+            Span::styled("╰", border_style),
+            Span::styled("─".repeat(icon_inner_width as usize), border_style),
+            Span::styled("┴", border_style),
+            Span::styled("─".repeat(name_inner_width as usize), border_style),
+            Span::styled("╯", border_style),
+        ]);
+
+        let text = Text::from(vec![top_border, middle_line, bottom_border]);
+        let paragraph = Paragraph::new(text);
+        f.render_widget(paragraph, item_rect);
+    }
 
     let user_info_block = Block::default()
         .borders(Borders::ALL)
@@ -127,7 +191,7 @@ pub fn draw_chat_ui<B: Backend>(
         .title("User Info")
         .style(
             Style::default()
-                .fg(rgb_to_color(&current_theme.colors.border_focus))
+                .fg(rgb_to_color(&current_theme.colors.border))
                 .bg(rgb_to_color(&current_theme.colors.background)),
         );
 
@@ -167,7 +231,11 @@ pub fn draw_chat_ui<B: Backend>(
         ))
         .style(
             Style::default()
-                .fg(rgb_to_color(&current_theme.colors.text))
+                .fg(if state.chat_focused_pane == crate::app::app_state::ChatFocusedPane::Messages {
+                    rgb_to_color(&current_theme.colors.accent)
+                } else {
+                    rgb_to_color(&current_theme.colors.text)
+                })
                 .bg(rgb_to_color(&current_theme.colors.background)),
         );
     let inner_messages_area = messages_block.inner(chat_chunks[0]);
@@ -317,7 +385,11 @@ pub fn draw_chat_ui<B: Backend>(
         .title("Input")
         .style(
             Style::default()
-                .fg(rgb_to_color(&current_theme.colors.input_border_active))
+                .fg(if state.chat_focused_pane == crate::app::app_state::ChatFocusedPane::Input {
+                    rgb_to_color(&current_theme.colors.accent)
+                } else {
+                    rgb_to_color(&current_theme.colors.input_border_inactive)
+                })
                 .bg(rgb_to_color(&current_theme.colors.background)),
         );
     let input_lines = input_text.split('\n').count();

@@ -11,7 +11,7 @@ use crate::themes::rgb_to_color;
 use crate::tui::chat::create_channel_form::{CreateChannelForm, CreateChannelInput, ICONS};
 
 pub fn get_create_channel_popup_size() -> (u16, u16) {
-    let hint_text = "(Enter) Seal the Deal  / (Esc) Abort Mission ";
+    let _hint_text = "(Enter) Seal the Deal  / (Esc) Abort Mission ";
     let icons_row_width = (ICONS.len() * 3) as u16;
     let height = 3 + 3 + 1 + 4 + 1 + 2; // Name, Icon, Spacer, Button, Hint, and 2 for margins
     let width = icons_row_width + 4;

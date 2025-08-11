@@ -313,6 +313,15 @@ impl AppState {
         self.message_scroll_offset = self.message_scroll_offset.saturating_sub(scroll_amount);
     }
 
+    pub fn scroll_messages_page_up(&mut self) {
+        self.scroll_messages_up(self.last_chat_view_height);
+    }
+
+    pub fn scroll_messages_page_down(&mut self) {
+        log::debug!("scroll_messages_page_down: Called");
+        self.scroll_messages_down(self.last_chat_view_height);
+    }
+
     
 
     pub fn find_message_mut(&mut self, message_id: &str) -> Option<&mut BroadcastMessage> {

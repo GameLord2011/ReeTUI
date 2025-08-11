@@ -25,6 +25,8 @@ use syntect::{
 };
 use tokio::sync::mpsc;
 use tokio::time::sleep;
+use tokio::io::AsyncWriteExt;
+use tokio::process::Command as TokioCommand;
 
 pub enum FileManagerEvent {
     FileSelectedForUpload(PathBuf),
@@ -73,10 +75,11 @@ pub struct FileManager {
     metadata_rx: mpsc::UnboundedReceiver<(PathBuf, Result<String, String>)>,
     metadata_cache: HashMap<PathBuf, Result<String, String>>,
     generating_metadata_for: Option<PathBuf>,
-    gif_tx: mpsc::UnboundedSender<(PathBuf, Result<Vec<Text<'static>>, String>)>,
-    gif_rx: mpsc::UnboundedReceiver<(PathBuf, Result<Vec<Text<'static>>, String>)>,
-    gif_cache: HashMap<PathBuf, Result<Vec<Text<'static>>, String>>,
+    gif_tx: mpsc::UnboundedSender<(PathBuf, Result<Vec<(Text<'static>, u32)>, String>)>,
+    gif_rx: mpsc::UnboundedReceiver<(PathBuf, Result<Vec<(Text<'static>, u32)>, String>)>,
+    gif_cache: HashMap<PathBuf, Result<Vec<(Text<'static>, u32)>, String>>,
     current_gif_frame: HashMap<PathBuf, usize>,
+    last_rendered_height: u16,
 }
 
 impl FileManager {
@@ -101,7 +104,7 @@ impl FileManager {
 
         let (preview_tx, preview_rx) = mpsc::unbounded_channel();
         let (metadata_tx, metadata_rx) = mpsc::unbounded_channel();
-        let (gif_tx, gif_rx) = mpsc::unbounded_channel();
+        let (gif_tx, gif_rx) = mpsc::unbounded_channel::<(PathBuf, Result<Vec<(Text<'static>, u32)>, String>)>();
 
         Self {
             tree: root,
@@ -123,6 +126,7 @@ impl FileManager {
             gif_rx,
             gif_cache: HashMap::new(),
             current_gif_frame: HashMap::new(),
+            last_rendered_height: 0,
         }
     }
 
@@ -177,6 +181,7 @@ impl FileManager {
             .padding(Padding::new(0, 0, 0, 0));
         f.render_widget(file_tree_block.clone(), left_area);
         let inner_left_area = file_tree_block.inner(left_area);
+        self.last_rendered_height = inner_left_area.height;
 
         let mut lines = Vec::new();
         self.displayed_items.clear();
@@ -230,7 +235,13 @@ impl FileManager {
         }
 
         if let Ok((path, result)) = self.gif_rx.try_recv() {
-            self.gif_cache.insert(path, result);
+            self.gif_cache.insert(path.clone(), result);
+            // When a new GIF is cached, reset its frame to 0
+            if let Some(Ok(frames_with_delays)) = self.gif_cache.get(&path) {
+                if !frames_with_delays.is_empty() {
+                    self.current_gif_frame.insert(path, 0);
+                }
+            }
         }
 
         let mut gif_frame_to_update: Option<(PathBuf, usize)> = None;
@@ -261,23 +272,24 @@ impl FileManager {
             } else {
                 if let Some(cached_gif) = self.gif_cache.get(&item.path) {
                     match cached_gif {
-                        Ok(frames) => {
+                        Ok(frames_with_delays) => {
                             let current_frame_index =
                                 *self.current_gif_frame.get(&item.path).unwrap_or(&0);
-                            if let Some(frame_text) = frames.get(current_frame_index) {
+                            if let Some((frame_text, delay_ms_ref)) = frames_with_delays.get(current_frame_index) {
+                                let delay_ms = *delay_ms_ref; // Copy the u32 value
                                 let p = Paragraph::new(frame_text.clone()).style(
                                     Style::default().bg(rgb_to_color(&theme.colors.background)),
                                 );
                                 f.render_widget(p, inner_preview_area);
 
                                 // Prepare update for next frame
-                                let next_frame_index = (current_frame_index + 1) % frames.len();
+                                let next_frame_index = (current_frame_index + 1) % frames_with_delays.len();
                                 gif_frame_to_update = Some((item.path.clone(), next_frame_index));
 
                                 // Schedule redraw for next frame
                                 let redraw_tx_clone = self.redraw_tx.clone();
                                 tokio::spawn(async move {
-                                    sleep(Duration::from_millis(100)).await;
+                                    sleep(Duration::from_millis(delay_ms as u64)).await;
                                     let _ = redraw_tx_clone.send("redraw".to_string());
                                 });
                             } else {
@@ -340,7 +352,7 @@ impl FileManager {
                                     Ok(Text::raw("Loading GIF...")) // Display loading message in preview
                                 } else {
                                     // Handle other images with chafa
-                                    let cmd = Command::new("chafa")
+                                    let cmd = TokioCommand::new("chafa")
                                         .arg("-f")
                                         .arg("symbols")
                                         .arg(format!(
@@ -348,7 +360,8 @@ impl FileManager {
                                             inner_preview_area.width, height
                                         ))
                                         .arg(&path)
-                                        .output();
+                                        .output()
+                                        .await;
 
                                     match cmd {
                                         Ok(output) => {
@@ -789,6 +802,8 @@ impl FileManager {
         match key.code {
             KeyCode::Up => self.select_previous(),
             KeyCode::Down => self.select_next(),
+            KeyCode::PageUp => self.page_up(),
+            KeyCode::PageDown => self.page_down(),
             KeyCode::Right => self.expand_dir(),
             KeyCode::Left => self.collapse_dir(),
             KeyCode::Enter => {
@@ -882,13 +897,32 @@ impl FileManager {
             }
         }
     }
+
+    fn page_up(&mut self) {
+        let list_height = self.last_rendered_height as usize;
+        if self.selected_index > list_height {
+            self.selected_index -= list_height;
+        } else {
+            self.selected_index = 0;
+        }
+    }
+
+    fn page_down(&mut self) {
+        let list_height = self.last_rendered_height as usize;
+        let max_index = self.displayed_items.len().saturating_sub(1);
+        if self.selected_index + list_height < max_index {
+            self.selected_index += list_height;
+        } else {
+            self.selected_index = max_index;
+        }
+    }
 }
 
 async fn decode_gif_frames(
     path: &Path,
     width: u16,
     height: u16,
-) -> Result<Vec<Text<'static>>, String> {
+) -> Result<Vec<(Text<'static>, u32)>, String> {
     let file = fs::File::open(path).map_err(|e| format!("Failed to open GIF: {}", e))?;
     let mut decoder = gif::DecodeOptions::new();
     decoder.set_color_output(gif::ColorOutput::RGBA);
@@ -896,7 +930,7 @@ async fn decode_gif_frames(
         .read_info(file)
         .map_err(|e| format!("Failed to read GIF info: {}", e))?;
 
-    let mut frames = Vec::new();
+    let mut frames_with_delays = Vec::new();
     // Read all frames first to avoid borrowing issues
     let mut gif_frames_data: Vec<gif::Frame> = Vec::new();
     let (gif_width, gif_height) = (decoder.width() as u32, decoder.height() as u32);
@@ -923,30 +957,40 @@ async fn decode_gif_frames(
             frame.top as i64,
         );
 
-        let temp_image_path = PathBuf::from(format!("/tmp/gif_frame_{}.png", uuid::Uuid::new_v4()));
+        // Encode image_buffer to PNG in memory
+        let mut png_bytes = Vec::new();
         image_buffer
-            .save(&temp_image_path)
-            .map_err(|e| format!("Failed to save GIF frame: {}", e))?;
+            .write_to(&mut std::io::Cursor::new(&mut png_bytes), image::ImageFormat::Png)
+            .map_err(|e| format!("Failed to encode GIF frame to PNG: {}", e))?;
 
-        let cmd = Command::new("chafa")
-            .arg("-f")
+        let mut cmd = TokioCommand::new("chafa");
+        cmd.arg("-f")
             .arg("symbols")
             .arg(format!("--size={}x{}", width, height))
-            .arg(&temp_image_path)
-            .output();
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
 
-        let output = cmd.map_err(|e| format!("Failed to execute chafa: {}", e))?;
+        let mut child = cmd.spawn().map_err(|e| format!("Failed to spawn chafa: {}", e))?;
 
-        fs::remove_file(&temp_image_path)
-            .map_err(|e| format!("Failed to remove temp file: {}", e))?;
+        // Write PNG bytes to chafa's stdin
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin.write_all(&png_bytes).await.map_err(|e| format!("Failed to write to chafa stdin: {}", e))?;
+            // Close stdin to signal EOF to chafa
+            drop(stdin);
+        } else {
+            return Err("Failed to get chafa stdin".to_string());
+        }
+
+        let output = child.wait_with_output().await.map_err(|e| format!("Failed to wait for chafa: {}", e))?;
 
         if output.status.success() {
-            frames.push(
-                String::from_utf8_lossy(&output.stdout)
-                    .to_string()
-                    .into_text()
-                    .map_err(|e| format!("Failed to convert ANSI to Text: {:?}", e))?,
-            );
+            let text_frame = String::from_utf8_lossy(&output.stdout)
+                .to_string()
+                .into_text()
+                .map_err(|e| format!("Failed to convert ANSI to Text: {:?}", e))?;
+            let delay_ms = frame.delay as u32 * 10; // Convert 1/100s to ms
+            frames_with_delays.push((text_frame, delay_ms));
         } else {
             return Err(format!(
                 "Chafa error: {}",
@@ -954,7 +998,7 @@ async fn decode_gif_frames(
             ));
         }
     }
-    Ok(frames)
+    Ok(frames_with_delays)
 }
 
 impl FileManager {
