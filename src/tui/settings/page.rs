@@ -12,17 +12,26 @@ use ratatui::{
 const SETTINGS_OPTIONS: &[&str] = &[" Themes", "󰞋 Help", "  Disconnect", "  Quit"];
 
 const HELP_CONTENT: &[&str] = &[
-    "Settings Navigation:",
-    "  Left/Right Arrow: Switch between panes",
-    "  Up/Down Arrow:    Navigate items in the current pane",
-    "  Enter:            Select / Confirm an option",
-    "  Esc:              Go back / Exit settings",
+    "Welcome to the Settings Help!",
     "",
-    "User Settings:",
-    "  (in right pane, when User Settings is selected)",
-    "  Username:         Type to change your username",
-    "  Icon:             Use Left/Right arrows to change icon",
-    "  Save:             Press Enter to save changes (feature in development)",
+    "Here you can find information about the different settings and how to use them.",
+    "",
+    "Navigation:",
+    "  - Use the Left/Right arrow keys to switch between the main menu and the settings content.",
+    "  - Use the Up/Down arrow keys to navigate the items in the focused pane.",
+    "  - Press Enter to select or confirm an option.",
+    "  - Press Esc to go back to the chat.",
+    "",
+    "Themes:",
+    "  - Select a theme from the list to change the application's appearance.",
+    "  - The selected theme will be applied immediately.",
+    "",
+    "Disconnect:",
+    "  - Press Enter to disconnect from the server and return to the login screen.",
+    "",
+    "Quit:",
+    "  - Press Enter to quit the application.",
+    "  - You will be asked for confirmation before quitting.",
 ];
 
 pub fn draw_settings_ui<B: ratatui::backend::Backend>(

@@ -7,7 +7,7 @@ pub fn handle_home_event(wait_time: std::time::Duration) -> io::Result<Option<Tu
         if let Event::Key(key) = event::read()? {
             if key.kind == KeyEventKind::Press {
                 match key.code {
-                    KeyCode::Char('q') => return Ok(Some(TuiPage::Exit)),
+                    KeyCode::Char('Q') => return Ok(Some(TuiPage::Exit)),
                     _ => return Ok(Some(TuiPage::Auth)),
                 }
             }

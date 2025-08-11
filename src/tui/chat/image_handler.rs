@@ -107,38 +107,28 @@ pub async fn run_chafa(image_data: &[u8], size: &str) -> Result<String, String> 
 pub async fn convert_image_to_chafa(image_data: &[u8], chat_width: u16) -> Result<String, String> {
     info!("Handling static image to Chafa conversion.");
     let image = image::load_from_memory(image_data).map_err(|e| e.to_string())?;
-    let (_width, _height) = image.dimensions();
-
-    let image = image::load_from_memory(image_data).map_err(|e| e.to_string())?;
     let (original_width, original_height) = image.dimensions();
-
-    let max_display_width = chat_width.saturating_sub(4); // Usable width
-    let max_display_height = 50; // Max lines for image preview
-
-    // Calculate scaling factors for both width and height constraints
-    let width_scale_factor = max_display_width as f32 / original_width as f32;
-    let height_scale_factor = max_display_height as f32 / original_height as f32;
-
-    // Choose the smaller scale factor to ensure the image fits within both dimensions
-    let mut scale_factor = width_scale_factor.min(height_scale_factor);
-
+    let max_display_width = chat_width.saturating_sub(4);
+    let max_display_height = 50;
+    const MIN_DISPLAY_HEIGHT: u16 = 10;
+    let width_scale_factor = max_display_width as f32 / original_width as f32; // it is ez
+    let height_scale_factor = max_display_height as f32 / original_height as f32; // right ?
+    let scale_factor = width_scale_factor.min(height_scale_factor);
     let mut final_width = (original_width as f32 * scale_factor).round() as u16;
     let mut final_height = (original_height as f32 * scale_factor).round() as u16;
-
-    // New logic: If height is constrained and width is still too large, reduce width
-    const MAX_DESIRED_WIDTH_FOR_TALL_IMAGES: u16 = 30; // A smaller max width for height-constrained images
-    if final_height == max_display_height && final_width > MAX_DESIRED_WIDTH_FOR_TALL_IMAGES {
-        scale_factor = MAX_DESIRED_WIDTH_FOR_TALL_IMAGES as f32 / original_width as f32;
-        final_width = (original_width as f32 * scale_factor).round() as u16;
-        final_height = (original_height as f32 * scale_factor).round() as u16;
+    if final_height < MIN_DISPLAY_HEIGHT {
+        final_height = MIN_DISPLAY_HEIGHT;
+        final_width =
+            (original_width as f32 * (final_height as f32 / original_height as f32)).round() as u16;
     }
-
-    // Ensure minimum dimensions if image is too small, or if scaling results in 0
+    if final_width > max_display_width {
+        final_width = max_display_width;
+        final_height =
+            (original_height as f32 * (final_width as f32 / original_width as f32)).round() as u16;
+    }
     let final_width = final_width.max(1);
     let final_height = final_height.max(1);
-
     let size = format!("{}x{}", final_width, final_height);
-
     run_chafa(image_data, &size).await
 }
 

@@ -72,11 +72,11 @@ pub async fn run_auth_page<B: ratatui::backend::Backend>(
                         continue;
                     }
                 }
-                if let Some(target_page) = crate::tui::settings::handle_settings_key_event(
+                                  if let Some(target_page) = crate::tui::settings::handle_settings_key_event(
                     crate::tui::settings::SettingsEvent::Key(event.clone()),
                     &mut app_state_guard,
                     &mut settings_state,
-                ) {
+                ).await {
                     if target_page == TuiPage::Auth {
                         app_state_guard.show_settings = false;
                     } else if target_page == TuiPage::Exit {

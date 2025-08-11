@@ -126,22 +126,35 @@ pub async fn handle_websocket_communication(
                             }
                             ServerMessage::Broadcast(message) => {
                                 let is_image = message.is_image.unwrap_or(false);
+                                if message.file_id.is_some() {
+                                    // This is a file message, add it to downloadable_files
+                                    let downloadable_file = crate::app::app_state::DownloadableFile {
+                                        file_id: message.file_id.clone().unwrap(),
+                                        file_name: message.file_name.clone().unwrap_or_default(),
+                                        file_size: (message.file_size_mb.unwrap_or(0.0) * 1024.0 * 1024.0) as u64,
+                                        sender_username: message.user.clone(),
+                                        sender_icon: message.icon.clone(),
+                                        devicon: message.file_icon.clone().unwrap_or_default(),
+                                    };
+                                    state.downloadable_files.push(downloadable_file);
+                                }
                                 state.add_message(message.clone());
                                 if is_image {
                                     let app_state_clone = app_state.clone();
                                     let http_client_clone = http_client.clone();
                                     let redraw_tx_clone = redraw_tx.clone();
-                                         let chat_width = state.chat_width;
-                                         tokio::spawn(async move {
-                                             crate::tui::chat::image_handler::process_image_message(
-                                                 app_state_clone,
-                                                 message,
-                                                 &http_client_clone,
-                                                 chat_width,
-                                                 redraw_tx_clone,
-                                             )
-                                             .await;
-                                         });                                }
+                                    let chat_width = state.chat_width;
+                                    tokio::spawn(async move {
+                                        crate::tui::chat::image_handler::process_image_message(
+                                            app_state_clone,
+                                            message,
+                                            &http_client_clone,
+                                            chat_width,
+                                            redraw_tx_clone,
+                                        )
+                                        .await;
+                                    });
+                                }
                             }
                             ServerMessage::History(wrapper) => {
                                 let history = wrapper.history;
@@ -152,22 +165,34 @@ pub async fn handle_websocket_communication(
                                     .channel_history_state
                                     .insert(channel_id, (history.offset as u64, history.has_more, true));
                                 for message in messages {
-                                     if message.is_image.unwrap_or(false) {
-                                         let app_state_clone = app_state.clone();
-                                         let http_client_clone = http_client.clone();
-                                         let redraw_tx_clone = redraw_tx.clone();
-                                         let chat_width = state.chat_width;
-                                         tokio::spawn(async move {
-                                             crate::tui::chat::image_handler::process_image_message(
-                                                 app_state_clone,
-                                                 message,
-                                                 &http_client_clone,
-                                                 chat_width,
-                                                 redraw_tx_clone,
-                                             )
-                                             .await;
-                                         });
-                                     }                                }
+                                    if message.file_id.is_some() {
+                                        let downloadable_file = crate::app::app_state::DownloadableFile {
+                                            file_id: message.file_id.clone().unwrap(),
+                                            file_name: message.file_name.clone().unwrap_or_default(),
+                                            file_size: (message.file_size_mb.unwrap_or(0.0) * 1024.0 * 1024.0) as u64,
+                                            sender_username: message.user.clone(),
+                                            sender_icon: message.icon.clone(),
+                                            devicon: message.file_icon.clone().unwrap_or_default(),
+                                        };
+                                        state.downloadable_files.push(downloadable_file);
+                                    }
+                                    if message.is_image.unwrap_or(false) {
+                                        let app_state_clone = app_state.clone();
+                                        let http_client_clone = http_client.clone();
+                                        let redraw_tx_clone = redraw_tx.clone();
+                                        let chat_width = state.chat_width;
+                                        tokio::spawn(async move {
+                                            crate::tui::chat::image_handler::process_image_message(
+                                                app_state_clone,
+                                                message,
+                                                &http_client_clone,
+                                                chat_width,
+                                                redraw_tx_clone,
+                                            )
+                                            .await;
+                                        });
+                                    }
+                                }
                             }
                             ServerMessage::UserList(wrapper) => {
                                 state.active_users = wrapper.users;

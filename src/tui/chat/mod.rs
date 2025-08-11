@@ -261,11 +261,11 @@ pub async fn run_chat_page<B: Backend>(
 
         if let Some(event) = event {
             if state_guard.show_settings {
-                if let Some(target_page) = settings::handle_settings_key_event(
+                                  if let Some(target_page) = settings::handle_settings_key_event(
                     settings::SettingsEvent::Key(event.clone()),
                     &mut state_guard,
                     &mut settings_state,
-                ) {
+                ).await {
                     if target_page == crate::app::TuiPage::Chat {
                         state_guard.show_settings = false;
                     } else {
@@ -620,7 +620,19 @@ pub async fn run_chat_page<B: Backend>(
                                     FileManagerEvent::None => {}
                                 }
                             }
-                            
+                            PopupType::Downloads => {
+                                if let Some(command) = popups::downloads::handle_downloads_popup_events(&key, &mut state_guard) {
+                                    if filecommand_tx.send(command).is_err() {
+                                        state_guard.notification_manager.add(
+                                            "Download Error".to_string(),
+                                            "Failed to send download command".to_string(),
+                                            NotificationType::Error,
+                                            Some(Duration::from_secs(3)),
+                                            app_state.clone(),
+                                        ).await;
+                                    }
+                                }
+                            }
                             _ => {}
                         }
 

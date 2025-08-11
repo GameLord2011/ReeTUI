@@ -103,7 +103,8 @@ pub struct ThemeColors {
     pub success_color: Rgb,
     pub warning_color: Rgb,
     pub info_color: Rgb,
-    pub loading_color: Rgb,
+        pub loading_color: Rgb,
+    pub username_colors: Vec<Rgb>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -124,6 +125,13 @@ impl ThemesConfig {
         let config: ThemesConfig = serde_json::from_str(config_str)?;
         let themes_map = config.themes.into_iter().map(|t| (t.name, t)).collect();
         Ok(themes_map)
+    }
+}
+
+pub fn color_to_rgb(color: Color) -> Option<Rgb> {
+    match color {
+        Color::Rgb(r, g, b) => Some(Rgb(r, g, b)),
+        _ => None,
     }
 }
 

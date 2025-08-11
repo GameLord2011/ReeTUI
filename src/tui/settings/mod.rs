@@ -58,14 +58,14 @@ pub async fn run_settings_page<B: Backend>(
 
         while let Some(event) = settings_rx.recv().await {
             let mut app_state_locked = app_state_clone.lock().await;
-            let result_page =
-                handle_settings_key_event(event, &mut app_state_locked, &mut settings_state);
+            let page_to_return =
+                handle_settings_key_event(event, &mut app_state_locked, &mut settings_state).await; // Await here
 
             command_tx
                 .send(SettingsCommand::UpdateState(settings_state.clone()))
                 .unwrap();
 
-            if let Some(page) = result_page {
+            if let Some(page) = page_to_return { // Use the awaited result directly
                 command_tx.send(SettingsCommand::ChangePage(page)).unwrap();
                 break;
             }
@@ -144,7 +144,7 @@ pub fn render_settings_popup<B: Backend>(
     Ok(())
 }
 
-pub fn handle_settings_key_event(
+pub async fn handle_settings_key_event(
     event: SettingsEvent,
     app_state: &mut AppState,
     settings_state: &mut SettingsState,
@@ -155,7 +155,7 @@ pub fn handle_settings_key_event(
                 settings_state,
                 app_state,
                 SettingsEvent::Key(key_event.clone()),
-            );
+            ).await;
             app_state.settings_main_selection = settings_state.main_selection;
             app_state.settings_focused_pane = settings_state.focused_pane;
             app_state.quit_confirmation_state = settings_state.quit_confirmation_state;

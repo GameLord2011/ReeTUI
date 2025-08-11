@@ -1,6 +1,6 @@
 use crate::api::models::BroadcastMessage;
 use crate::app::{AppState, PopupType};
-use crate::themes::{get_contrasting_text_color, rgb_to_color, Theme};
+use crate::themes::{color_to_rgb, get_contrasting_text_color, interpolate_rgb, rgb_to_color, Theme};
 use crate::tui::chat::create_channel_form::CreateChannelForm;
 use crate::tui::chat::gif_renderer::GifAnimationState;
 use crate::tui::chat::popups::create_channel::{
@@ -71,6 +71,10 @@ pub fn draw_chat_ui<B: Backend>(
     emoji_regex: &Regex,
     settings_state: &mut settings::state::SettingsState,
 ) {
+    if state.last_rendered_theme.map_or(true, |name| name != state.current_theme.name) {
+        state.rendered_messages.clear();
+        state.last_rendered_theme = Some(state.current_theme.name);
+    }
     let size = f.area();
     let current_theme = state.current_theme.clone();
     let chunks = Layout::default()
@@ -521,7 +525,10 @@ pub fn format_message_lines(
         .with_timezone(&chrono::Local)
         .format("%H:%M")
         .to_string();
-    let user_color = get_color_for_user(&msg.user);
+    let user_color = get_color_for_user(&msg.user, &theme.colors.username_colors);
+    let border_rgb = theme.colors.dim;
+    let user_rgb = color_to_rgb(user_color).unwrap_or(border_rgb);
+
     let is_special_message = msg.file_id.is_some() || msg.is_image.unwrap_or(false);
 
     if msg.is_image.unwrap_or(false) {
@@ -530,7 +537,14 @@ pub fn format_message_lines(
                 if let Some(animation_state_arc) = active_animations.get(file_id) {
                     let animation_state = match animation_state_arc.try_lock() {
                         Ok(state) => state,
-                        Err(_) => return Vec::new(),
+                        Err(_) => {
+                            return vec![Line::from(Span::styled(
+                                "[GIF loading...]",
+                                Style::default()
+                                    .fg(rgb_to_color(&theme.colors.dim))
+                                    .add_modifier(Modifier::ITALIC),
+                            ))];
+                        }
                     };
                     let frame_count = animation_state.frames.len();
                     let frame_index = animation_state.current_frame;
@@ -662,20 +676,51 @@ pub fn format_message_lines(
         let user_info_width = user_info_str.width();
         let user_box_width = user_info_width + 4;
 
-        let top_border = format!("╭{}╮", "─".repeat(user_box_width - 2));
-        new_lines.push(Line::from(Span::styled(
-            top_border,
-            Style::default().fg(user_color),
-        )));
+        let top_border_str = format!("╭{}╮", "─".repeat(user_box_width - 2));
+        let mut top_border_spans = Vec::new();
+        for (i, c) in top_border_str.chars().enumerate() {
+            let fraction = i as f32 / (available_width - 1).max(1) as f32;
+            let interpolated_rgb = interpolate_rgb(&user_rgb, &border_rgb, fraction);
+            let interpolated_color = rgb_to_color(&interpolated_rgb);
+            top_border_spans.push(Span::styled(
+                c.to_string(),
+                Style::default().fg(interpolated_color),
+            ));
+        }
+        new_lines.push(Line::from(top_border_spans));
 
-        let mut user_line_spans = vec![
-            Span::styled("│ ", Style::default().fg(user_color)),
-            Span::styled(
-                user_info_str,
-                Style::default().fg(user_color).add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(" │", Style::default().fg(user_color)),
-        ];
+        let mut user_line_spans = Vec::new();
+        let mut current_col = 0;
+        for c in "│ ".chars() {
+            let fraction = current_col as f32 / (available_width - 1).max(1) as f32;
+            let interpolated_rgb = interpolate_rgb(&user_rgb, &border_rgb, fraction);
+            let interpolated_color = rgb_to_color(&interpolated_rgb);
+            user_line_spans.push(Span::styled(c.to_string(), Style::default().fg(interpolated_color)));
+            current_col += c.width().unwrap_or(1);
+        }
+
+        for c in user_info_str.chars() {
+            let char_width = c.width().unwrap_or(1);
+            let fraction = current_col as f32 / (available_width - 1).max(1) as f32;
+            let interpolated_rgb = interpolate_rgb(&user_rgb, &border_rgb, fraction);
+            let interpolated_color = rgb_to_color(&interpolated_rgb);
+            user_line_spans.push(Span::styled(
+                c.to_string(),
+                Style::default()
+                    .fg(interpolated_color)
+                    .add_modifier(Modifier::BOLD),
+            ));
+            current_col += char_width;
+        }
+
+        current_col = user_box_width - 2;
+        for c in " │".chars() {
+            let fraction = current_col as f32 / (available_width - 1).max(1) as f32;
+            let interpolated_rgb = interpolate_rgb(&user_rgb, &border_rgb, fraction);
+            let interpolated_color = rgb_to_color(&interpolated_rgb);
+            user_line_spans.push(Span::styled(c.to_string(), Style::default().fg(interpolated_color)));
+            current_col += c.width().unwrap_or(1);
+        }
 
         let user_line_width = user_line_spans.iter().map(|s| s.width()).sum::<usize>();
         let timestamp_width = timestamp_str.len();
@@ -690,62 +735,123 @@ pub fn format_message_lines(
         ));
         new_lines.push(Line::from(user_line_spans));
 
-        let separator_left = format!("├{}┴", "─".repeat(user_box_width - 2));
-        let separator_left_width = separator_left.width();
-        let separator_right_width = available_width.saturating_sub(separator_left_width + 1);
-        let separator_right = "─".repeat(separator_right_width);
+        let separator_left_str = format!("├{}┴", "─".repeat(user_box_width - 2));
+        let separator_left_width = separator_left_str.width();
+        let mut separator_spans = Vec::new();
+        let mut current_col = 0;
+        for c in separator_left_str.chars() {
+            let char_width = c.width().unwrap_or(1);
+            let fraction = current_col as f32 / (available_width - 1).max(1) as f32;
+            let interpolated_rgb = interpolate_rgb(&user_rgb, &border_rgb, fraction);
+            let interpolated_color = rgb_to_color(&interpolated_rgb);
+            separator_spans.push(Span::styled(
+                c.to_string(),
+                Style::default().fg(interpolated_color),
+            ));
+            current_col += char_width;
+        }
 
-        new_lines.push(Line::from(vec![
-            Span::styled(
-                separator_left,
-                Style::default().fg(rgb_to_color(&theme.colors.dim)),
-            ),
-            Span::styled(
-                separator_right,
-                Style::default().fg(rgb_to_color(&theme.colors.dim)),
-            ),
-            Span::styled("╮", Style::default().fg(rgb_to_color(&theme.colors.dim))),
-        ]));
+        let separator_right_width = available_width.saturating_sub(separator_left_width + 1);
+        let separator_right_str = "─".repeat(separator_right_width);
+        for c in separator_right_str.chars() {
+            let char_width = c.width().unwrap_or(1);
+            let fraction = current_col as f32 / (available_width - 1).max(1) as f32;
+            let interpolated_rgb = interpolate_rgb(&user_rgb, &border_rgb, fraction);
+            let interpolated_color = rgb_to_color(&interpolated_rgb);
+            separator_spans.push(Span::styled(
+                c.to_string(),
+                Style::default().fg(interpolated_color),
+            ));
+            current_col += char_width;
+        }
+
+        let fraction = current_col as f32 / (available_width - 1).max(1) as f32;
+        let interpolated_rgb = interpolate_rgb(&user_rgb, &border_rgb, fraction);
+        let interpolated_color = rgb_to_color(&interpolated_rgb);
+        separator_spans.push(Span::styled(
+            "╮",
+            Style::default().fg(interpolated_color),
+        ));
+        new_lines.push(Line::from(separator_spans));
     } else if !is_first_in_group {
-        let separator_left = format!("├{}─", "─".repeat(2)); // Small separator for continuation
+        let separator_left = format!("├{}─", "─".repeat(2));
         let separator_left_width = separator_left.width();
         let separator_right_width = available_width.saturating_sub(separator_left_width + 1);
         let separator_right = "─".repeat(separator_right_width);
-
-        new_lines.push(Line::from(vec![
-            Span::styled(
-                separator_left,
-                Style::default().fg(rgb_to_color(&theme.colors.dim)),
-            ),
-            Span::styled(
-                separator_right,
-                Style::default().fg(rgb_to_color(&theme.colors.dim)),
-            ),
-            Span::styled("┤", Style::default().fg(rgb_to_color(&theme.colors.dim))),
-        ]));
+        let separator_str = format!("{}{}", separator_left, separator_right);
+        let mut separator_spans = Vec::new();
+        let mut current_col = 0;
+        for c in separator_str.chars() {
+            let char_width = c.width().unwrap_or(1);
+            let fraction = current_col as f32 / (available_width - 1).max(1) as f32;
+            let interpolated_rgb = interpolate_rgb(&user_rgb, &border_rgb, fraction);
+            let interpolated_color = rgb_to_color(&interpolated_rgb);
+            separator_spans.push(Span::styled(
+                c.to_string(),
+                Style::default().fg(interpolated_color),
+            ));
+            current_col += char_width;
+        }
+        let fraction = current_col as f32 / (available_width - 1).max(1) as f32;
+        let interpolated_rgb = interpolate_rgb(&user_rgb, &border_rgb, fraction);
+        let interpolated_color = rgb_to_color(&interpolated_rgb);
+        separator_spans.push(Span::styled(
+            "┤",
+            Style::default().fg(interpolated_color),
+        ));
+        new_lines.push(Line::from(separator_spans));
     }
 
     for line in content_lines.iter_mut() {
-        let prefix_span = Span::styled("│ ", Style::default().fg(rgb_to_color(&theme.colors.dim)));
-        line.spans.insert(0, prefix_span);
-        let line_width = line.width();
+        let mut new_line_spans = Vec::new();
+        let mut current_col = 0;
+        for c in "│ ".chars() {
+            let char_width = c.width().unwrap_or(1);
+            let fraction = current_col as f32 / (available_width - 1).max(1) as f32;
+            let interpolated_rgb = interpolate_rgb(&user_rgb, &border_rgb, fraction);
+            let interpolated_color = rgb_to_color(&interpolated_rgb);
+            new_line_spans.push(Span::styled(
+                c.to_string(),
+                Style::default().fg(interpolated_color),
+            ));
+            current_col += char_width;
+        }
+
+        new_line_spans.extend(line.spans.clone());
+
+        let line_width = new_line_spans.iter().map(|s| s.width()).sum::<usize>();
         if available_width > line_width {
             let padding = available_width - line_width - 1;
-            line.spans.push(Span::raw(" ".repeat(padding)));
+            new_line_spans.push(Span::raw(" ".repeat(padding)));
         }
-        line.spans.push(Span::styled(
+
+        let fraction = (available_width - 1) as f32 / (available_width - 1).max(1) as f32;
+        let interpolated_rgb = interpolate_rgb(&user_rgb, &border_rgb, fraction);
+        let interpolated_color = rgb_to_color(&interpolated_rgb);
+        new_line_spans.push(Span::styled(
             "│",
-            Style::default().fg(rgb_to_color(&theme.colors.dim)),
+            Style::default().fg(interpolated_color),
         ));
+        *line = Line::from(new_line_spans);
     }
     new_lines.extend(content_lines);
 
     if is_last_in_group {
-        let footer = format!("╰{}╯", "─".repeat(available_width.saturating_sub(2)));
-        new_lines.push(Line::from(Span::styled(
-            footer,
-            Style::default().fg(rgb_to_color(&theme.colors.dim)),
-        )));
+        let footer_str = format!("╰{}╯", "─".repeat(available_width.saturating_sub(2)));
+        let mut footer_spans = Vec::new();
+        let mut current_col = 0;
+        for c in footer_str.chars() {
+            let char_width = c.width().unwrap_or(1);
+            let fraction = current_col as f32 / (available_width - 1).max(1) as f32;
+            let interpolated_rgb = interpolate_rgb(&user_rgb, &border_rgb, fraction);
+            let interpolated_color = rgb_to_color(&interpolated_rgb);
+            footer_spans.push(Span::styled(
+                c.to_string(),
+                Style::default().fg(interpolated_color),
+            ));
+            current_col += char_width;
+        }
+        new_lines.push(Line::from(footer_spans));
     }
 
     new_lines

@@ -5,7 +5,7 @@ use crate::tui::settings::state::{FocusedPane, SettingsScreen, SettingsState, Qu
 use crate::tui::settings::SettingsEvent;
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 
-pub fn handle_settings_event(
+pub async fn handle_settings_event(
     settings_state: &mut SettingsState,
     app_state: &mut AppState,
     event: SettingsEvent,
@@ -19,13 +19,13 @@ pub fn handle_settings_event(
                             return handle_left_pane_events(settings_state, key.code, app_state)
                         }
                         FocusedPane::Right => {
-                            return handle_right_pane_events(settings_state, key.code, app_state)
+                            return handle_right_pane_events(settings_state, key.code, app_state).await
                         }
                     }
                 }
             }
         }
-        SettingsEvent::Tick => {}
+        SettingsEvent::Tick => {} 
     }
     None
 }
@@ -53,7 +53,7 @@ fn handle_left_pane_events(
     None
 }
 
-fn handle_right_pane_events(
+async fn handle_right_pane_events(
     settings_state: &mut SettingsState,
     key_code: KeyCode,
     app_state: &mut AppState,
@@ -64,23 +64,19 @@ fn handle_right_pane_events(
             match settings_state.screen {
                 SettingsScreen::Themes => {
                     handle_themes_events(settings_state, key_code, app_state);
-                    ()
                 }
                 SettingsScreen::Help => {
                     handle_help_events(settings_state, key_code);
-                    ()
                 }
                 SettingsScreen::Disconnect => {
-                    handle_disconnect_events(settings_state, key_code, app_state);
-                    ()
+                    handle_disconnect_events(settings_state, key_code, app_state).await;
                 }
                 SettingsScreen::Quit => {
-                    if app_state.quit_confirmation_state == QuitConfirmationState::Active { // Check app_state
+                    if app_state.quit_confirmation_state == QuitConfirmationState::Active {
                         handle_quit_confirmation_events(settings_state, key_code, app_state);
                     } else {
                         handle_quit_events(settings_state, key_code, app_state);
                     }
-                    ()
                 }
             }
             None
@@ -123,21 +119,18 @@ fn handle_help_events(settings_state: &mut SettingsState, key_code: KeyCode) -> 
 
 
 
-fn handle_disconnect_events(
+async fn handle_disconnect_events(
     settings_state: &mut SettingsState,
     key_code: KeyCode,
     app_state: &mut AppState,
 ) -> Option<TuiPage> {
     match key_code {
         KeyCode::Enter => {
-            app_state.username = None;
-            app_state.user_icon = None;
-            settings_state.original_username = String::new();
-            settings_state.original_icon = String::new();
-            // Optionally, navigate back to the authentication page or home page
-            return Some(TuiPage::Auth); // Assuming TuiPage::Auth exists
+            log::debug!("handle_disconnect_events: Enter pressed, clearing user auth and returning TuiPage::Auth");
+            app_state.clear_user_auth().await;
+            return Some(TuiPage::Auth);
         }
-        KeyCode::Left => settings_state.focused_pane = FocusedPane::Left, // Re-added
+        KeyCode::Left => settings_state.focused_pane = FocusedPane::Left,
         KeyCode::Esc => return Some(TuiPage::Chat),
         _ => {}
     }

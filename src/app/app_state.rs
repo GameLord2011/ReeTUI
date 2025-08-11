@@ -21,6 +21,16 @@ pub enum ChatFocusedPane {
     Input,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DownloadableFile {
+    pub file_id: String,
+    pub file_name: String,
+    pub file_size: u64,
+    pub sender_username: String,
+    pub sender_icon: String,
+    pub devicon: String, // This will store the devicon character
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AppState {
     pub auth_token: Option<String>,
@@ -37,6 +47,8 @@ pub struct AppState {
     pub message_scroll_offset: usize,
     pub themes: HashMap<ThemeName, Theme>,
     pub current_theme: Theme,
+    #[serde(skip)]
+    pub last_rendered_theme: Option<ThemeName>,
     pub settings_main_selection: usize,
     pub settings_focused_pane: crate::tui::settings::state::FocusedPane,
     pub quit_confirmation_state: crate::tui::settings::state::QuitConfirmationState,
@@ -52,7 +64,7 @@ pub struct AppState {
     pub download_progress: u8,
     pub debug_json_content: String,
     pub notification_manager: crate::tui::notification::NotificationManager,
-        pub should_exit_app: bool,
+    pub should_exit_app: bool,
     pub next_page: Option<TuiPage>,
     pub channel_history_state: HashMap<String, (u64, bool, bool)>,
     #[serde(skip)]
@@ -69,6 +81,9 @@ pub struct AppState {
     pub fps: f64,
     pub cpu_usage: f64,
     pub memory_usage: u64,
+    pub downloadable_files: Vec<DownloadableFile>, // New field
+    #[serde(skip_serializing, skip_deserializing)]
+    pub selected_download_index: ratatui::widgets::TableState, // New field
 }
 
 impl Default for AppState {
@@ -88,6 +103,7 @@ impl Default for AppState {
                 .unwrap()
                 .remove(&crate::themes::ThemeName::CatppuccinMocha)
                 .unwrap(),
+            last_rendered_theme: None,
             themes: ThemesConfig::get_all_themes().unwrap(),
             active_users: Vec::new(),
             selected_mention_index: 0,
@@ -118,6 +134,8 @@ impl Default for AppState {
             fps: 0.0,
             cpu_usage: 0.0,
             memory_usage: 0,
+            downloadable_files: Vec::new(),
+            selected_download_index: ratatui::widgets::TableState::default(), // Initialize new field
         }
     }
 }

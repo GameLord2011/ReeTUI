@@ -1,22 +1,25 @@
+use crate::themes::Rgb;
+use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::Color;
 use std::hash::{Hash, Hasher};
-use ratatui::layout::{Rect, Layout, Direction, Constraint};
 
-pub fn get_color_for_user(username: &str) -> Color {
-    let colors = [
-        Color::Rgb(255, 0, 255),
-        Color::Rgb(139, 0, 255),
-        Color::Rgb(0, 191, 255),
-        Color::Rgb(0, 255, 127),
-        Color::Rgb(255, 215, 0),
-        Color::Rgb(255, 105, 180),
-        Color::Rgb(255, 69, 0),
-        Color::Rgb(50, 205, 50),
-    ];
+pub fn get_color_for_user(username: &str, colors: &Vec<Rgb>) -> Color {
+    if colors.is_empty() {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        username.hash(&mut hasher);
+        let hash = hasher.finish();
+        let r = (hash & 0xFF) as u8;
+        let g = ((hash >> 8) & 0xFF) as u8;
+        let b = ((hash >> 16) & 0xFF) as u8;
+        return Color::Rgb(r, g, b);
+    }
+
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     username.hash(&mut hasher);
     let hash = hasher.finish();
-    colors[(hash % colors.len() as u64) as usize]
+    let index = (hash as usize) % colors.len();
+    let rgb = colors[index];
+    Color::Rgb(rgb.0, rgb.1, rgb.2)
 }
 
 pub fn centered_rect(width: u16, height: u16, r: Rect) -> Rect {
@@ -59,7 +62,13 @@ pub fn centered_rect_with_size(width: u16, height: u16, r: Rect) -> Rect {
         .split(popup_layout[1])[1]
 }
 
-pub fn centered_rect_with_size_and_padding(width: u16, height: u16, padding_x: u16, padding_y: u16, r: Rect) -> Rect {
+pub fn centered_rect_with_size_and_padding(
+    width: u16,
+    height: u16,
+    padding_x: u16,
+    padding_y: u16,
+    r: Rect,
+) -> Rect {
     let popup_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
