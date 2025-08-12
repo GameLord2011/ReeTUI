@@ -213,7 +213,10 @@ pub async fn handle_websocket_communication(
                                 state.active_users = wrapper.users;
                             }
                             ServerMessage::ChannelUpdate(channel) => {
-                                state.add_or_update_channel(channel);
+                                state.add_or_update_channel(channel.clone());
+                                if state.current_channel.is_none() || state.current_channel.as_ref().map(|c| c.id == channel.id).unwrap_or(false) {
+                                    state.set_current_channel(channel);
+                                }
                             }
                             ServerMessage::Notification {
                                 title,
