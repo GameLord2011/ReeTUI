@@ -50,27 +50,72 @@ pub struct RenderedMessage {
 }
 
 fn wrap_spans<'a>(spans: Vec<Span<'a>>, max_width: u16) -> Vec<Line<'a>> {
-    let mut lines = vec![Line::default()];
-    let mut current_width = 0;
+    let mut lines = Vec::new();
+    let mut current_line_spans = Vec::new();
+    let mut current_line_width = 0;
 
     for span in spans {
-        for c in span.content.chars() {
-            if c == '\n' {
-                lines.push(Line::default());
-                current_width = 0;
-                continue;
+        let mut remaining_content = span.content.as_ref();
+        let original_style = span.style;
+
+        while !remaining_content.is_empty() {
+            if let Some(newline_pos) = remaining_content.find('\n') {
+                let (segment, rest) = remaining_content.split_at(newline_pos);
+                if !segment.is_empty() {
+                    current_line_spans.push(Span::styled(segment.to_string(), original_style));
+                    current_line_width += segment.width() as u16;
+                }
+                lines.push(Line::from(
+                    current_line_spans.drain(..).collect::<Vec<Span<'a>>>(),
+                ));
+                current_line_width = 0;
+                remaining_content = &rest[1..]; // Skip the newline
+            } else {
+                // No newline in remaining_content
+                let segment_width = remaining_content.width() as u16;
+                if current_line_width + segment_width > max_width {
+                    // Need to break the segment
+                    let mut break_point = 0;
+                    for (idx, c) in remaining_content.char_indices() {
+                        let char_width = c.width().unwrap_or(0) as u16;
+                        if current_line_width + char_width > max_width {
+                            break;
+                        }
+                        current_line_width += char_width;
+                        break_point = idx + c.len_utf8();
+                    }
+
+                    if break_point > 0 {
+                        let (segment, rest) = remaining_content.split_at(break_point);
+                        current_line_spans.push(Span::styled(segment.to_string(), original_style));
+                        lines.push(Line::from(
+                            current_line_spans.drain(..).collect::<Vec<Span<'a>>>(),
+                        ));
+                        current_line_width = 0;
+                        remaining_content = rest;
+                    } else {
+                        // Single character wider than max_width or no progress
+                        current_line_spans
+                            .push(Span::styled(remaining_content.to_string(), original_style));
+                        lines.push(Line::from(
+                            current_line_spans.drain(..).collect::<Vec<Span<'a>>>(),
+                        ));
+                        current_line_width = 0;
+                        remaining_content = "";
+                    }
+                } else {
+                    // Segment fits entirely
+                    current_line_spans
+                        .push(Span::styled(remaining_content.to_string(), original_style));
+                    current_line_width += segment_width;
+                    remaining_content = "";
+                }
             }
-            let char_width = c.width().unwrap_or(0) as u16;
-            if current_width + char_width > max_width && current_width > 0 {
-                lines.push(Line::default());
-                current_width = 0;
-            }
-            let last_line = lines.last_mut().unwrap();
-            last_line
-                .spans
-                .push(Span::styled(c.to_string(), span.style));
-            current_width += char_width;
         }
+    }
+
+    if !current_line_spans.is_empty() {
+        lines.push(Line::from(current_line_spans));
     }
     lines
 }
@@ -286,15 +331,9 @@ pub fn draw_chat_ui<B: Backend>(
         let mut all_rendered_lines: Vec<Line<'static>> = Vec::new();
 
         if let Some(messages) = state.messages.get(channel_id) {
-            
-            
-
             for i in 0..messages.len() {
                 let msg = &messages[i];
-                let message_id = msg
-                    .file_id
-                    .clone()
-                    .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+                let message_id = msg.client_id.clone().unwrap();
                 let needs_re_render_this_message = state
                     .needs_re_render
                     .get(channel_id)
@@ -330,8 +369,6 @@ pub fn draw_chat_ui<B: Backend>(
                     }
                 }
 
-                
-
                 let rendered_message_entry = state
                     .rendered_messages
                     .entry(channel_id.clone())
@@ -349,7 +386,7 @@ pub fn draw_chat_ui<B: Backend>(
                         is_first_in_group,
                         is_last_in_group,
                     );
-                    
+
                     state
                         .rendered_messages
                         .entry(channel_id.clone())
@@ -361,7 +398,6 @@ pub fn draw_chat_ui<B: Backend>(
                         .or_default()
                         .insert(message_id.clone(), false);
                 } else {
-                    
                 }
 
                 if let Some(rendered_message) = state
@@ -877,7 +913,17 @@ pub fn format_message_lines(
 
     RenderedMessage {
         id: message_id,
-        lines: new_lines,
+        lines: new_lines
+            .into_iter()
+            .map(|line| {
+                let spans: Vec<Span> = line
+                    .spans
+                    .into_iter()
+                    .map(|span| Span::styled(span.content.into_owned(), span.style))
+                    .collect();
+                Line::from(spans)
+            })
+            .collect(),
         is_first_in_group,
         is_last_in_group,
     }

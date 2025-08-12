@@ -39,14 +39,15 @@ pub fn draw_downloads_popup(f: &mut Frame, app_state: &mut AppState) {
             .alignment(Alignment::Center);
         f.render_widget(paragraph, inner_area);
     } else {
+        let downloadable_files: Vec<_> = app_state.downloadable_files.values().collect();
         let visible_height = inner_area.height / 3; // Assuming 3 lines per item
         let start_index = app_state.download_scroll_offset;
         let end_index =
-            (start_index + visible_height as usize).min(app_state.downloadable_files.len());
+            (start_index + visible_height as usize).min(downloadable_files.len());
 
         let mut current_y = 0;
         for i in start_index..end_index {
-            let file = &app_state.downloadable_files[i];
+            let file = downloadable_files[i];
             let is_selected = app_state.selected_download_index.selected() == Some(i);
 
             let item_area = Rect::new(inner_area.x, inner_area.y + current_y, inner_area.width, 3);
@@ -145,13 +146,14 @@ pub fn handle_downloads_popup_events(
     app_state: &mut AppState,
 ) -> Option<WsCommand> {
     if key.kind == KeyEventKind::Press {
+        let downloadable_files: Vec<_> = app_state.downloadable_files.values().cloned().collect();
         match key.code {
             KeyCode::Up => {
-                if !app_state.downloadable_files.is_empty() {
+                if !downloadable_files.is_empty() {
                     let i = match app_state.selected_download_index.selected() {
                         Some(i) => {
                             if i == 0 {
-                                app_state.downloadable_files.len() - 1
+                                downloadable_files.len() - 1
                             } else {
                                 i - 1
                             }
@@ -167,10 +169,10 @@ pub fn handle_downloads_popup_events(
                 None
             }
             KeyCode::Down => {
-                if !app_state.downloadable_files.is_empty() {
+                if !downloadable_files.is_empty() {
                     let i = match app_state.selected_download_index.selected() {
                         Some(i) => {
-                            if i >= app_state.downloadable_files.len() - 1 {
+                            if i >= downloadable_files.len() - 1 {
                                 0
                             } else {
                                 i + 1
@@ -189,7 +191,7 @@ pub fn handle_downloads_popup_events(
                 None
             }
             KeyCode::PageUp => {
-                if !app_state.downloadable_files.is_empty() {
+                if !downloadable_files.is_empty() {
                     let current_selection =
                         app_state.selected_download_index.selected().unwrap_or(0);
                     let new_selection = current_selection.saturating_sub(5); // Jump by 5 items
@@ -202,22 +204,22 @@ pub fn handle_downloads_popup_events(
                 None
             }
             KeyCode::PageDown => {
-                if !app_state.downloadable_files.is_empty() {
+                if !downloadable_files.is_empty() {
                     let current_selection =
                         app_state.selected_download_index.selected().unwrap_or(0);
                     let new_selection =
-                        (current_selection + 5).min(app_state.downloadable_files.len() - 1);
+                        (current_selection + 5).min(downloadable_files.len() - 1);
                     app_state
                         .selected_download_index
                         .select(Some(new_selection));
                     app_state.download_scroll_offset = (app_state.download_scroll_offset + 5)
-                        .min(app_state.downloadable_files.len().saturating_sub(1));
+                        .min(downloadable_files.len().saturating_sub(1));
                 }
                 None
             }
             KeyCode::Enter => {
                 if let Some(selected_index) = app_state.selected_download_index.selected() {
-                    if let Some(file) = app_state.downloadable_files.get(selected_index) {
+                    if let Some(file) = downloadable_files.get(selected_index) {
                         app_state.popup_state.show = false;
                         app_state.popup_state.popup_type = PopupType::None;
                         return Some(WsCommand::DownloadFile {

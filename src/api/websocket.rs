@@ -1,3 +1,4 @@
+use uuid::Uuid;
 use crate::api::models::{BroadcastMessage, Channel, ChannelCommand};
 use crate::app::app_state::AppState;
 use crate::tui::chat::ws_command::WsCommand;
@@ -124,7 +125,8 @@ pub async fn handle_websocket_communication(
                                     });
                                 }
                             }
-                            ServerMessage::Broadcast(message) => {
+                            ServerMessage::Broadcast(mut message) => {
+                                message.client_id = Some(Uuid::new_v4().to_string());
                                 if let Some(username) = &state.username {
                                     let mention = format!("@{}", username);
                                     if message.content.contains(&mention) {
@@ -143,7 +145,7 @@ pub async fn handle_websocket_communication(
                                         sender_icon: message.icon.clone(),
                                         devicon: message.file_icon.clone().unwrap_or_default(),
                                     };
-                                    state.downloadable_files.push(downloadable_file);
+                                    state.downloadable_files.insert(downloadable_file.file_id.clone(), downloadable_file);
                                 }
                                 state.add_message(message.clone());
                                 if is_image {
@@ -166,7 +168,10 @@ pub async fn handle_websocket_communication(
                             ServerMessage::History(wrapper) => {
                                 let history = wrapper.history;
                                 let channel_id = history.channel_id.clone();
-                                let messages = history.messages.clone();
+                                let mut messages = history.messages;
+                                for message in messages.iter_mut() {
+                                    message.client_id = Some(Uuid::new_v4().to_string());
+                                }
                                  state.prepend_history(&channel_id, messages.clone());
                                  state
                                      .channel_history_state
@@ -183,7 +188,7 @@ pub async fn handle_websocket_communication(
                                             sender_icon: message.icon.clone(),
                                             devicon: message.file_icon.clone().unwrap_or_default(),
                                         };
-                                        state.downloadable_files.push(downloadable_file);
+                                        state.downloadable_files.insert(downloadable_file.file_id.clone(), downloadable_file);
                                     }
                                     if message.is_image.unwrap_or(false) {
                                         let app_state_clone = app_state.clone();

@@ -4,7 +4,6 @@ use crate::themes::{Theme, ThemeName, ThemesConfig};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::time::Duration;
-use uuid;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
 pub enum DebugView {
@@ -85,7 +84,7 @@ pub struct AppState {
     pub fps: f64,
     pub cpu_usage: f64,
     pub memory_usage: u64,
-    pub downloadable_files: Vec<DownloadableFile>,
+    pub downloadable_files: HashMap<String, DownloadableFile>,
     #[serde(skip_serializing, skip_deserializing)]
     pub selected_download_index: ratatui::widgets::TableState,
     pub download_scroll_offset: usize,
@@ -146,7 +145,7 @@ impl Default for AppState {
             fps: 0.0,
             cpu_usage: 0.0,
             memory_usage: 0,
-            downloadable_files: Vec::new(),
+            downloadable_files: HashMap::new(),
             selected_download_index: ratatui::widgets::TableState::default(),
             download_scroll_offset: 0,
             last_message_counts: HashMap::new(),
@@ -212,9 +211,9 @@ impl AppState {
                 self.needs_re_render.entry(channel_id.clone()).or_default();
             for msg in messages.iter() {
                 let message_id = msg
-                    .file_id
+                    .client_id
                     .clone()
-                    .unwrap_or_else(|| msg.timestamp.to_string());
+                    .unwrap();
                 needs_re_render_for_channel.insert(message_id, true);
             }
         }
@@ -222,10 +221,7 @@ impl AppState {
 
     pub fn add_message(&mut self, message: BroadcastMessage) {
         let channel_id = message.channel_id.clone();
-        let message_id = message
-            .file_id
-            .clone()
-            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        let message_id = message.client_id.clone().unwrap();
         let channel_messages = self.messages.entry(channel_id.clone()).or_default();
 
         // Check if the previous message needs re-rendering for grouping
@@ -238,9 +234,9 @@ impl AppState {
                 && !message.is_image.unwrap_or(false)
             {
                 let last_message_id = last_msg
-                    .file_id
+                    .client_id
                     .clone()
-                    .unwrap_or_else(|| last_msg.timestamp.to_string());
+                    .unwrap();
                 self.needs_re_render
                     .entry(channel_id.clone())
                     .or_default()
@@ -249,6 +245,7 @@ impl AppState {
         }
 
         channel_messages.push_back(message);
+
         self.rendered_messages
             .entry(channel_id.clone())
             .or_default()
@@ -281,9 +278,9 @@ impl AppState {
 
         for msg in history.into_iter().rev() {
             let message_id = msg
-                .file_id
+                .client_id
                 .clone()
-                .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+                .unwrap();
             channel_messages.push_front(msg);
             needs_re_render_for_channel.insert(message_id.clone(), true);
             rendered_messages_for_channel.remove(&message_id);
@@ -300,9 +297,9 @@ impl AppState {
         if let Some(messages) = self.messages.get(channel_id) {
             for msg in messages.iter() {
                 let message_id = msg
-                    .file_id
+                    .client_id
                     .clone()
-                    .unwrap_or_else(|| msg.timestamp.to_string());
+                    .unwrap();
                 needs_re_render_for_channel.insert(message_id, true);
             }
         }
@@ -363,8 +360,8 @@ impl AppState {
     pub fn find_message_mut(&mut self, message_id: &str) -> Option<&mut BroadcastMessage> {
         for (_channel_id, messages) in self.messages.iter_mut() {
             for message in messages.iter_mut() {
-                if let Some(file_id) = &message.file_id {
-                    if file_id == message_id {
+                if let Some(client_id) = &message.client_id {
+                    if client_id == message_id {
                         return Some(message);
                     }
                 }
@@ -376,14 +373,14 @@ impl AppState {
     #[allow(dead_code)]
     pub fn update_message(&mut self, updated_message: BroadcastMessage) {
         let message_id = updated_message
-            .file_id
+            .client_id
             .clone()
-            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+            .unwrap();
         if let Some(channel_messages) = self.messages.get_mut(&updated_message.channel_id) {
             for (i, msg) in channel_messages.iter().enumerate() {
-                // 1. prefer file_id if both present
-                if msg.file_id.is_some() && updated_message.file_id.is_some() {
-                    if msg.file_id == updated_message.file_id {
+                // 1. prefer client_id if both present
+                if msg.client_id.is_some() && updated_message.client_id.is_some() {
+                    if msg.client_id == updated_message.client_id {
                         channel_messages[i] = updated_message;
                         self.rendered_messages
                             .entry(channel_messages[i].channel_id.clone())
@@ -409,7 +406,7 @@ impl AppState {
                         .or_default()
                         .insert(message_id, true);
                     return;
-                // 3. elsif( jk ), match by file_name if both present and neither file_id nor timestamp is present
+                // 3. elsif( jk ), match by file_name if both present and neither client_id nor timestamp is present
                 } else if msg.file_name.is_some()
                     && updated_message.file_name.is_some()
                     && msg.file_name == updated_message.file_name

@@ -296,12 +296,23 @@ pub async fn run_chat_page<B: Backend>(
         }
     });
 
+    let redraw_tx_clone_for_timer = redraw_tx.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_secs(5));
+        loop {
+            interval.tick().await;
+            if redraw_tx_clone_for_timer.send("timer".to_string()).is_err() {
+                break;
+            }
+        }
+    });
+
+    
+
     loop {
         let mut state_guard = app_state.lock().await;
         state_guard.notification_manager.update();
 
-        let _filtered_users: Vec<String> = state_guard.active_users.clone();
-        let _filtered_emojis: Vec<String> = emojis::iter().map(|e| e.to_string()).collect();
         let _mention_regex = &MENTION_REGEX;
         let _emoji_regex = &EMOJI_REGEX;
 
@@ -323,7 +334,7 @@ pub async fn run_chat_page<B: Backend>(
         })?;
 
         let event = tokio::select! {
-            Some(_) = redraw_rx.recv() => None,
+            
             event_result = tokio::task::spawn_blocking(|| event::poll(Duration::from_millis(16))) => {
                 match event_result {
                     Ok(Ok(true)) => Some(tokio::task::spawn_blocking(event::read).await.unwrap().unwrap()),

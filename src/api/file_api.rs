@@ -131,13 +131,16 @@ pub async fn download_file(
         let mut file = File::create(&file_path).await?;
 
         while let Some(chunk_result) = stream.next().await {
-            let chunk = chunk_result.unwrap();
+            let chunk = chunk_result?;
             file.write_all(&chunk).await?;
             downloaded_size += chunk.len() as u64;
             let progress = (((downloaded_size as f64 / total_size as f64) * 100.0) as u8).min(100);
-            let _ = progress_sender.send((file_id.to_string(), progress));
+            if progress_sender.send((file_id.to_string(), progress)).is_err() {
+                // The receiver has been dropped, so we can stop sending progress updates.
+                break;
+            }
         }
-        let _ = progress_sender.send((file_id.to_string(), 100));
+        drop(progress_sender);
         Ok(file_path)
     } else {
         Err(FileApiError::RequestFailedStatus(response.status()))

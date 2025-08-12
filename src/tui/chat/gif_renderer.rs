@@ -55,8 +55,6 @@ pub fn is_gif(data: &[u8]) -> bool {
     is_gif_format
 }
 
-use futures::future::join_all;
-
 pub async fn convert_gif_to_chafa_frames_and_delays(
     gif_data: &[u8],
     chat_width: u16,
@@ -71,7 +69,7 @@ pub async fn convert_gif_to_chafa_frames_and_delays(
         .map(|f| f.map_err(|e| format!("GIF frame error: {}", e)))
         .collect::<Result<Vec<image::Frame>, String>>()?;
 
-    let mut chafa_futures = Vec::new();
+    let mut frames = Vec::new();
     let mut delays = Vec::new();
 
     let (width, height) = if let Some(frame) = all_frames.first() {
@@ -119,22 +117,8 @@ pub async fn convert_gif_to_chafa_frames_and_delays(
         };
         delays.push(delay);
 
-        let size_clone = size.clone();
-        // Spawn a tokio task for each chafa conversion
-        chafa_futures.push(tokio::spawn(async move {
-            super::image_handler::run_chafa(&png_data, &size_clone).await
-        }));
-    }
-
-    let results = join_all(chafa_futures).await;
-
-    let mut frames = Vec::new();
-    for res in results {
-        match res {
-            Ok(Ok(ansi)) => frames.push(Arc::new(ansi)),
-            Ok(Err(e)) => return Err(format!("Chafa conversion error: {}", e)),
-            Err(e) => return Err(format!("Tokio task join error: {}", e)),
-        }
+        let ansi = super::image_handler::run_chafa(&png_data, &size).await?;
+        frames.push(Arc::new(ansi));
     }
 
     Ok((frames, delays))

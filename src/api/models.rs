@@ -28,6 +28,8 @@ pub struct ChannelCommand<'a> {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BroadcastMessage {
+    #[serde(default)]
+    pub client_id: Option<String>,
     pub user: String,
     pub icon: String,
     pub content: String,

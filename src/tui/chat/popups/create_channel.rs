@@ -11,10 +11,8 @@ use crate::themes::rgb_to_color;
 use crate::tui::chat::create_channel_form::{CreateChannelForm, CreateChannelInput, ICONS};
 
 pub fn get_create_channel_popup_size() -> (u16, u16) {
-    let _hint_text = "(Enter) Seal the Deal  / (Esc) Abort Mission ";
-    let icons_row_width = (ICONS.len() * 3) as u16;
-    let height = 3 + 3 + 1 + 4 + 1 + 2; // Name, Icon, Spacer, Button, Hint, and 2 for margins
-    let width = icons_row_width + 4;
+    let width = 40;
+    let height = 3 + 3 + 3 + 2 + 2;
     (width, height)
 }
 
@@ -27,26 +25,49 @@ pub fn draw_create_channel_popup(
 ) {
     let current_theme = &state.current_theme;
     let inner_area = popup_block.inner(area);
+    let fixed_width = 35;
 
     let form_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),
-            Constraint::Length(3),
-            Constraint::Length(1),
-            Constraint::Length(4),
-            Constraint::Min(0),
+            Constraint::Length(3), // Name input
+            Constraint::Length(3), // Icon selector
+            Constraint::Length(3), // Create button
+            Constraint::Min(0),    // Spacer
+            Constraint::Length(1), // Hint
         ])
         .margin(1)
         .split(inner_area);
 
-    let icons_row_width = (ICONS.len() * 3) as u16;
-
-    let name_area_h = Layout::default()
+    // Center the form elements horizontally
+    let name_area = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Min(0), Constraint::Min(0), Constraint::Min(0)])
-        .split(form_layout[0]);
+        .constraints([
+            Constraint::Min(0),
+            Constraint::Length(fixed_width),
+            Constraint::Min(0),
+        ])
+        .split(form_layout[0])[1];
 
+    let icon_area = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Min(0),
+            Constraint::Length(fixed_width),
+            Constraint::Min(0),
+        ])
+        .split(form_layout[1])[1];
+
+    let button_area = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Min(0),
+            Constraint::Length(fixed_width),
+            Constraint::Min(0),
+        ])
+        .split(form_layout[2])[1];
+
+    // Name Input
     let name_block = Block::default()
         .borders(ratatui::widgets::Borders::ALL)
         .border_type(ratatui::widgets::BorderType::Rounded)
@@ -67,8 +88,9 @@ pub fn draw_create_channel_popup(
             },
         )
         .block(name_block);
-    f.render_widget(name_paragraph, name_area_h[1]);
+    f.render_widget(name_paragraph, name_area);
 
+    // Icon Selector
     let icon_block = Block::default()
         .borders(ratatui::widgets::Borders::ALL)
         .border_type(ratatui::widgets::BorderType::Rounded)
@@ -80,15 +102,6 @@ pub fn draw_create_channel_popup(
                 Style::default().fg(rgb_to_color(&current_theme.colors.input_border_inactive))
             },
         );
-
-    let icon_selector_area_h = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Min(0),
-            Constraint::Length(icons_row_width),
-            Constraint::Min(0),
-        ])
-        .split(form_layout[1]);
 
     let len = ICONS.len();
     let center = create_channel_form.selected_icon_index;
@@ -122,14 +135,16 @@ pub fn draw_create_channel_popup(
     let icon_paragraph = Paragraph::new(Line::from(spans))
         .alignment(ratatui::layout::Alignment::Center)
         .block(icon_block);
-    f.render_widget(icon_paragraph, icon_selector_area_h[1]);
+    f.render_widget(icon_paragraph, icon_area);
 
-    let create_button_style =
-        if create_channel_form.input_focused == CreateChannelInput::CreateButton {
-            Style::default().fg(rgb_to_color(&current_theme.colors.button_text_active))
-        } else {
-            Style::default().fg(rgb_to_color(&current_theme.colors.button))
-        };
+    // Create Button
+    let border_style = if create_channel_form.input_focused == CreateChannelInput::CreateButton {
+        Style::default().fg(rgb_to_color(&current_theme.colors.accent))
+    } else {
+        Style::default().fg(rgb_to_color(&current_theme.colors.border))
+    };
+    let create_button_style = border_style;
+
     let create_button_paragraph = Paragraph::new(Line::from(Span::styled(
         "Forge Channel! ",
         create_button_style,
@@ -139,24 +154,11 @@ pub fn draw_create_channel_popup(
         Block::default()
             .borders(ratatui::widgets::Borders::ALL)
             .border_type(ratatui::widgets::BorderType::Rounded)
-            .border_style(
-                if create_channel_form.input_focused == CreateChannelInput::CreateButton {
-                    Style::default().fg(rgb_to_color(&current_theme.colors.accent))
-                } else {
-                    Style::default().fg(rgb_to_color(&current_theme.colors.border))
-                },
-            ),
+            .border_style(border_style),
     );
-    let create_button_area_h = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Min(0),
-            Constraint::Length(20),
-            Constraint::Min(0),
-        ])
-        .split(form_layout[3]);
-    f.render_widget(create_button_paragraph, create_button_area_h[1]);
+    f.render_widget(create_button_paragraph, button_area);
 
+    // Hint
     let hint_paragraph = Paragraph::new(Line::from(Span::styled(
         "(Enter) Seal the Deal  / (Esc) Abort Mission ",
         Style::default().fg(rgb_to_color(&current_theme.colors.accent)),

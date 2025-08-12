@@ -20,7 +20,7 @@ async fn update_and_log_message(
     let mut state = app_state.lock().await;
     let channel_id = message.channel_id.clone();
     let message_id = message
-        .file_id
+        .client_id
         .clone()
         .unwrap_or_else(|| message.timestamp.to_string());
     state.update_message(message);
@@ -125,12 +125,17 @@ pub async fn process_image_message(
 ) {
     let file_id = message.file_id.clone().unwrap_or_default();
     let file_name = message.file_name.clone().unwrap_or_default();
+    let (progress_tx, mut progress_rx) = mpsc::unbounded_channel();
+
+    tokio::spawn(async move {
+        while let Some(_) = progress_rx.recv().await {}
+    });
 
     match crate::api::file_api::download_file(
         http_client,
         &file_id,
         &file_name,
-        mpsc::unbounded_channel().0,
+        progress_tx,
         false,
     )
     .await
@@ -173,7 +178,7 @@ pub async fn process_image_message(
 
                         let animation_state =
                             crate::tui::chat::gif_renderer::GifAnimationState::new(
-                                message.file_id.clone().unwrap_or_default(),
+                                message.client_id.clone().unwrap_or_default(),
                                 frames.clone(),
                                 delays.clone(),
                                 tokio_util::sync::CancellationToken::new(),
