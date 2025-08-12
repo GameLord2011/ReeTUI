@@ -125,6 +125,18 @@ pub async fn handle_websocket_communication(
                                 }
                             }
                             ServerMessage::Broadcast(message) => {
+                                if let Some(username) = &state.username {
+                                    let mention = format!("@{}", username);
+                                    if message.content.contains(&mention) {
+                                        state.notification_manager.add(
+                                            format!("New Mention from {}", message.user),
+                                            message.content.clone(),
+                                            crate::tui::notification::notification::NotificationType::Info,
+                                            Some(Duration::from_secs(5)),
+                                            app_state.clone(),
+                                        ).await;
+                                    }
+                                }
                                 let is_image = message.is_image.unwrap_or(false);
                                 if message.file_id.is_some() {
                                     // This is a file message, add it to downloadable_files
