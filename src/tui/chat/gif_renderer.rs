@@ -1,13 +1,13 @@
 use crate::app::app_state::AppState;
-use std::io::Cursor;
-use std::sync::Arc;
-use std::time::Instant;
 use image::codecs::gif::GifDecoder;
 use image::AnimationDecoder;
 use image::ImageFormat;
 use image::ImageReader;
+use std::io::Cursor;
+use std::sync::Arc;
+use std::time::Instant;
 use tokio::sync::mpsc;
-use log::{info};
+
 use image::EncodableLayout;
 
 use tokio::task::JoinHandle;
@@ -15,18 +15,23 @@ use tokio::task::JoinHandle;
 #[derive(Debug)]
 pub struct GifAnimationState {
     pub message_id: String,
-    pub frames: Vec<Arc<String>>,      // funny
-    pub delays: Vec<u16>,              // Per-frame delay in ms
-    pub current_frame: usize,          // Current frame index
-    pub last_frame_time: Option<Instant>, // Last time frame was updated
-    pub running: bool,                 // Is animation running?
+    pub frames: Vec<Arc<String>>,              // funny
+    pub delays: Vec<u16>,                      // Per-frame delay in ms
+    pub current_frame: usize,                  // Current frame index
+    pub last_frame_time: Option<Instant>,      // Last time frame was updated
+    pub running: bool,                         // Is animation running?
     pub thread_handle: Option<JoinHandle<()>>, // Handle to animation thread
     pub last_redraw_sent_time: Option<Instant>,
     pub cancellation_token: tokio_util::sync::CancellationToken,
 }
 
 impl GifAnimationState {
-    pub fn new(message_id: String, frames: Vec<Arc<String>>, delays: Vec<u16>, cancellation_token: tokio_util::sync::CancellationToken) -> Self {
+    pub fn new(
+        message_id: String,
+        frames: Vec<Arc<String>>,
+        delays: Vec<u16>,
+        cancellation_token: tokio_util::sync::CancellationToken,
+    ) -> Self {
         GifAnimationState {
             message_id,
             frames,
@@ -46,7 +51,7 @@ pub fn is_gif(data: &[u8]) -> bool {
         .with_guessed_format()
         .map(|reader| reader.format() == Some(ImageFormat::Gif))
         .unwrap_or(false);
-    log::debug!("gif_renderer: is_gif called. Result: {}", is_gif_format);
+
     is_gif_format
 }
 
@@ -58,9 +63,9 @@ pub async fn convert_gif_to_chafa_frames_and_delays(
 ) -> Result<(Vec<Arc<String>>, Vec<u16>), String> {
     use image::codecs::png::PngEncoder;
     use image::ImageEncoder;
-    info!("Handling GIF to Chafa frames and delays conversion.");
-    let decoder = GifDecoder::new(Cursor::new(gif_data))
-        .map_err(|e| format!("GIF decode error: {}", e))?;
+
+    let decoder =
+        GifDecoder::new(Cursor::new(gif_data)).map_err(|e| format!("GIF decode error: {}", e))?;
     let frames_iter = decoder.into_frames();
     let all_frames: Vec<image::Frame> = frames_iter
         .map(|f| f.map_err(|e| format!("GIF frame error: {}", e)))
@@ -107,7 +112,11 @@ pub async fn convert_gif_to_chafa_frames_and_delays(
             .map_err(|e| format!("PNG encode error: {}", e))?;
 
         let (numer, denom) = frame.delay().numer_denom_ms();
-        let delay = if denom == 0 { numer as u16 } else { (numer / denom) as u16 };
+        let delay = if denom == 0 {
+            numer as u16
+        } else {
+            (numer / denom) as u16
+        };
         delays.push(delay);
 
         let size_clone = size.clone();
@@ -128,7 +137,6 @@ pub async fn convert_gif_to_chafa_frames_and_delays(
         }
     }
 
-    info!("Extracted {} frames and delays from GIF.", frames.len());
     Ok((frames, delays))
 }
 
@@ -145,16 +153,21 @@ pub async fn spawn_gif_animation(
                 break;
             }
             let frame = state.frames[state.current_frame].clone();
-            let delay = state.delays.get(state.current_frame).copied().unwrap_or(100);
-            let current_frame_index = state.current_frame;
-            let delay_value = delay;
+            let delay = state
+                .delays
+                .get(state.current_frame)
+                .copied()
+                .unwrap_or(100);
+            
             let message_id = state.message_id.clone();
 
             // Debounce redraw signals
             const REDRAW_DEBOUNCE_MS: u128 = 100; // Redraw at most every 100ms
             let now = Instant::now();
             let should_redraw = state.last_redraw_sent_time.is_none()
-                || now.duration_since(state.last_redraw_sent_time.unwrap()).as_millis()
+                || now
+                    .duration_since(state.last_redraw_sent_time.unwrap())
+                    .as_millis()
                     >= REDRAW_DEBOUNCE_MS;
 
             if should_redraw {
@@ -169,7 +182,10 @@ pub async fn spawn_gif_animation(
 
                 if let Some(channel_id) = channel_id_to_redraw {
                     let mut app = app_state.lock().await;
-                    app.needs_re_render.entry(channel_id.clone()).or_default().insert(message_id.clone(), true);
+                    app.needs_re_render
+                        .entry(channel_id.clone())
+                        .or_default()
+                        .insert(message_id.clone(), true);
                     let _ = redraw_tx.send(channel_id.clone()); // Signal redraw for specific channel
                     drop(app);
                 }
@@ -180,7 +196,6 @@ pub async fn spawn_gif_animation(
             state.last_frame_time = Some(Instant::now());
             drop(state);
 
-            log::debug!("gif_renderer: Sent frame {} to UI. Delay: {}ms", current_frame_index, delay_value);
             tokio::time::sleep(tokio::time::Duration::from_millis(delay as u64)).await;
         }
     })

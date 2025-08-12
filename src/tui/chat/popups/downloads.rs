@@ -7,8 +7,7 @@ use ratatui::widgets::BorderType;
 use ratatui::{
     prelude::*,
     style::{Modifier, Style},
-    text::Text,
-    widgets::{Block, Borders, Cell, Clear, Paragraph, Row, Table, TableState},
+    widgets::{Block, Borders, Clear, Paragraph},
 };
 
 pub fn draw_downloads_popup(f: &mut Frame, app_state: &mut AppState) {

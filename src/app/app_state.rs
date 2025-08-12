@@ -1,7 +1,7 @@
-use serde::{Deserialize, Serialize};
 use crate::api::models::{BroadcastMessage, Channel};
 use crate::app::{PopupState, TuiPage};
 use crate::themes::{Theme, ThemeName, ThemesConfig};
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::time::Duration;
 use uuid;
@@ -89,6 +89,10 @@ pub struct AppState {
     #[serde(skip_serializing, skip_deserializing)]
     pub selected_download_index: ratatui::widgets::TableState,
     pub download_scroll_offset: usize,
+    #[serde(skip_serializing, skip_deserializing)]
+    pub last_message_counts: HashMap<String, usize>,
+    #[serde(skip_serializing, skip_deserializing)]
+    pub initial_load_complete: bool,
 }
 
 impl Default for AppState {
@@ -121,13 +125,14 @@ impl Default for AppState {
             debug_json_content: String::new(),
             last_chat_view_height: 10,
             total_chat_buffer_length: 0,
-                        should_exit_app: false,
+            should_exit_app: false,
             next_page: None,
             settings_main_selection: 0,
             settings_focused_pane: crate::tui::settings::state::FocusedPane::Left,
             quit_confirmation_state: crate::tui::settings::state::QuitConfirmationState::Inactive,
             quit_selection: 0,
-            disconnect_confirmation_state: crate::tui::settings::state::DisconnectConfirmationState::Inactive,
+            disconnect_confirmation_state:
+                crate::tui::settings::state::DisconnectConfirmationState::Inactive,
             disconnect_selection: 0,
             show_settings: false,
             active_animations: HashMap::new(),
@@ -144,6 +149,8 @@ impl Default for AppState {
             downloadable_files: Vec::new(),
             selected_download_index: ratatui::widgets::TableState::default(),
             download_scroll_offset: 0,
+            last_message_counts: HashMap::new(),
+            initial_load_complete: false,
         }
     }
 }
@@ -151,6 +158,14 @@ impl Default for AppState {
 impl AppState {
     pub fn new() -> Self {
         AppState::default()
+    }
+
+    pub fn update_last_message_count(&mut self, channel_id: String, count: usize) {
+        self.last_message_counts.insert(channel_id, count);
+    }
+
+    pub fn set_initial_load_complete(&mut self, complete: bool) {
+        self.initial_load_complete = complete;
     }
 
     pub fn set_user_auth(&mut self, token: String, username: String, icon: String) {
@@ -163,8 +178,6 @@ impl AppState {
         &self.current_theme
     }
 
-    
-
     pub async fn clear_user_auth(&mut self) {
         self.auth_token = None;
         self.username = None;
@@ -174,9 +187,9 @@ impl AppState {
         self.messages.clear();
         self.rendered_messages.clear();
         self.channel_history_state.clear();
-                self.popup_state = PopupState::default();
+        self.popup_state = PopupState::default();
         self.next_page = None;
-        
+
         self.message_scroll_offset = 0;
         self.current_theme = self.themes.get(&ThemeName::Default).unwrap().clone();
         self.needs_re_render.clear();
@@ -344,11 +357,8 @@ impl AppState {
     }
 
     pub fn scroll_messages_page_down(&mut self) {
-        log::debug!("scroll_messages_page_down: Called");
         self.scroll_messages_down(self.last_chat_view_height);
     }
-
-    
 
     pub fn find_message_mut(&mut self, message_id: &str) -> Option<&mut BroadcastMessage> {
         for (_channel_id, messages) in self.messages.iter_mut() {

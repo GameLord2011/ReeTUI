@@ -23,10 +23,10 @@ use syntect::{
     highlighting::{Style as SyntectStyle, ThemeSet},
     parsing::SyntaxSet,
 };
-use tokio::sync::mpsc;
-use tokio::time::sleep;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command as TokioCommand;
+use tokio::sync::mpsc;
+use tokio::time::sleep;
 
 pub enum FileManagerEvent {
     FileSelectedForUpload(PathBuf),
@@ -90,13 +90,8 @@ impl FileManager {
         redraw_tx: mpsc::UnboundedSender<String>,
         app_state_param: Arc<tokio::sync::Mutex<AppState>>,
     ) -> Self {
-        let current_path = dirs::home_dir().unwrap_or_else(|| {
-            log::warn!("Could not determine home directory, falling back to current directory.");
-            env::current_dir().unwrap_or_else(|e| {
-                log::error!("Could not determine current directory: {}", e);
-                PathBuf::from("/")
-            })
-        });
+        let current_path = dirs::home_dir()
+            .unwrap_or_else(|| env::current_dir().unwrap_or_else(|_e| PathBuf::from("/")));
 
         let mut root = FileItem::new(current_path, true, false);
         Self::read_dir(&mut root);
@@ -104,7 +99,8 @@ impl FileManager {
 
         let (preview_tx, preview_rx) = mpsc::unbounded_channel();
         let (metadata_tx, metadata_rx) = mpsc::unbounded_channel();
-        let (gif_tx, gif_rx) = mpsc::unbounded_channel::<(PathBuf, Result<Vec<(Text<'static>, u32)>, String>)>();
+        let (gif_tx, gif_rx) =
+            mpsc::unbounded_channel::<(PathBuf, Result<Vec<(Text<'static>, u32)>, String>)>();
 
         Self {
             tree: root,
@@ -275,7 +271,9 @@ impl FileManager {
                         Ok(frames_with_delays) => {
                             let current_frame_index =
                                 *self.current_gif_frame.get(&item.path).unwrap_or(&0);
-                            if let Some((frame_text, delay_ms_ref)) = frames_with_delays.get(current_frame_index) {
+                            if let Some((frame_text, delay_ms_ref)) =
+                                frames_with_delays.get(current_frame_index)
+                            {
                                 let delay_ms = *delay_ms_ref; // Copy the u32 value
                                 let p = Paragraph::new(frame_text.clone()).style(
                                     Style::default().bg(rgb_to_color(&theme.colors.background)),
@@ -283,7 +281,8 @@ impl FileManager {
                                 f.render_widget(p, inner_preview_area);
 
                                 // Prepare update for next frame
-                                let next_frame_index = (current_frame_index + 1) % frames_with_delays.len();
+                                let next_frame_index =
+                                    (current_frame_index + 1) % frames_with_delays.len();
                                 gif_frame_to_update = Some((item.path.clone(), next_frame_index));
 
                                 // Schedule redraw for next frame
@@ -393,7 +392,10 @@ impl FileManager {
                                     text_lines.push(Line::raw(""));
                                 }
                                 for line_str in binary_ascii_lines {
-                                    text_lines.push(Line::raw(format!("{}{}", horizontal_padding_str, line_str)));
+                                    text_lines.push(Line::raw(format!(
+                                        "{}{}",
+                                        horizontal_padding_str, line_str
+                                    )));
                                 }
                                 Ok(Text::from(text_lines))
                             } else {
@@ -960,7 +962,10 @@ async fn decode_gif_frames(
         // Encode image_buffer to PNG in memory
         let mut png_bytes = Vec::new();
         image_buffer
-            .write_to(&mut std::io::Cursor::new(&mut png_bytes), image::ImageFormat::Png)
+            .write_to(
+                &mut std::io::Cursor::new(&mut png_bytes),
+                image::ImageFormat::Png,
+            )
             .map_err(|e| format!("Failed to encode GIF frame to PNG: {}", e))?;
 
         let mut cmd = TokioCommand::new("chafa");
@@ -971,18 +976,26 @@ async fn decode_gif_frames(
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
 
-        let mut child = cmd.spawn().map_err(|e| format!("Failed to spawn chafa: {}", e))?;
+        let mut child = cmd
+            .spawn()
+            .map_err(|e| format!("Failed to spawn chafa: {}", e))?;
 
         // Write PNG bytes to chafa's stdin
         if let Some(mut stdin) = child.stdin.take() {
-            stdin.write_all(&png_bytes).await.map_err(|e| format!("Failed to write to chafa stdin: {}", e))?;
+            stdin
+                .write_all(&png_bytes)
+                .await
+                .map_err(|e| format!("Failed to write to chafa stdin: {}", e))?;
             // Close stdin to signal EOF to chafa
             drop(stdin);
         } else {
             return Err("Failed to get chafa stdin".to_string());
         }
 
-        let output = child.wait_with_output().await.map_err(|e| format!("Failed to wait for chafa: {}", e))?;
+        let output = child
+            .wait_with_output()
+            .await
+            .map_err(|e| format!("Failed to wait for chafa: {}", e))?;
 
         if output.status.success() {
             let text_frame = String::from_utf8_lossy(&output.stdout)

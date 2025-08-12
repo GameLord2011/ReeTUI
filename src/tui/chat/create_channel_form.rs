@@ -16,7 +16,7 @@ pub enum CreateChannelInput {
 
 impl CreateChannelForm {
     pub fn new() -> Self {
-        log::debug!("CreateChannelForm: new instance created.");
+
         Self {
             name: String::new(),
             input_focused: CreateChannelInput::Name,
@@ -25,13 +25,12 @@ impl CreateChannelForm {
     }
 
     pub fn next_input(&mut self) {
-        let old_input_focused = self.input_focused;
         self.input_focused = match self.input_focused {
             CreateChannelInput::Name => CreateChannelInput::Icon,
             CreateChannelInput::Icon => CreateChannelInput::CreateButton,
             CreateChannelInput::CreateButton => CreateChannelInput::Name,
         };
-        log::debug!("CreateChannelForm: next_input called. Changed from {:?} to {:?}", old_input_focused, self.input_focused);
+
     }
 
     pub fn previous_input(&mut self) {

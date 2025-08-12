@@ -104,14 +104,14 @@ pub async fn handle_websocket_communication(
     loop {
         tokio::select! {
             _ = cancellation_token.cancelled() => {
-                log::info!("WebSocket communication cancelled.");
+
                 break;
             }
             Some(Ok(msg)) = ws_reader.next() => {
                 if let Message::Text(text) = msg {
                     if let Ok(server_msg) = serde_json::from_str::<ServerMessage>(&text) {
                         let mut state = app_state.lock().await;
-                        log::debug!("Received WebSocket message: {:?}", server_msg);
+
                         match server_msg {
                             ServerMessage::ChannelList(wrapper) => {
                                 state.channels = wrapper.channels;
@@ -128,13 +128,7 @@ pub async fn handle_websocket_communication(
                                 if let Some(username) = &state.username {
                                     let mention = format!("@{}", username);
                                     if message.content.contains(&mention) {
-                                        state.notification_manager.add(
-                                            format!("New Mention from {}", message.user),
-                                            message.content.clone(),
-                                            crate::tui::notification::notification::NotificationType::Info,
-                                            Some(Duration::from_secs(5)),
-                                            app_state.clone(),
-                                        ).await;
+                                        
                                     }
                                 }
                                 let is_image = message.is_image.unwrap_or(false);
@@ -173,11 +167,12 @@ pub async fn handle_websocket_communication(
                                 let history = wrapper.history;
                                 let channel_id = history.channel_id.clone();
                                 let messages = history.messages.clone();
-                                state.prepend_history(&channel_id, messages.clone());
-                                state
-                                    .channel_history_state
-                                    .insert(channel_id, (history.offset as u64, history.has_more, true));
-                                for message in messages {
+                                 state.prepend_history(&channel_id, messages.clone());
+                                 state
+                                     .channel_history_state
+                                     .insert(channel_id.clone(), (history.offset as u64, history.has_more, true));
+                                 state.update_last_message_count(channel_id.clone(), messages.len());
+                                 state.set_initial_load_complete(true);                                for message in messages {
                                     if message.file_id.is_some() {
                                         let downloadable_file = crate::app::app_state::DownloadableFile {
                                             file_id: message.file_id.clone().unwrap(),
@@ -209,6 +204,7 @@ pub async fn handle_websocket_communication(
                                 }
                             }
                             ServerMessage::UserList(wrapper) => {
+
                                 state.active_users = wrapper.users;
                             }
                             ServerMessage::ChannelUpdate(channel) => {

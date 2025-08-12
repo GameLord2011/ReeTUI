@@ -1,7 +1,9 @@
 use crate::app::app_state::AppState;
 use crate::app::TuiPage;
 
-use crate::tui::settings::state::{FocusedPane, SettingsScreen, SettingsState, QuitConfirmationState, DisconnectConfirmationState};
+use crate::tui::settings::state::{
+    DisconnectConfirmationState, FocusedPane, QuitConfirmationState, SettingsScreen, SettingsState,
+};
 use crate::tui::settings::SettingsEvent;
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 
@@ -19,13 +21,14 @@ pub async fn handle_settings_event(
                             return handle_left_pane_events(settings_state, key.code, app_state)
                         }
                         FocusedPane::Right => {
-                            return handle_right_pane_events(settings_state, key.code, app_state).await
+                            return handle_right_pane_events(settings_state, key.code, app_state)
+                                .await
                         }
                     }
                 }
             }
         }
-        SettingsEvent::Tick => {} 
+        SettingsEvent::Tick => {}
     }
     None
 }
@@ -39,11 +42,13 @@ fn handle_left_pane_events(
         KeyCode::Up => settings_state.previous_main_setting(),
         KeyCode::Down => settings_state.next_main_setting(),
         KeyCode::Enter => {
-            if settings_state.main_selection == 3 { // 3 is Quit
+            if settings_state.main_selection == 3 {
+                // 3 is Quit
                 app_state.quit_confirmation_state = QuitConfirmationState::Active; // Directly update app_state
                 settings_state.focused_pane = FocusedPane::Right;
                 return Some(TuiPage::Settings); // Force redraw of settings page
-            } else if settings_state.main_selection == 2 { // 2 is Disconnect
+            } else if settings_state.main_selection == 2 {
+                // 2 is Disconnect
                 app_state.disconnect_confirmation_state = DisconnectConfirmationState::Active;
                 settings_state.focused_pane = FocusedPane::Right;
                 return Some(TuiPage::Settings);
@@ -73,8 +78,11 @@ async fn handle_right_pane_events(
                     handle_help_events(settings_state, key_code);
                 }
                 SettingsScreen::Disconnect => {
-                    if app_state.disconnect_confirmation_state == DisconnectConfirmationState::Active {
-                        handle_disconnect_confirmation_events(settings_state, key_code, app_state).await;
+                    if app_state.disconnect_confirmation_state
+                        == DisconnectConfirmationState::Active
+                    {
+                        handle_disconnect_confirmation_events(settings_state, key_code, app_state)
+                            .await;
                     } else {
                         handle_disconnect_events(settings_state, key_code, app_state).await;
                     }
@@ -116,7 +124,8 @@ fn handle_themes_events(
     None
 }
 
-fn handle_help_events(settings_state: &mut SettingsState, key_code: KeyCode) -> Option<TuiPage> { // Removed underscore
+fn handle_help_events(settings_state: &mut SettingsState, key_code: KeyCode) -> Option<TuiPage> {
+    // Removed underscore
     match key_code {
         KeyCode::Left => settings_state.focused_pane = FocusedPane::Left, // Re-added
         KeyCode::Esc => return Some(TuiPage::Chat),
@@ -125,8 +134,6 @@ fn handle_help_events(settings_state: &mut SettingsState, key_code: KeyCode) -> 
     None
 }
 
-
-
 async fn handle_disconnect_events(
     settings_state: &mut SettingsState,
     key_code: KeyCode,
@@ -134,7 +141,6 @@ async fn handle_disconnect_events(
 ) -> Option<TuiPage> {
     match key_code {
         KeyCode::Enter => {
-            log::debug!("handle_disconnect_events: Enter pressed, clearing user auth and returning TuiPage::Auth");
             app_state.clear_user_auth().await;
             return Some(TuiPage::Auth);
         }
@@ -145,50 +151,37 @@ async fn handle_disconnect_events(
     None
 }
 
-use log::debug; // Add this import
-
 fn handle_quit_confirmation_events(
     _settings_state: &mut SettingsState, // No longer directly modifying settings_state
     key_code: KeyCode,
     app_state: &mut AppState,
 ) -> Option<TuiPage> {
-    debug!("handle_quit_confirmation_events: KeyCode: {:?}, quit_selection: {}", key_code, app_state.quit_selection); // Use app_state.quit_selection
     match key_code {
         KeyCode::Left => {
-            if app_state.quit_selection == 1 { // If "Hell no" is selected
+            if app_state.quit_selection == 1 {
+                // If "Hell no" is selected
                 app_state.quit_selection = 0; // Select "Ye"
-                debug!("handle_quit_confirmation_events: Selected Ye");
             }
         }
         KeyCode::Right => {
-            if app_state.quit_selection == 0 { // If "Ye" is selected
+            if app_state.quit_selection == 0 {
+                // If "Ye" is selected
                 app_state.quit_selection = 1; // Select "Hell no"
-                debug!("handle_quit_confirmation_events: Selected Hell no");
             }
         }
         KeyCode::Enter => {
-            debug!("handle_quit_confirmation_events: Enter pressed");
             if app_state.quit_selection == 0 {
-                // "Ye" selected
-                debug!("handle_quit_confirmation_events: Ye selected, setting should_exit_app to true");
                 app_state.should_exit_app = true;
                 app_state.next_page = Some(TuiPage::Exit);
                 return None; // Return None, let the main loop handle next_page
             } else {
-                // "Hell no" selected
-                debug!("handle_quit_confirmation_events: Hell no selected, going back");
                 app_state.quit_confirmation_state = QuitConfirmationState::Inactive;
-                // app_state.focused_pane = FocusedPane::Left; // This should be handled by the main settings state
             }
         }
         KeyCode::Esc => {
-            debug!("handle_quit_confirmation_events: Esc pressed, going back");
             app_state.quit_confirmation_state = QuitConfirmationState::Inactive;
-            // app_state.focused_pane = FocusedPane::Left; // This should be handled by the main settings state
         }
-        _ => {
-            debug!("handle_quit_confirmation_events: Other key pressed: {:?}", key_code);
-        }
+        _ => {}
     }
     None
 }
@@ -215,38 +208,29 @@ async fn handle_disconnect_confirmation_events(
     key_code: KeyCode,
     app_state: &mut AppState,
 ) -> Option<TuiPage> {
-    debug!("handle_disconnect_confirmation_events: KeyCode: {:?}, disconnect_selection: {}", key_code, app_state.disconnect_selection);
     match key_code {
         KeyCode::Left => {
             if app_state.disconnect_selection == 1 {
                 app_state.disconnect_selection = 0;
-                debug!("handle_disconnect_confirmation_events: Selected Ye");
             }
         }
         KeyCode::Right => {
             if app_state.disconnect_selection == 0 {
                 app_state.disconnect_selection = 1;
-                debug!("handle_disconnect_confirmation_events: Selected Hell no");
             }
         }
         KeyCode::Enter => {
-            debug!("handle_disconnect_confirmation_events: Enter pressed");
             if app_state.disconnect_selection == 0 {
-                debug!("handle_disconnect_confirmation_events: Ye selected, clearing user auth and returning TuiPage::Auth");
                 app_state.clear_user_auth().await;
                 return Some(TuiPage::Auth);
             } else {
-                debug!("handle_disconnect_confirmation_events: Hell no selected, going back");
                 app_state.disconnect_confirmation_state = DisconnectConfirmationState::Inactive;
             }
         }
         KeyCode::Esc => {
-            debug!("handle_disconnect_confirmation_events: Esc pressed, going back");
             app_state.disconnect_confirmation_state = DisconnectConfirmationState::Inactive;
         }
-        _ => {
-            debug!("handle_disconnect_confirmation_events: Other key pressed: {:?}", key_code);
-        }
+        _ => {}
     }
     None
 }

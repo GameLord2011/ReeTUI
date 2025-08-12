@@ -44,17 +44,13 @@ pub fn draw_create_channel_popup(
 
     let name_area_h = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Min(0),
-            Constraint::Min(0),
-            Constraint::Min(0),
-        ])
+        .constraints([Constraint::Min(0), Constraint::Min(0), Constraint::Min(0)])
         .split(form_layout[0]);
 
     let name_block = Block::default()
         .borders(ratatui::widgets::Borders::ALL)
         .border_type(ratatui::widgets::BorderType::Rounded)
-        .title("Name Your Digital Den ")
+        .title("Name ur channel")
         .style(
             if create_channel_form.input_focused == CreateChannelInput::Name {
                 Style::default().fg(rgb_to_color(&current_theme.colors.input_border_active))
@@ -76,7 +72,7 @@ pub fn draw_create_channel_popup(
     let icon_block = Block::default()
         .borders(ratatui::widgets::Borders::ALL)
         .border_type(ratatui::widgets::BorderType::Rounded)
-        .title(" Pick a Pixel Pal")
+        .title("give it a face")
         .style(
             if create_channel_form.input_focused == CreateChannelInput::Icon {
                 Style::default().fg(rgb_to_color(&current_theme.colors.input_border_active))

@@ -2,7 +2,7 @@ use crate::api::models::BroadcastMessage;
 use crate::app::app_state::AppState;
 use image::ImageReader;
 use image::{GenericImageView, ImageFormat};
-use log::{error, info};
+
 use std::io::{self};
 use std::sync::Arc;
 use tokio::fs::File;
@@ -15,19 +15,9 @@ use tokio::sync::{mpsc, Mutex};
 async fn update_and_log_message(
     app_state: &Arc<Mutex<AppState>>,
     message: BroadcastMessage,
-    context: &str,
+    _context: &str,
 ) {
     let mut state = app_state.lock().await;
-    log::debug!(
-        "image_handler: [{}] Updating message: file_id={:?} timestamp={:?} file_name={:?} is_gif={} gif_frames={} image_preview={}",
-        context,
-        message.file_id,
-        message.timestamp,
-        message.file_name,
-        message.gif_frames.is_some(),
-        message.gif_frames.as_ref().map(|f| f.len()).unwrap_or(0),
-        message.image_preview.is_some()
-    );
     let channel_id = message.channel_id.clone();
     let message_id = message
         .file_id
@@ -45,8 +35,7 @@ async fn update_and_log_message(
 pub async fn run_chafa(image_data: &[u8], size: &str) -> Result<String, String> {
     let size_arg = format!("--size={}", size);
     let args = [size_arg.as_str(), "-f", "symbols"];
-    let command_str = format!("chafa {}", args.join(" "));
-    info!("Executing command: {}", &command_str);
+    let _command_str = format!("chafa {}", args.join(" "));
 
     let mut command = Command::new("chafa");
     command.args(&args);
@@ -55,10 +44,6 @@ pub async fn run_chafa(image_data: &[u8], size: &str) -> Result<String, String> 
     command.stderr(std::process::Stdio::piped());
 
     let mut child = command.spawn().map_err(|e| {
-        error!(
-            "Failed to spawn chafa command. Is 'chafa' installed and in your system's PATH? Error: {}",
-            e
-        );
         format!(
             "Failed to run chafa. Is it installed and in your PATH? Details: {}",
             e
@@ -74,25 +59,16 @@ pub async fn run_chafa(image_data: &[u8], size: &str) -> Result<String, String> 
             .expect("Failed to write to stdin");
     });
 
-    let output = child.wait_with_output().await.map_err(|e| {
-        error!("Failed to wait for chafa command: {}", e);
-        format!("Failed to wait for chafa command: {}", e)
-    })?;
+    let output = child
+        .wait_with_output()
+        .await
+        .map_err(|e| format!("Failed to wait for chafa command: {}", e))?;
 
     if output.status.success() {
-        info!("Chafa command executed successfully.");
         Ok(String::from_utf8_lossy(&output.stdout).to_string())
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        error!(
-            "Chafa command failed!\n\
-            - Status: {}\n\
-            - Command: {}\n\
-            - Stderr: {}\n\
-            - Stdout: {}",
-            output.status, command_str, stderr, stdout
-        );
+        let _stdout = String::from_utf8_lossy(&output.stdout);
         Err(format!(
             "Chafa conversion failed. Stderr: {}",
             if stderr.is_empty() {
@@ -105,7 +81,6 @@ pub async fn run_chafa(image_data: &[u8], size: &str) -> Result<String, String> 
 }
 
 pub async fn convert_image_to_chafa(image_data: &[u8], chat_width: u16) -> Result<String, String> {
-    info!("Handling static image to Chafa conversion.");
     let image = image::load_from_memory(image_data).map_err(|e| e.to_string())?;
     let (original_width, original_height) = image.dimensions();
     let max_display_width = chat_width.saturating_sub(4);
@@ -148,12 +123,6 @@ pub async fn process_image_message(
     chat_width: u16,
     redraw_tx: mpsc::UnboundedSender<String>, // Add redraw_tx here
 ) {
-    log::debug!(
-        "process_image_message: file_id={:?} timestamp={} chat_width={}",
-        message.file_id,
-        message.timestamp,
-        chat_width
-    );
     let file_id = message.file_id.clone().unwrap_or_default();
     let file_name = message.file_name.clone().unwrap_or_default();
 

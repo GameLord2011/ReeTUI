@@ -18,8 +18,7 @@ futures = "0.3"
 sha2 = "0.10"
 image = "0.25.1"
 lazy_static = "1.4.0"
-log = "0.4.21"
-log4rs = "1.2.0"
+
 ratatui = { version = "0.29.0", features = ["all-widgets"] }
 regex = "1.10.4"
 reqwest = { version = "0.12.4", features = ["json", "multipart", "stream"] }
@@ -40,3 +39,4 @@ tungstenite = "0.21.0"
 uuid = { version = "1.8.0", features = ["v4"] }
 unicode-width = "=0.2.0"
 sysinfo = "0.29"
+notify-rust = "4"

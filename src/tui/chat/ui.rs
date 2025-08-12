@@ -1,6 +1,8 @@
 use crate::api::models::BroadcastMessage;
 use crate::app::{AppState, PopupType};
-use crate::themes::{color_to_rgb, get_contrasting_text_color, interpolate_rgb, rgb_to_color, Theme};
+use crate::themes::{
+    color_to_rgb, get_contrasting_text_color, interpolate_rgb, rgb_to_color, Theme,
+};
 use crate::tui::chat::create_channel_form::CreateChannelForm;
 use crate::tui::chat::gif_renderer::GifAnimationState;
 use crate::tui::chat::popups::create_channel::{
@@ -38,8 +40,6 @@ use ratatui::{
     widgets::{Block, BorderType, Borders, Clear, ListState, Paragraph},
 };
 use regex::Regex;
-use std::fs::OpenOptions;
-use std::io::Write;
 
 #[derive(Debug)]
 pub struct RenderedMessage {
@@ -86,7 +86,10 @@ pub fn draw_chat_ui<B: Backend>(
     emoji_regex: &Regex,
     settings_state: &mut settings::state::SettingsState,
 ) {
-    if state.last_rendered_theme.map_or(true, |name| name != state.current_theme.name) {
+    if state
+        .last_rendered_theme
+        .map_or(true, |name| name != state.current_theme.name)
+    {
         state.rendered_messages.clear();
         state.last_rendered_theme = Some(state.current_theme.name);
     }
@@ -108,11 +111,15 @@ pub fn draw_chat_ui<B: Backend>(
         .title("Channels")
         .style(
             Style::default()
-                .fg(if state.chat_focused_pane == crate::app::app_state::ChatFocusedPane::ChannelList {
-                    rgb_to_color(&current_theme.colors.accent)
-                } else {
-                    rgb_to_color(&current_theme.colors.border)
-                })
+                .fg(
+                    if state.chat_focused_pane
+                        == crate::app::app_state::ChatFocusedPane::ChannelList
+                    {
+                        rgb_to_color(&current_theme.colors.accent)
+                    } else {
+                        rgb_to_color(&current_theme.colors.border)
+                    },
+                )
                 .bg(rgb_to_color(&current_theme.colors.background)),
         );
     f.render_widget(channels_block.clone(), left_chunks[0]); // Render the outer block
@@ -131,7 +138,13 @@ pub fn draw_chat_ui<B: Backend>(
         0
     };
 
-    for (i, channel) in state.channels.iter().enumerate().skip(start_channel_index).take(visible_items_count) {
+    for (i, channel) in state
+        .channels
+        .iter()
+        .enumerate()
+        .skip(start_channel_index)
+        .take(visible_items_count)
+    {
         let is_selected = channel_list_state.selected().map_or(false, |s| s == i);
 
         let item_rect = Rect::new(
@@ -149,7 +162,9 @@ pub fn draw_chat_ui<B: Backend>(
         let border_style = Style::default().fg(border_color);
 
         let icon_inner_width = channel.icon.width() as u16 + 2;
-        let name_inner_width = inner_channels_area.width.saturating_sub(icon_inner_width + 3);
+        let name_inner_width = inner_channels_area
+            .width
+            .saturating_sub(icon_inner_width + 3);
 
         let top_border = Line::from(vec![
             Span::styled("╭", border_style),
@@ -160,8 +175,12 @@ pub fn draw_chat_ui<B: Backend>(
         ]);
 
         let channel_name = channel.name.clone();
-        let max_name_width = if name_inner_width > 1 { name_inner_width - 1 } else { 0 } as usize;
-        
+        let max_name_width = if name_inner_width > 1 {
+            name_inner_width - 1
+        } else {
+            0
+        } as usize;
+
         let mut truncated_name = String::new();
         let mut current_width = 0;
         for c in channel_name.chars() {
@@ -172,13 +191,12 @@ pub fn draw_chat_ui<B: Backend>(
             truncated_name.push(c);
             current_width += char_width;
         }
-        
+
         let padding_width = max_name_width.saturating_sub(truncated_name.width());
         let padded_name = format!(" {}{}", truncated_name, " ".repeat(padding_width));
 
         let text_style = if is_selected {
-            Style::default()
-                .fg(rgb_to_color(&current_theme.colors.accent))
+            Style::default().fg(rgb_to_color(&current_theme.colors.accent))
         } else {
             Style::default().fg(rgb_to_color(&current_theme.colors.text))
         };
@@ -250,11 +268,13 @@ pub fn draw_chat_ui<B: Backend>(
         ))
         .style(
             Style::default()
-                .fg(if state.chat_focused_pane == crate::app::app_state::ChatFocusedPane::Messages {
-                    rgb_to_color(&current_theme.colors.accent)
-                } else {
-                    rgb_to_color(&current_theme.colors.text)
-                })
+                .fg(
+                    if state.chat_focused_pane == crate::app::app_state::ChatFocusedPane::Messages {
+                        rgb_to_color(&current_theme.colors.accent)
+                    } else {
+                        rgb_to_color(&current_theme.colors.text)
+                    },
+                )
                 .bg(rgb_to_color(&current_theme.colors.background)),
         );
     let inner_messages_area = messages_block.inner(chat_chunks[0]);
@@ -266,12 +286,8 @@ pub fn draw_chat_ui<B: Backend>(
         let mut all_rendered_lines: Vec<Line<'static>> = Vec::new();
 
         if let Some(messages) = state.messages.get(channel_id) {
-            let mut log_file = OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open("message.log")
-                .unwrap();
-            writeln!(log_file, "\n--- Channel: {} ---", channel_id).unwrap();
+            
+            
 
             for i in 0..messages.len() {
                 let msg = &messages[i];
@@ -314,16 +330,7 @@ pub fn draw_chat_ui<B: Backend>(
                     }
                 }
 
-                writeln!(
-                    log_file,
-                    "Message: {} (ID: {}), First: {}, Last: {}, Needs Re-render: {}",
-                    msg.content,
-                    message_id,
-                    is_first_in_group,
-                    is_last_in_group,
-                    needs_re_render_this_message
-                )
-                .unwrap();
+                
 
                 let rendered_message_entry = state
                     .rendered_messages
@@ -342,15 +349,7 @@ pub fn draw_chat_ui<B: Backend>(
                         is_first_in_group,
                         is_last_in_group,
                     );
-                    writeln!(
-                        log_file,
-                        "  -> Re-rendered. RenderedMessage: ID: {}, First: {}, Last: {}, Lines: {}",
-                        rendered_message.id,
-                        rendered_message.is_first_in_group,
-                        rendered_message.is_last_in_group,
-                        rendered_message.lines.len()
-                    )
-                    .unwrap();
+                    
                     state
                         .rendered_messages
                         .entry(channel_id.clone())
@@ -362,15 +361,7 @@ pub fn draw_chat_ui<B: Backend>(
                         .or_default()
                         .insert(message_id.clone(), false);
                 } else {
-                    writeln!(
-                        log_file,
-                        "  -> From cache. RenderedMessage: ID: {}, First: {}, Last: {}, Lines: {}",
-                        rendered_message_entry.unwrap().id,
-                        rendered_message_entry.unwrap().is_first_in_group,
-                        rendered_message_entry.unwrap().is_last_in_group,
-                        rendered_message_entry.unwrap().lines.len()
-                    )
-                    .unwrap();
+                    
                 }
 
                 if let Some(rendered_message) = state
@@ -400,15 +391,6 @@ pub fn draw_chat_ui<B: Backend>(
                 .saturating_sub(scroll_offset)
                 .min(message_count);
 
-            log::debug!(
-                "ui: message_count={} view_height={} scroll_offset={} start_index={} end_index={}",
-                message_count,
-                view_height,
-                scroll_offset,
-                start_index,
-                end_index
-            );
-
             if message_count > view_height {
                 all_rendered_lines[start_index..end_index].to_vec()
             } else {
@@ -424,11 +406,13 @@ pub fn draw_chat_ui<B: Backend>(
         .title("Input")
         .style(
             Style::default()
-                .fg(if state.chat_focused_pane == crate::app::app_state::ChatFocusedPane::Input {
-                    rgb_to_color(&current_theme.colors.accent)
-                } else {
-                    rgb_to_color(&current_theme.colors.input_border_inactive)
-                })
+                .fg(
+                    if state.chat_focused_pane == crate::app::app_state::ChatFocusedPane::Input {
+                        rgb_to_color(&current_theme.colors.accent)
+                    } else {
+                        rgb_to_color(&current_theme.colors.input_border_inactive)
+                    },
+                )
                 .bg(rgb_to_color(&current_theme.colors.background)),
         );
     let input_lines = input_text.split('\n').count();
@@ -448,10 +432,6 @@ pub fn draw_chat_ui<B: Backend>(
     ));
 
     if state.popup_state.show {
-        log::debug!(
-            "ui: Popup is shown, type: {:?}",
-            state.popup_state.popup_type
-        );
         let popup_title = match state.popup_state.popup_type {
             PopupType::CreateChannel => "Create Channel",
             PopupType::Deconnection => "Deconnection",
@@ -460,7 +440,7 @@ pub fn draw_chat_ui<B: Backend>(
             PopupType::Emojis => "Emojis",
             PopupType::FileManager => "File Manager",
             PopupType::DownloadProgress => "Downloading",
-            
+
             PopupType::Downloads => "Downloads",
             PopupType::Notification => "Notification",
             PopupType::Settings => "Settings",
@@ -483,7 +463,7 @@ pub fn draw_chat_ui<B: Backend>(
             PopupType::Emojis => get_emojis_popup_size(state),
             PopupType::FileManager => get_file_manager_popup_size(),
             PopupType::DownloadProgress => get_download_progress_popup_size(),
-            
+
             _ => (0, 0),
         };
 
@@ -528,7 +508,7 @@ pub fn draw_chat_ui<B: Backend>(
             PopupType::DownloadProgress => {
                 draw_download_progress_popup(f, popup_area, state.download_progress);
             }
-            
+
             PopupType::Downloads => {
                 crate::tui::chat::popups::downloads::draw_downloads_popup(f, state);
             }
@@ -739,7 +719,10 @@ pub fn format_message_lines(
             let fraction = current_col as f32 / (available_width - 1).max(1) as f32;
             let interpolated_rgb = interpolate_rgb(&user_rgb, &border_rgb, fraction);
             let interpolated_color = rgb_to_color(&interpolated_rgb);
-            user_line_spans.push(Span::styled(c.to_string(), Style::default().fg(interpolated_color)));
+            user_line_spans.push(Span::styled(
+                c.to_string(),
+                Style::default().fg(interpolated_color),
+            ));
             current_col += c.width().unwrap_or(1);
         }
 
@@ -762,7 +745,10 @@ pub fn format_message_lines(
             let fraction = current_col as f32 / (available_width - 1).max(1) as f32;
             let interpolated_rgb = interpolate_rgb(&user_rgb, &border_rgb, fraction);
             let interpolated_color = rgb_to_color(&interpolated_rgb);
-            user_line_spans.push(Span::styled(c.to_string(), Style::default().fg(interpolated_color)));
+            user_line_spans.push(Span::styled(
+                c.to_string(),
+                Style::default().fg(interpolated_color),
+            ));
             current_col += c.width().unwrap_or(1);
         }
 
@@ -812,10 +798,7 @@ pub fn format_message_lines(
         let fraction = current_col as f32 / (available_width - 1).max(1) as f32;
         let interpolated_rgb = interpolate_rgb(&user_rgb, &border_rgb, fraction);
         let interpolated_color = rgb_to_color(&interpolated_rgb);
-        separator_spans.push(Span::styled(
-            "╮",
-            Style::default().fg(interpolated_color),
-        ));
+        separator_spans.push(Span::styled("╮", Style::default().fg(interpolated_color)));
         new_lines.push(Line::from(separator_spans));
     } else if !is_first_in_group {
         let separator_left = format!("├{}─", "─".repeat(2));
@@ -839,10 +822,7 @@ pub fn format_message_lines(
         let fraction = current_col as f32 / (available_width - 1).max(1) as f32;
         let interpolated_rgb = interpolate_rgb(&user_rgb, &border_rgb, fraction);
         let interpolated_color = rgb_to_color(&interpolated_rgb);
-        separator_spans.push(Span::styled(
-            "┤",
-            Style::default().fg(interpolated_color),
-        ));
+        separator_spans.push(Span::styled("┤", Style::default().fg(interpolated_color)));
         new_lines.push(Line::from(separator_spans));
     }
 
@@ -872,10 +852,7 @@ pub fn format_message_lines(
         let fraction = (available_width - 1) as f32 / (available_width - 1).max(1) as f32;
         let interpolated_rgb = interpolate_rgb(&user_rgb, &border_rgb, fraction);
         let interpolated_color = rgb_to_color(&interpolated_rgb);
-        new_line_spans.push(Span::styled(
-            "│",
-            Style::default().fg(interpolated_color),
-        ));
+        new_line_spans.push(Span::styled("│", Style::default().fg(interpolated_color)));
         *line = Line::from(new_line_spans);
     }
     new_lines.extend(content_lines);
