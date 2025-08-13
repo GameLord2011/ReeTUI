@@ -42,7 +42,7 @@ jobs:
       
       - name: Build binary
         uses: houseabsolute/actions-rust-cross@v1
-        working-directory: ${{ github.workspace }}
+        
         with:
           command: build
           target: ${{ matrix.platform.target }}
