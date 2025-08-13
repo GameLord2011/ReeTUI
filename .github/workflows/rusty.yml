@@ -45,7 +45,7 @@ jobs:
       - name: Publish artifacts and release
         uses: houseabsolute/actions-rust-release@v0
         with:
-          executable-name: ubi
+          executable-name: ReeTUI
           target: ${{ matrix.platform.target }}
           changes-file: ""
 
