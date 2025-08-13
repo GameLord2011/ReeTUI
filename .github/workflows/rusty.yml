@@ -78,8 +78,8 @@ jobs:
           args: "--locked --release"
           strip: true
         env:
-          OPENSSL_INCLUDE_DIR: /usr/include
-          OPENSSL_LIB_DIR: /usr/lib/x86_64-linux-gnu
+          OPENSSL_STATIC: 1
+          PKG_CONFIG_ALLOW_CROSS: 1
       - name: Publish artifacts and release
         uses: houseabsolute/actions-rust-release@v0
         with:
