@@ -26,7 +26,7 @@ use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers, MouseEv
 use lazy_static::lazy_static;
 use ratatui::{prelude::Backend, widgets::ListState, Terminal};
 use regex::Regex;
-use std::{io, sync::Arc, time::Duration};
+use std::{collections::HashMap, io, sync::Arc, time::Duration};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use unicode_segmentation::UnicodeSegmentation;
@@ -36,6 +36,26 @@ use crate::tui::file_manager_module::file_manager::{FileManager, FileManagerEven
 lazy_static! {
     static ref MENTION_REGEX: Regex = Regex::new(r"@[a-zA-Z0-9_]+").unwrap();
     static ref EMOJI_REGEX: Regex = Regex::new(r":[a-zA-Z0-9_]+:").unwrap();
+}
+
+fn apply_gizzy_transformations(mut content: String) -> String {
+    lazy_static! {
+        static ref REPLACEMENTS: HashMap<&'static str, &'static str> = {
+            let mut m = HashMap::new();
+            m.insert(":3", "¿?");
+            m.insert("eat it", "love it");
+            m.insert("estrogen", "pizza");
+            m.insert("gay", "gigachad");
+            m.insert("femboy", "femboy (affectionate)");
+            m.insert("vro", "bro");
+            m
+        };
+    }
+
+    for (old, new) in REPLACEMENTS.iter() {
+        content = content.replace(old, new);
+    }
+    content
 }
 
 pub async fn run_chat_page<B: Backend>(
@@ -298,7 +318,7 @@ pub async fn run_chat_page<B: Backend>(
 
     let redraw_tx_clone_for_timer = redraw_tx.clone();
     tokio::spawn(async move {
-        let mut interval = tokio::time::interval(Duration::from_secs(5));
+        let mut interval = tokio::time::interval(Duration::from_secs(1));
         loop {
             interval.tick().await;
             if redraw_tx_clone_for_timer.send("timer".to_string()).is_err() {
@@ -312,6 +332,16 @@ pub async fn run_chat_page<B: Backend>(
     loop {
         let mut state_guard = app_state.lock().await;
         state_guard.notification_manager.update();
+
+        if let Some(current_channel) = &state_guard.current_channel {
+            if let Some(index) = state_guard
+                .channels
+                .iter()
+                .position(|c| c.id == current_channel.id)
+            {
+                channel_list_state.select(Some(index));
+            }
+        }
 
         let _mention_regex = &MENTION_REGEX;
         let _emoji_regex = &EMOJI_REGEX;
@@ -334,7 +364,9 @@ pub async fn run_chat_page<B: Backend>(
         })?;
 
         let event = tokio::select! {
-            
+            Some(_) = redraw_rx.recv() => {
+                None
+            },
             event_result = tokio::task::spawn_blocking(|| event::poll(Duration::from_millis(16))) => {
                 match event_result {
                     Ok(Ok(true)) => Some(tokio::task::spawn_blocking(event::read).await.unwrap().unwrap()),
@@ -819,8 +851,15 @@ pub async fn run_chat_page<B: Backend>(
                                                     &state_guard.current_channel
                                                 {
                                                     let channel_id = current_channel.id.clone();
-                                                    let content =
+                                                    let mut content =
                                                         replace_shortcodes_with_emojis(&input_text);
+
+                                                    if let Some(username) = &state_guard.username {
+                                                        if username.to_lowercase().contains("gizzy") {
+                                                            content = apply_gizzy_transformations(content);
+                                                        }
+                                                    }
+
                                                     if command_tx
                                                         .send(WsCommand::Message {
                                                             channel_id,

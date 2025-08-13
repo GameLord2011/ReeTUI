@@ -35,6 +35,10 @@ pub struct BroadcastMessage {
     pub content: String,
     pub timestamp: i64,
     pub channel_id: String,
+    #[serde(default)]
+    pub channel_name: String,
+    #[serde(default)]
+    pub channel_icon: String,
     #[serde(default = "default_message_type")]
     pub message_type: String,
     #[serde(skip_serializing_if = "Option::is_none")]

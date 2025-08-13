@@ -1,4 +1,3 @@
-use uuid::Uuid;
 use crate::api::models::{BroadcastMessage, Channel, ChannelCommand};
 use crate::app::app_state::AppState;
 use crate::tui::chat::ws_command::WsCommand;
@@ -11,9 +10,10 @@ use tokio::sync::{mpsc, Mutex};
 use tokio_tungstenite::tungstenite::protocol::Message;
 use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
 use tokio_util::sync::CancellationToken;
+use uuid::Uuid;
 
-use std::time::Duration;
 use lazy_static::lazy_static;
+use std::time::Duration;
 
 lazy_static! {
     static ref THEME_KEYWORDS: Vec<&'static str> = vec!["gizzy", "zombi"];
@@ -72,12 +72,18 @@ pub struct UserListWrapper {
 }
 
 #[derive(serde::Deserialize, Debug)]
+pub struct ChannelUpdateWrapper {
+    #[serde(rename = "ChannelUpdate")]
+    pub channel: Channel,
+}
+
+#[derive(serde::Deserialize, Debug)]
 #[serde(untagged)]
 pub enum ServerMessage {
     History(HistoryWrapper),
     ChannelList(ChannelListWrapper),
     UserList(UserListWrapper),
-    ChannelUpdate(Channel),
+    ChannelUpdate(ChannelUpdateWrapper),
     Broadcast(BroadcastMessage),
     Error {
         #[allow(dead_code)]
@@ -135,7 +141,7 @@ pub async fn handle_websocket_communication(
                                 if let Some(username) = &state.username {
                                     let mention = format!("@{}", username);
                                     if message.content.contains(&mention) {
-                                        
+
                                     }
                                 }
                                 let is_image = message.is_image.unwrap_or(false);
@@ -234,13 +240,15 @@ pub async fn handle_websocket_communication(
 
                                 state.active_users = wrapper.users;
                             }
-                            ServerMessage::ChannelUpdate(channel) => {
+                            ServerMessage::ChannelUpdate(wrapper) => {
+                                let channel = wrapper.channel;
                                 state.add_or_update_channel(channel.clone());
                                 state.set_current_channel(channel.clone());
                                 let _ = command_tx.send(WsCommand::Message {
                                     channel_id: channel.id.clone(),
                                     content: format!("/get_history {} 0", channel.id),
                                 });
+                                let _ = redraw_tx.send(String::new());
                             }
                             ServerMessage::Notification {
                                 title,
