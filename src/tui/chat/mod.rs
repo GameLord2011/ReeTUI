@@ -298,8 +298,7 @@ pub async fn run_chat_page<B: Backend>(
                                         let _ = Notification::new()
                                             .summary(&title)
                                             .body(&body)
-                                            .show_async()
-                                            .await;
+                                            .show();
                                     });
                                 }
                             }
