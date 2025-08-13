@@ -80,7 +80,8 @@ jobs:
           args: "--locked --release"
           strip: true
         env:
-          OPENSSL_DIR: /usr/lib/ssl # Common OpenSSL installation path on Ubuntu
+          OPENSSL_INCLUDE_DIR: /usr/include
+          OPENSSL_LIB_DIR: /usr/lib/x86_64-linux-gnu
       - name: Publish artifacts and release
         uses: houseabsolute/actions-rust-release@v0
         with:
