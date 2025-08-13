@@ -70,6 +70,34 @@ jobs:
           cd $env:VCPKG_ROOT
           cmd.exe /c "vcpkg.exe install openssl:x64-windows-static-md"
           cd - # Go back to the original directory
+      - name: Build OpenSSL for musl (Linux)
+        if: runner.os == 'Linux' && contains(matrix.platform.target, 'musl')
+        run: |
+          OPENSSL_VERSION="1.1.1w"
+          OPENSSL_DIR_NAME="openssl-${OPENSSL_VERSION}"
+          OPENSSL_TAR_GZ="${OPENSSL_DIR_NAME}.tar.gz"
+          OPENSSL_URL="https://www.openssl.org/source/${OPENSSL_TAR_GZ}"
+          OPENSSL_INSTALL_DIR="${{ runner.temp }}/openssl-musl"
+
+          sudo apt-get update
+          sudo apt-get install -y perl make gcc-aarch64-linux-gnu gcc-x86-64-linux-gnu
+
+          mkdir -p "${OPENSSL_INSTALL_DIR}"
+          curl -sL "${OPENSSL_URL}" -o "${OPENSSL_TAR_GZ}"
+          tar -xzf "${OPENSSL_TAR_GZ}"
+          cd "${OPENSSL_DIR_NAME}"
+
+          if [ "${{ matrix.platform.target }}" = "x86_64-unknown-linux-musl" ]; then
+            ./Configure linux-x86_64 -no-shared no-zlib --prefix="${OPENSSL_INSTALL_DIR}"
+          elif [ "${{ matrix.platform.target }}" = "aarch64-unknown-linux-musl" ]; then
+            ./Configure linux-aarch64 -no-shared no-zlib --prefix="${OPENSSL_INSTALL_DIR}"
+          fi
+
+          make -j$(nproc)
+          make install_sw
+
+          echo "OPENSSL_DIR=${OPENSSL_INSTALL_DIR}" >> $GITHUB_ENV
+          echo "PKG_CONFIG_PATH=${OPENSSL_INSTALL_DIR}/lib/pkgconfig" >> $GITHUB_ENV
       - name: Build binary
         uses: houseabsolute/actions-rust-cross@v1
         with:
