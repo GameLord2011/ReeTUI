@@ -6,16 +6,14 @@ on:
       - "*" 
 
 jobs:
-  release:
-    name: Release - ${{ matrix.os-name }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os-name: [FreeBSD-x86_64, Linux-x86_64, Linux-aarch64, Windows-x86_64, macOS-x86_64]
-        runs-on: [ubuntu-24.04, ubuntu-24.04, ubuntu-24.04, windows-latest, macos-latest]
-        target: [x86_64-unknown-freebsd, x86_64-unknown-linux-musl, aarch64-unknown-linux-musl, x86_64-pc-windows-msvc, x86_64-apple-darwin]
-
+  build:
+    name: Build - ${{ matrix.os-name }}
     runs-on: ${{ matrix.runs-on }}
+    strategy:
+      matrix:
+        os-name: [Linux-x86_64, Windows-x86_64, macOS-arm64]
+        runs-on: [ubuntu-24.04, windows-latest, macos-latest]
+        target: [x86_64-unknown-linux-musl, x86_64-pc-windows-msvc, aarch64-apple-darwin]
 
     steps:
       - name: Checkout
@@ -28,11 +26,3 @@ jobs:
           target: ${{ matrix.target }}
           args: "--locked --release"
           strip: true
-
-      - name: Publish artifacts and release
-        uses: houseabsolute/actions-rust-release@v0
-        with:
-          executable-name: reetui
-          target: ${{ matrix.target }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
