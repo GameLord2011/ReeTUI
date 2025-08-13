@@ -39,8 +39,8 @@ uuid = { version = "1.8.0", features = ["v4"] }
 unicode-width = "=0.2.0"
 sysinfo = "0.29"
 notify-rust = "4"
-rustls = { version = "0.23.31", features = ["ring"] }
+rustls = { version = "0.23.31", default-features = false, features = ["ring"] }
 rustls-pemfile = "2.2.0"
 rustls-pki-types = "0.1"
-aws-lc-rs = { version = "1.13.3", features = ["bindgen"] }
+
 
