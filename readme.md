@@ -41,3 +41,8 @@ Because it's written in Rust, ReeTUI just *happens* to be cross-platform. We did
     cargo build --release
     ```
     Once that's done, you're ready to rock and chat!
+
+## Keybindings 😎
+CTRL+S -》 open settings
+CTRL+N -》 propose channel
+CTRL+U -》 open file manager
