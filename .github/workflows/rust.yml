@@ -1,0 +1,2 @@
+- name: Build Rust Projects with Cross
+  uses: houseabsolute/actions-rust-cross@v1.0.5
