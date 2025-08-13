@@ -11,10 +11,6 @@ jobs:
     strategy:
       matrix:
         platform:
-          - os-name: FreeBSD-x86_64
-            runs-on: ubuntu-24.04
-            target: x86_64-unknown-freebsd
-
           - os-name: Linux-x86_64
             runs-on: ubuntu-24.04
             target: x86_64-unknown-linux-musl
@@ -23,8 +19,6 @@ jobs:
             runs-on: ubuntu-24.04
             target: aarch64-unknown-linux-musl
 
-          
-
           - os-name: Windows-x86_64
             runs-on: windows-latest
             target: x86_64-pc-windows-msvc
@@ -32,8 +26,6 @@ jobs:
           - os-name: macOS-x86_64
             runs-on: macOS-latest
             target: x86_64-apple-darwin
-
-          # more targets here ...
 
     runs-on: ${{ matrix.platform.runs-on }}
     steps:
@@ -55,3 +47,23 @@ jobs:
         with:
           executable-name: ubi
           target: ${{ matrix.platform.target }}
+
+  freebsd_release:
+    name: Release - FreeBSD-x86_64
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: vmactions/freebsd-vm@v1
+        with:
+          usesh: true
+          prepare: pkg install -y rust
+          run: |
+            cd "$GITHUB_WORKSPACE"
+            cargo build --locked --release --target=x86_64-unknown-freebsd --no-default-features --features rustls/ring,bindgen
+            strip target/x86_64-unknown-freebsd/release/ubi
+            ls -l target/x86_64-unknown-freebsd/release/ubi
+      - name: Archive build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ubi-x86_64-unknown-freebsd
+          path: target/x86_64-unknown-freebsd/release/ubi
