@@ -2,8 +2,8 @@ name: Cross-platform Release
 
 on:
   push:
-    tags:
-      - "v*"
+    branches:
+      - "*" 
 
 jobs:
   release:
