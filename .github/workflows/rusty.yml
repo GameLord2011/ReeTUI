@@ -48,5 +48,6 @@ jobs:
           executable-name: ReeTUI
           target: ${{ matrix.platform.target }}
           changes-file: ""
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 
   
