@@ -47,5 +47,6 @@ jobs:
         with:
           executable-name: ubi
           target: ${{ matrix.platform.target }}
+          changes-file: ""
 
   
