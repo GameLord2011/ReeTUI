@@ -38,7 +38,7 @@ jobs:
         with:
           command: build
           target: ${{ matrix.platform.target }}
-          args: "--locked --release --no-default-features --features rustls/ring,bindgen"
+          args: "--locked --release --no-default-features --features rustls/ring"
           strip: true
         env:
           AWS_LC_SYS_CMAKE_BUILDER: 1
