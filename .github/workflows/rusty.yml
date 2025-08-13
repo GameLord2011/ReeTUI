@@ -11,18 +11,16 @@ jobs:
     strategy:
       matrix:
         platform:
-          '''          '''          - os-name: FreeBSD-x86_64
+          - os-name: FreeBSD-x86_64
             runs-on: ubuntu-24.04
             target: x86_64-unknown-freebsd
 
       - name: Install FreeBSD cross-compilation tools
         if: matrix.platform.os-name == 'FreeBSD-x86_64'
         run: |
-          '''          sudo apt-get install -y clang libclang-dev gcc-x86-64-freebsd
+          sudo apt-get update
+          sudo apt-get install -y clang libclang-dev gcc-x86-64-freebsd
           echo "BINDGEN_EXTRA_CLANG_ARGS=--sysroot=/usr/x86_64-unknown-freebsd" >> $GITHUB_ENV
-'''
-'''
-'''
 
           - os-name: Linux-x86_64
             runs-on: ubuntu-24.04
