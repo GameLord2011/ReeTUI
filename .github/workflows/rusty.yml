@@ -39,44 +39,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Install OpenSSL (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libssl-dev musl-tools
-      - name: Install OpenSSL (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          brew update
-          brew install openssl
-      - name: Install OpenSSL (FreeBSD)
-        if: runner.os == 'FreeBSD'
-        run: |
-          sudo pkg update
-          sudo pkg install -y openssl
-      # For Windows, OpenSSL is often handled by vcpkg or pre-installed.
-      # If you encounter issues, you might need to add a specific step here.
-      - name: Install OpenSSL (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          # Install vcpkg if not already present
-          if (-not (Test-Path "$env:VCPKG_ROOT")) {
-            git clone https://github.com/microsoft/vcpkg.git $env:VCPKG_ROOT
-            cd $env:VCPKG_ROOT
-            cmd.exe /c "bootstrap-vcpkg.bat"
-            cd - # Go back to the original directory
-          }
-          # Install openssl
-          cd $env:VCPKG_ROOT
-          cmd.exe /c "vcpkg.exe install openssl:x64-windows-static-md"
-          cd - # Go back to the original directory
+      
       
       - name: Build binary
         uses: houseabsolute/actions-rust-cross@v1
         with:
           command: build
           target: ${{ matrix.platform.target }}
-          args: "--locked --release"
+          args: "--locked --release --no-default-features --features ring"
           strip: true
       - name: Publish artifacts and release
         uses: houseabsolute/actions-rust-release@v0
