@@ -64,10 +64,10 @@ jobs:
           # Install vcpkg if not already present
           if (-not (Test-Path "$env:VCPKG_ROOT")) {
             git clone https://github.com/microsoft/vcpkg.git $env:VCPKG_ROOT
-            $env:VCPKG_ROOT\bootstrap-vcpkg.bat
+            & "$env:VCPKG_ROOT\bootstrap-vcpkg.bat"
           }
           # Install openssl
-          $env:VCPKG_ROOT\vcpkg.exe install openssl:x64-windows-static-md
+          & "$env:VCPKG_ROOT\vcpkg.exe" install openssl:x64-windows-static-md
       - name: Build binary
         uses: houseabsolute/actions-rust-cross@v1
         with:
