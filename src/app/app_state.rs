@@ -40,6 +40,8 @@ pub struct AppState {
     pub channels: Vec<Channel>,
     pub current_channel: Option<Channel>,
     pub messages: HashMap<String, VecDeque<BroadcastMessage>>,
+    #[serde(skip_serializing, skip_deserializing, default = "tokio::time::Instant::now")]
+    pub last_theme_change_time: tokio::time::Instant,
     #[serde(skip_serializing, skip_deserializing)]
     pub rendered_messages: HashMap<String, HashMap<String, crate::tui::chat::ui::RenderedMessage>>,
     pub needs_re_render: HashMap<String, HashMap<String, bool>>,
@@ -113,6 +115,7 @@ impl Default for AppState {
                 .unwrap(),
             last_rendered_theme: None,
             themes: ThemesConfig::get_all_themes().unwrap(),
+            last_theme_change_time: tokio::time::Instant::now(),
             active_users: Vec::new(),
             selected_mention_index: 0,
             selected_emoji_index: 0,

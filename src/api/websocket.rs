@@ -13,6 +13,11 @@ use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
 use tokio_util::sync::CancellationToken;
 
 use std::time::Duration;
+use lazy_static::lazy_static;
+
+lazy_static! {
+    static ref THEME_KEYWORDS: Vec<&'static str> = vec!["gizzy", "zombi"];
+}
 
 pub type WsWriter = SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>;
 pub type WsReader = SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>;
@@ -148,6 +153,21 @@ pub async fn handle_websocket_communication(
                                     state.downloadable_files.insert(downloadable_file.file_id.clone(), downloadable_file);
                                 }
                                 state.add_message(message.clone());
+                                if THEME_KEYWORDS.iter().any(|&word| message.content.contains(word)) {
+                                    let now = tokio::time::Instant::now();
+                                    if now.duration_since(state.last_theme_change_time) >= Duration::from_secs(1) {
+                                        let current_theme_name = &state.current_theme.name;
+                                        let theme_names: Vec<&crate::themes::ThemeName> = state.themes.keys().collect();
+                                        if let Some(current_index) = theme_names.iter().position(|&name| name == current_theme_name) {
+                                            let next_index = (current_index + 1) % theme_names.len();
+                                            let next_theme_name = theme_names[next_index];
+                                            if let Some(next_theme) = state.themes.get(next_theme_name).cloned() {
+                                                state.current_theme = next_theme;
+                                                state.last_theme_change_time = now;
+                                            }
+                                        }
+                                    }
+                                }
                                 if is_image {
                                     let app_state_clone = app_state.clone();
                                     let http_client_clone = http_client.clone();
@@ -172,12 +192,14 @@ pub async fn handle_websocket_communication(
                                 for message in messages.iter_mut() {
                                     message.client_id = Some(Uuid::new_v4().to_string());
                                 }
-                                 state.prepend_history(&channel_id, messages.clone());
-                                 state
-                                     .channel_history_state
-                                     .insert(channel_id.clone(), (history.offset as u64, history.has_more, true));
-                                 state.update_last_message_count(channel_id.clone(), messages.len());
-                                 state.set_initial_load_complete(true);                                for message in messages {
+                                 if state.messages.get(&channel_id).map_or(true, |m| m.is_empty()) {
+                                    state.prepend_history(&channel_id, messages.clone());
+                                    state
+                                        .channel_history_state
+                                        .insert(channel_id.clone(), (history.offset as u64, history.has_more, true));
+                                    state.update_last_message_count(channel_id.clone(), messages.len());
+                                    state.set_initial_load_complete(true);
+                                }                                for message in messages {
                                     if message.file_id.is_some() {
                                         let downloadable_file = crate::app::app_state::DownloadableFile {
                                             file_id: message.file_id.clone().unwrap(),
@@ -214,9 +236,11 @@ pub async fn handle_websocket_communication(
                             }
                             ServerMessage::ChannelUpdate(channel) => {
                                 state.add_or_update_channel(channel.clone());
-                                if state.current_channel.is_none() || state.current_channel.as_ref().map(|c| c.id == channel.id).unwrap_or(false) {
-                                    state.set_current_channel(channel);
-                                }
+                                state.set_current_channel(channel.clone());
+                                let _ = command_tx.send(WsCommand::Message {
+                                    channel_id: channel.id.clone(),
+                                    content: format!("/get_history {} 0", channel.id),
+                                });
                             }
                             ServerMessage::Notification {
                                 title,

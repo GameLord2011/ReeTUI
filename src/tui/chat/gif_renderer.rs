@@ -89,7 +89,12 @@ pub async fn convert_gif_to_chafa_frames_and_delays(
     let scale_factor = width_scale_factor.min(height_scale_factor);
 
     let final_width = (width as f32 * scale_factor).round() as u16;
-    let final_height = (height as f32 * scale_factor).round() as u16;
+    let mut final_height = (height as f32 * scale_factor).round() as u16;
+
+    // Adjust height for terminal character aspect ratio (approx. 2:1 height:width)
+    // This means for every 1 unit of width, we need 2 units of height to maintain visual aspect ratio.
+    // So, if we have a target width, the actual height in characters should be roughly half of the image's aspect-corrected height.
+    final_height = (final_height as f32 * 0.5).round() as u16;
 
     // Ensure minimum dimensions if image is too small, or if scaling results in 0
     let final_width = final_width.max(1);
@@ -118,6 +123,12 @@ pub async fn convert_gif_to_chafa_frames_and_delays(
         delays.push(delay);
 
         let ansi = super::image_handler::run_chafa(&png_data, &size).await?;
+        if ansi.is_empty() {
+            // If chafa produces empty output, treat it as an error for this frame.
+            // This frame will be skipped, and the previous frame will persist.
+            // This might cause a slight jump in animation, but prevents flickering to blank.
+            continue;
+        }
         frames.push(Arc::new(ansi));
     }
 
@@ -132,53 +143,44 @@ pub async fn spawn_gif_animation(
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
         loop {
-            let mut state = animation_state.lock().await;
-            if !state.running || state.frames.is_empty() {
-                break;
+            let (frame_content, delay, message_id, next_frame_index) = {
+                let mut state = animation_state.lock().await;
+                if !state.running || state.frames.is_empty() {
+                    break;
+                }
+                let frame_content = state.frames[state.current_frame].clone();
+                let delay = state
+                    .delays
+                    .get(state.current_frame)
+                    .copied()
+                    .unwrap_or(100);
+                
+                let message_id = state.message_id.clone();
+                let next_frame_index = (state.current_frame + 1) % state.frames.len();
+                state.current_frame = next_frame_index;
+                state.last_frame_time = Some(Instant::now());
+                
+                (frame_content, delay, message_id, next_frame_index)
+            };
+
+            // Update the message in AppState with the new frame
+            let mut app = app_state.lock().await;
+            let mut channel_id_to_redraw: Option<String> = None;
+            if let Some(msg) = app.find_message_mut(&message_id) {
+                msg.image_preview = Some((*frame_content).clone());
+                channel_id_to_redraw = Some(msg.channel_id.clone());
             }
-            let frame = state.frames[state.current_frame].clone();
-            let delay = state
-                .delays
-                .get(state.current_frame)
-                .copied()
-                .unwrap_or(100);
-            
-            let message_id = state.message_id.clone();
+            drop(app);
 
-            // Debounce redraw signals
-            const REDRAW_DEBOUNCE_MS: u128 = 100; // Redraw at most every 100ms
-            let now = Instant::now();
-            let should_redraw = state.last_redraw_sent_time.is_none()
-                || now
-                    .duration_since(state.last_redraw_sent_time.unwrap())
-                    .as_millis()
-                    >= REDRAW_DEBOUNCE_MS;
-
-            if should_redraw {
-                // Update the message in AppState with the new frame
+            if let Some(channel_id) = channel_id_to_redraw {
                 let mut app = app_state.lock().await;
-                let mut channel_id_to_redraw: Option<String> = None;
-                if let Some(msg) = app.find_message_mut(&message_id) {
-                    msg.image_preview = Some((*frame).clone());
-                    channel_id_to_redraw = Some(msg.channel_id.clone());
-                }
+                app.needs_re_render
+                    .entry(channel_id.clone())
+                    .or_default()
+                    .insert(message_id.clone(), true);
+                let _ = redraw_tx.send(channel_id.clone()); // Signal redraw for specific channel
                 drop(app);
-
-                if let Some(channel_id) = channel_id_to_redraw {
-                    let mut app = app_state.lock().await;
-                    app.needs_re_render
-                        .entry(channel_id.clone())
-                        .or_default()
-                        .insert(message_id.clone(), true);
-                    let _ = redraw_tx.send(channel_id.clone()); // Signal redraw for specific channel
-                    drop(app);
-                }
-                state.last_redraw_sent_time = Some(now);
             }
-
-            state.current_frame = (state.current_frame + 1) % state.frames.len();
-            state.last_frame_time = Some(Instant::now());
-            drop(state);
 
             tokio::time::sleep(tokio::time::Duration::from_millis(delay as u64)).await;
         }

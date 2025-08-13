@@ -590,39 +590,18 @@ pub fn format_message_lines(
         if let Some(_gif_frames) = &msg.gif_frames {
             if let Some(file_id) = &msg.file_id {
                 if let Some(animation_state_arc) = active_animations.get(file_id) {
-                    let animation_state = match animation_state_arc.try_lock() {
-                        Ok(state) => state,
-                        Err(_) => {
-                            return RenderedMessage {
-                                id: message_id.clone(),
-                                lines: vec![Line::from(Span::styled(
-                                    "[GIF loading...]",
-                                    Style::default()
-                                        .fg(rgb_to_color(&theme.colors.dim))
-                                        .add_modifier(Modifier::ITALIC),
-                                ))],
-                                is_first_in_group,
-                                is_last_in_group,
-                            };
+                    if let Ok(animation_state) = animation_state_arc.try_lock() {
+                        let frame_count = animation_state.frames.len();
+                        let frame_index = animation_state.current_frame;
+                        if frame_count > 0 && frame_index < frame_count {
+                            let current_frame_content = &animation_state.frames[frame_index];
+                            let chafa_text: ratatui::text::Text = current_frame_content
+                                .clone()
+                                .as_str()
+                                .into_text()
+                                .expect("Failed to convert ANSI to Text");
+                            content_lines.extend(chafa_text.lines);
                         }
-                    };
-                    let frame_count = animation_state.frames.len();
-                    let frame_index = animation_state.current_frame;
-                    if frame_count > 0 && frame_index < frame_count {
-                        let current_frame_content = &animation_state.frames[frame_index];
-                        let chafa_text: ratatui::text::Text = current_frame_content
-                            .clone()
-                            .as_str()
-                            .into_text()
-                            .expect("Failed to convert ANSI to Text");
-                        content_lines.extend(chafa_text.lines);
-                    } else {
-                        content_lines.push(Line::from(Span::styled(
-                            "[Error: GIF frame unavailable]",
-                            Style::default()
-                                .fg(rgb_to_color(&theme.colors.error))
-                                .add_modifier(Modifier::ITALIC),
-                        )));
                     }
                 }
             }

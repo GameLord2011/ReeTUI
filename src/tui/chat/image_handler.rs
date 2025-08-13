@@ -14,21 +14,20 @@ use tokio::sync::{mpsc, Mutex};
 /// Helper to update message and log debug info
 async fn update_and_log_message(
     app_state: &Arc<Mutex<AppState>>,
-    message: BroadcastMessage,
+    channel_id: String,
+    message_id: String,
+    update_fn: impl FnOnce(&mut BroadcastMessage),
     _context: &str,
 ) {
     let mut state = app_state.lock().await;
-    let channel_id = message.channel_id.clone();
-    let message_id = message
-        .client_id
-        .clone()
-        .unwrap_or_else(|| message.timestamp.to_string());
-    state.update_message(message);
-    state
-        .needs_re_render
-        .entry(channel_id)
-        .or_default()
-        .insert(message_id, true);
+    if let Some(message) = state.find_message_mut(&message_id) {
+        update_fn(message);
+        state
+            .needs_re_render
+            .entry(channel_id)
+            .or_default()
+            .insert(message_id, true);
+    }
 }
 
 /// A robust, non-blocking function to execute the chafa command.
@@ -144,15 +143,21 @@ pub async fn process_image_message(
             let mut file = match File::open(&file_path).await {
                 Ok(f) => f,
                 Err(e) => {
-                    message.content = format!("[Error opening downloaded file: {}]", e);
-                    update_and_log_message(&app_state, message, "download_open_error").await;
+                    let msg_id = message.client_id.clone().unwrap_or_default();
+                    let ch_id = message.channel_id.clone();
+                    update_and_log_message(&app_state, ch_id, msg_id, |msg| {
+                        msg.content = format!("[Error opening downloaded file: {}]", e);
+                    }, "download_open_error").await;
                     return;
                 }
             };
             let mut image_data = Vec::new();
             if let Err(e) = file.read_to_end(&mut image_data).await {
-                message.content = format!("[Error reading downloaded file: {}]", e);
-                update_and_log_message(&app_state, message, "download_read_error").await;
+                let msg_id = message.client_id.clone().unwrap_or_default();
+                let ch_id = message.channel_id.clone();
+                update_and_log_message(&app_state, ch_id, msg_id, |msg| {
+                    msg.content = format!("[Error reading downloaded file: {}]", e);
+                }, "download_read_error").await;
                 return;
             }
 
@@ -202,41 +207,67 @@ pub async fn process_image_message(
                                 .insert(file_id.clone(), animation_state_arc.clone());
                         }
                         // Optionally: handle frame_rx to update UI with new frames
-                        update_and_log_message(&app_state, message, "gif_ok").await;
+                        let msg_id = message.client_id.clone().unwrap_or_default();
+                        let ch_id = message.channel_id.clone();
+                        update_and_log_message(&app_state, ch_id, msg_id, |msg| {
+                            msg.content = message.content.clone(); // Preserve the content set earlier
+                            msg.gif_frames = message.gif_frames.clone(); // Preserve gif_frames
+                            msg.image_preview = message.image_preview.clone(); // Preserve image_preview
+                        }, "gif_ok").await;
                     }
                     Ok((frames, _delays)) if !frames.is_empty() => {
-                        message.content = (*frames[0]).clone();
-                        message.gif_frames = None;
-                        update_and_log_message(&app_state, message, "gif_static").await;
+                        let msg_id = message.client_id.clone().unwrap_or_default();
+                        let ch_id = message.channel_id.clone();
+                        update_and_log_message(&app_state, ch_id, msg_id, |msg| {
+                            msg.content = (*frames[0]).clone();
+                            msg.gif_frames = None;
+                        }, "gif_static").await;
                     }
-                    Err(e) => {
-                        message.content = format!("[Error converting GIF: {}]", e);
-                        update_and_log_message(&app_state, message, "gif_error").await;
+                    Err(_e) => {
+                        // If there's an error converting the GIF, do nothing.
+                        // The original message content will be displayed.
+                    }
+                    Ok((frames, _delays)) if frames.is_empty() => {
+                        // :3
+                        // If no frames, do nothing to message.content or image_preview.
+                        // The original message content will be displayed.
+                        // We do NOT call update_and_log_message here, as it would
+                        // potentially clear a previously set image_preview or
+                        // mark the message for re-render without a valid frame.
+                        // The message will remain as it was before processing the GIF.
+                        // This ensures that if a GIF fails to load, the previous
+                        // display state for that message is preserved.
                     }
                     _ => {
-                        message.content = "[Could not display GIF]".to_string();
-                        update_and_log_message(&app_state, message, "gif_unknown").await;
+                        // If there's an unknown issue, do nothing.
+                        // The original message content will be displayed.
                     }
                 }
             } else {
                 // Handle static images
                 match convert_image_to_chafa(&image_data, chat_width).await {
                     Ok(chafa_string) => {
-                        message.content = chafa_string.clone();
-                        message.image_preview = Some(chafa_string);
-                        update_and_log_message(&app_state, message, "static_ok").await;
+                        let msg_id = message.client_id.clone().unwrap_or_default();
+                        let ch_id = message.channel_id.clone();
+                        update_and_log_message(&app_state, ch_id, msg_id, |msg| {
+                            msg.content = chafa_string.clone();
+                            msg.image_preview = Some(chafa_string);
+                        }, "static_ok").await;
                     }
-                    Err(e) => {
-                        message.content = format!("[Error converting image: {}]", e);
-                        update_and_log_message(&app_state, message, "static_error").await;
+                    Err(_e) => {
+                        // If there's an error converting the static image, do nothing.
+                        // The original message content will be displayed.
                     }
                 }
             }
         }
         Err(e) => {
             // Handle error in downloading file
-            message.content = format!("[Error downloading file: {}]", e);
-            update_and_log_message(&app_state, message, "download_error").await;
+            let msg_id = message.client_id.clone().unwrap_or_default();
+            let ch_id = message.channel_id.clone();
+            update_and_log_message(&app_state, ch_id, msg_id, |msg| {
+                msg.content = format!("[Error downloading file: {}]", e);
+            }, "download_error").await;
         }
     }
 }
