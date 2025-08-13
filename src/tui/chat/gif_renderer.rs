@@ -143,7 +143,7 @@ pub async fn spawn_gif_animation(
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
         loop {
-            let (frame_content, delay, message_id, next_frame_index) = {
+            let (frame_content, delay, message_id, _next_frame_index) = {
                 let mut state = animation_state.lock().await;
                 if !state.running || state.frames.is_empty() {
                     break;

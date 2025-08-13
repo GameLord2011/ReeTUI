@@ -9,6 +9,7 @@ use tokio::net::TcpStream;
 use tokio::sync::{mpsc, Mutex};
 use tokio_tungstenite::tungstenite::protocol::Message;
 use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
+
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
@@ -27,7 +28,7 @@ const WS_URL: &str = "wss://isock.reetui.hackclub.app";
 pub async fn connect(token: &str) -> Result<(WsWriter, WsReader), Box<dyn std::error::Error>> {
     let (ws_stream, _) = connect_async(WS_URL).await?;
     let (mut writer, reader) = ws_stream.split();
-    writer.send(Message::Text(token.to_string())).await?;
+    writer.send(Message::Text(token.to_string().into())).await?;
     Ok((writer, reader))
 }
 
@@ -41,7 +42,7 @@ pub async fn send_message(
         content,
     };
     let payload = serde_json::to_string(&command)?;
-    writer.send(Message::Text(payload)).await?;
+    writer.send(Message::Text(payload.into())).await?;
     Ok(())
 }
 

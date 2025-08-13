@@ -49,6 +49,7 @@ pub struct RenderedMessage {
     pub is_last_in_group: bool,
 }
 
+#[allow(unused_assignments)]
 fn wrap_spans<'a>(spans: Vec<Span<'a>>, max_width: u16) -> Vec<Line<'a>> {
     let mut lines = Vec::new();
     let mut current_line_spans = Vec::new();
