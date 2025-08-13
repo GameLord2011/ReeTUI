@@ -79,6 +79,8 @@ jobs:
           target: ${{ matrix.platform.target }}
           args: "--locked --release"
           strip: true
+        env:
+          OPENSSL_DIR: /usr/lib/ssl # Common OpenSSL installation path on Ubuntu
       - name: Publish artifacts and release
         uses: houseabsolute/actions-rust-release@v0
         with:
