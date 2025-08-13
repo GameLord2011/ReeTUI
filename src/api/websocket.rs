@@ -8,7 +8,62 @@ use std::sync::Arc;
 use tokio::net::TcpStream;
 use tokio::sync::{mpsc, Mutex};
 use tokio_tungstenite::tungstenite::protocol::Message;
-use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
+use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, Connector};
+use tokio_tungstenite::connect_async_tls_with_config;
+use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
+use rustls::client::danger::{ServerCertVerified, ServerCertVerifier};
+use rustls::{ClientConfig, RootCertStore, SignatureScheme};
+
+#[derive(Debug)]
+struct NoVerification;
+
+impl ServerCertVerifier for NoVerification {
+    fn verify_server_cert(
+        &self,
+        _end_entity: &CertificateDer<'_>,
+        _intermediates: &[CertificateDer<'_>],
+        _server_name: &ServerName<'_>,
+        _ocsp_response: &[u8],
+        _now: UnixTime
+    ) -> Result<ServerCertVerified, rustls::Error> {
+        Ok(ServerCertVerified::assertion())
+    }
+
+    fn verify_tls12_signature(
+            &self,
+            _message: &[u8],
+            _cert: &CertificateDer<'_>,
+            _dss: &rustls::DigitallySignedStruct,
+        ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+        Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
+    }
+
+    fn verify_tls13_signature(
+        &self,
+        _message: &[u8],
+        _cert: &CertificateDer<'_>,
+        _dss: &rustls::DigitallySignedStruct,
+    ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+        Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
+    }
+
+    fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {
+        vec![
+            SignatureScheme::RSA_PKCS1_SHA1,
+            SignatureScheme::ECDSA_NISTP256_SHA256,
+            SignatureScheme::RSA_PKCS1_SHA256,
+            SignatureScheme::ECDSA_NISTP384_SHA384,
+            SignatureScheme::RSA_PKCS1_SHA384,
+            SignatureScheme::ECDSA_NISTP521_SHA512,
+            SignatureScheme::RSA_PKCS1_SHA512,
+            SignatureScheme::RSA_PSS_SHA256,
+            SignatureScheme::RSA_PSS_SHA384,
+            SignatureScheme::RSA_PSS_SHA512,
+            SignatureScheme::ED25519,
+            SignatureScheme::ED448,
+        ]
+    }
+}
 
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
@@ -26,7 +81,25 @@ pub type WsReader = SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>;
 const WS_URL: &str = "wss://isock.reetui.hackclub.app";
 
 pub async fn connect(token: &str) -> Result<(WsWriter, WsReader), Box<dyn std::error::Error>> {
-    let (ws_stream, _) = connect_async(WS_URL).await?;
+    rustls::crypto::CryptoProvider::install_default(rustls::crypto::ring::default_provider())
+        .expect("Failed to install default crypto provider");
+    // Create a custom rustls client config that trusts any certificate
+    //
+    // THIS IS INSECURE AND SHOULD NOT BE USED IN PRODUCTION
+    //
+    let root_store = RootCertStore::empty();
+    let mut client_config = ClientConfig::builder()
+        .with_root_certificates(root_store)
+        .with_no_client_auth();
+
+    client_config.alpn_protocols = vec![b"http/1.1".to_vec()];
+
+    let mut dangerous_config = client_config.dangerous();
+    dangerous_config.set_certificate_verifier(Arc::new(NoVerification));
+
+    let connector = Connector::Rustls(Arc::new(client_config));
+
+    let (ws_stream, _) = connect_async_tls_with_config(WS_URL, None, true, Some(connector)).await?;
     let (mut writer, reader) = ws_stream.split();
     writer.send(Message::Text(token.to_string().into())).await?;
     Ok((writer, reader))
