@@ -33,7 +33,7 @@ async fn update_and_log_message(
 /// A robust, non-blocking function to execute the chafa command.
 pub async fn run_chafa(image_data: &[u8], size: &str) -> Result<String, String> {
     let size_arg = format!("--size={}", size);
-    let args = [size_arg.as_str(), "-f", "symbols"];
+    let args = [size_arg.as_str(), "-f", "symbols", "--symbols", "all"];
     let _command_str = format!("chafa {}", args.join(" "));
 
     let mut command = Command::new("chafa");
@@ -126,18 +126,10 @@ pub async fn process_image_message(
     let file_name = message.file_name.clone().unwrap_or_default();
     let (progress_tx, mut progress_rx) = mpsc::unbounded_channel();
 
-    tokio::spawn(async move {
-        while let Some(_) = progress_rx.recv().await {}
-    });
+    tokio::spawn(async move { while let Some(_) = progress_rx.recv().await {} });
 
-    match crate::api::file_api::download_file(
-        http_client,
-        &file_id,
-        &file_name,
-        progress_tx,
-        false,
-    )
-    .await
+    match crate::api::file_api::download_file(http_client, &file_id, &file_name, progress_tx, false)
+        .await
     {
         Ok(file_path) => {
             let mut file = match File::open(&file_path).await {
@@ -145,9 +137,16 @@ pub async fn process_image_message(
                 Err(e) => {
                     let msg_id = message.client_id.clone().unwrap_or_default();
                     let ch_id = message.channel_id.clone();
-                    update_and_log_message(&app_state, ch_id, msg_id, |msg| {
-                        msg.content = format!("[Error opening downloaded file: {}]", e);
-                    }, "download_open_error").await;
+                    update_and_log_message(
+                        &app_state,
+                        ch_id,
+                        msg_id,
+                        |msg| {
+                            msg.content = format!("[Error opening downloaded file: {}]", e);
+                        },
+                        "download_open_error",
+                    )
+                    .await;
                     return;
                 }
             };
@@ -155,9 +154,16 @@ pub async fn process_image_message(
             if let Err(e) = file.read_to_end(&mut image_data).await {
                 let msg_id = message.client_id.clone().unwrap_or_default();
                 let ch_id = message.channel_id.clone();
-                update_and_log_message(&app_state, ch_id, msg_id, |msg| {
-                    msg.content = format!("[Error reading downloaded file: {}]", e);
-                }, "download_read_error").await;
+                update_and_log_message(
+                    &app_state,
+                    ch_id,
+                    msg_id,
+                    |msg| {
+                        msg.content = format!("[Error reading downloaded file: {}]", e);
+                    },
+                    "download_read_error",
+                )
+                .await;
                 return;
             }
 
@@ -209,19 +215,34 @@ pub async fn process_image_message(
                         // Optionally: handle frame_rx to update UI with new frames
                         let msg_id = message.client_id.clone().unwrap_or_default();
                         let ch_id = message.channel_id.clone();
-                        update_and_log_message(&app_state, ch_id, msg_id, |msg| {
-                            msg.content = message.content.clone(); // Preserve the content set earlier
-                            msg.gif_frames = message.gif_frames.clone(); // Preserve gif_frames
-                            msg.image_preview = message.image_preview.clone(); // Preserve image_preview
-                        }, "gif_ok").await;
+                        update_and_log_message(
+                            &app_state,
+                            ch_id,
+                            msg_id,
+                            |msg| {
+                                msg.content = message.content.clone(); // Preserve the content set earlier
+                                msg.gif_frames = message.gif_frames.clone(); // Preserve gif_frames
+                                msg.image_preview = message.image_preview.clone();
+                                // Preserve image_preview
+                            },
+                            "gif_ok",
+                        )
+                        .await;
                     }
                     Ok((frames, _delays)) if !frames.is_empty() => {
                         let msg_id = message.client_id.clone().unwrap_or_default();
                         let ch_id = message.channel_id.clone();
-                        update_and_log_message(&app_state, ch_id, msg_id, |msg| {
-                            msg.content = (*frames[0]).clone();
-                            msg.gif_frames = None;
-                        }, "gif_static").await;
+                        update_and_log_message(
+                            &app_state,
+                            ch_id,
+                            msg_id,
+                            |msg| {
+                                msg.content = (*frames[0]).clone();
+                                msg.gif_frames = None;
+                            },
+                            "gif_static",
+                        )
+                        .await;
                     }
                     Err(_e) => {
                         // If there's an error converting the GIF, do nothing.
@@ -249,10 +270,17 @@ pub async fn process_image_message(
                     Ok(chafa_string) => {
                         let msg_id = message.client_id.clone().unwrap_or_default();
                         let ch_id = message.channel_id.clone();
-                        update_and_log_message(&app_state, ch_id, msg_id, |msg| {
-                            msg.content = chafa_string.clone();
-                            msg.image_preview = Some(chafa_string);
-                        }, "static_ok").await;
+                        update_and_log_message(
+                            &app_state,
+                            ch_id,
+                            msg_id,
+                            |msg| {
+                                msg.content = chafa_string.clone();
+                                msg.image_preview = Some(chafa_string);
+                            },
+                            "static_ok",
+                        )
+                        .await;
                     }
                     Err(_e) => {
                         // If there's an error converting the static image, do nothing.
@@ -265,9 +293,16 @@ pub async fn process_image_message(
             // Handle error in downloading file
             let msg_id = message.client_id.clone().unwrap_or_default();
             let ch_id = message.channel_id.clone();
-            update_and_log_message(&app_state, ch_id, msg_id, |msg| {
-                msg.content = format!("[Error downloading file: {}]", e);
-            }, "download_error").await;
+            update_and_log_message(
+                &app_state,
+                ch_id,
+                msg_id,
+                |msg| {
+                    msg.content = format!("[Error downloading file: {}]", e);
+                },
+                "download_error",
+            )
+            .await;
         }
     }
 }

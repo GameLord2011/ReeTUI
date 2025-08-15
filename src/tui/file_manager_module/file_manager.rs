@@ -354,6 +354,8 @@ impl FileManager {
                                     let cmd = TokioCommand::new("chafa")
                                         .arg("-f")
                                         .arg("symbols")
+                                        .arg("--symbols")
+                                        .arg("all")
                                         .arg(format!(
                                             "--size={}x{}",
                                             inner_preview_area.width, height
