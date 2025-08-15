@@ -18,6 +18,7 @@ use crate::tui::chat::message_parsing::{
     get_emoji_query, replace_shortcodes_with_emojis, should_show_emoji_popup,
     should_show_mention_popup,
 };
+use crate::tui::chat::popups::mentions::get_filtered_users;
 use crate::tui::chat::ui::draw_chat_ui;
 use crate::tui::chat::ws_command::WsCommand;
 use crate::tui::notification::notification::NotificationType;
@@ -544,13 +545,8 @@ pub async fn run_chat_page<B: Backend>(
                                 _ => {}
                             },
                             PopupType::Mentions => {
-                                let filtered_users: Vec<String> = state_guard
-                                    .active_users
-                                    .iter()
-                                    .filter(|user| {
-                                        user.to_lowercase()
-                                            .contains(&state_guard.mention_query.to_lowercase())
-                                    })
+                                let filtered_users: Vec<String> = get_filtered_users(&state_guard)
+                                    .into_iter()
                                     .cloned()
                                     .collect();
                                 let num_filtered_users = filtered_users.len();

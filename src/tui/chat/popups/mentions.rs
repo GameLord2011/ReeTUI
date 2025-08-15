@@ -9,7 +9,7 @@ use crate::app::app_state::AppState;
 use crate::themes::rgb_to_color;
 
 // funny
-fn get_filtered_users<'a>(state: &'a AppState) -> Vec<&'a String> {
+pub fn get_filtered_users<'a>(state: &'a AppState) -> Vec<&'a String> {
     let username = state.username.as_ref().map(|s| s.to_lowercase()); // Get lowercase username once
     state
         .active_users
