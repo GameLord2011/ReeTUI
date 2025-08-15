@@ -1,5 +1,5 @@
 use crate::api::models::BroadcastMessage;
-use crate::app::app_state::AppState;
+use crate::app::app_state::{self, AppState};
 use image::ImageReader;
 use image::{GenericImageView, ImageFormat};
 
@@ -55,13 +55,13 @@ pub async fn run_chafa(image_data: &[u8], size: &str) -> Result<String, String> 
         stdin
             .write_all(&data)
             .await
-            .expect("Failed to write to stdin");
+            .expect(" Failed to write to stdin");
     });
 
     let output = child
         .wait_with_output()
         .await
-        .map_err(|e| format!("Failed to wait for chafa command: {}", e))?;
+        .map_err(|e| format!(" Failed to wait for chafa command: {}", e))?;
 
     if output.status.success() {
         Ok(String::from_utf8_lossy(&output.stdout).to_string())
@@ -69,9 +69,9 @@ pub async fn run_chafa(image_data: &[u8], size: &str) -> Result<String, String> 
         let stderr = String::from_utf8_lossy(&output.stderr);
         let _stdout = String::from_utf8_lossy(&output.stdout);
         Err(format!(
-            "Chafa conversion failed. Stderr: {}",
+            " Chafa conversion failed. Stderr: {}",
             if stderr.is_empty() {
-                "No error message from chafa. Check logs for more details."
+                r"¯\_(ツ)_/¯ No error message from chafa. Check logs for more details."
             } else {
                 &stderr
             }

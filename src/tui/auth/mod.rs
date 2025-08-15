@@ -37,6 +37,18 @@ pub async fn run_auth_page<B: ratatui::backend::Backend>(
     };
     let client = reqwest::Client::new();
     terminal.show_cursor()?;
+    app_state
+        .lock()
+        .await
+        .notification_manager
+        .add(
+            "Wanna change themes ? ".to_string(),
+            "Press Ctrl+S to access the settings ".to_string(),
+            NotificationType::Info,
+            Some(Duration::from_secs(5)),
+            app_state.clone(),
+        )
+        .await;
 
     loop {
         let mut app_state_guard = app_state.lock().await;
@@ -74,11 +86,13 @@ pub async fn run_auth_page<B: ratatui::backend::Backend>(
                         continue;
                     }
                 }
-                                  if let Some(target_page) = crate::tui::settings::handle_settings_key_event(
+                if let Some(target_page) = crate::tui::settings::handle_settings_key_event(
                     crate::tui::settings::SettingsEvent::Key(event.clone()),
                     &mut app_state_guard,
                     &mut settings_state,
-                ).await {
+                )
+                .await
+                {
                     if target_page == TuiPage::Auth {
                         app_state_guard.show_settings = false;
                     } else if target_page == TuiPage::Exit {
@@ -112,7 +126,7 @@ pub async fn run_auth_page<B: ratatui::backend::Backend>(
                 auth_state.selected_field = event_result.selected_field;
                 auth_state.update_focus();
 
-                                if let Some(page) = event_result.next_page {
+                if let Some(page) = event_result.next_page {
                     app_state_guard.next_page = Some(page);
                 }
 
@@ -139,8 +153,8 @@ pub async fn run_auth_page<B: ratatui::backend::Backend>(
                                 let loading_notification = app_state_guard
                                     .notification_manager
                                     .add(
-                                        "Registering...".to_string(),
-                                        "Please wait...".to_string(),
+                                        "Registering... ".to_string(),
+                                        "Please wait... 󰞌".to_string(),
                                         NotificationType::Loading,
                                         None,
                                         app_state.clone(),
@@ -173,17 +187,18 @@ pub async fn run_auth_page<B: ratatui::backend::Backend>(
 
                                 let mut app_state_guard = app_state.lock().await; // Re-acquire the lock once after the API call
 
-                                match register_result
-                                {
+                                match register_result {
                                     Ok(token_response) => {
                                         if let Some(loading) = loading_notification {
-                                            tokio::spawn(async move { loading.remove().await; });
+                                            tokio::spawn(async move {
+                                                loading.remove().await;
+                                            });
                                         }
                                         app_state_guard
                                             .notification_manager
                                             .add(
                                                 "Registration Success".to_string(),
-                                                "You have been successfully registered."
+                                                "You have been successfully registered. 󰱰"
                                                     .to_string(),
                                                 NotificationType::Success,
                                                 Some(Duration::from_secs(3)),
@@ -212,12 +227,14 @@ pub async fn run_auth_page<B: ratatui::backend::Backend>(
                                     }
                                     Err(e) => {
                                         if let Some(loading) = loading_notification {
-                                            tokio::spawn(async move { loading.remove().await; });
+                                            tokio::spawn(async move {
+                                                loading.remove().await;
+                                            });
                                         }
                                         app_state_guard
                                             .notification_manager
                                             .add(
-                                                "Registration Error".to_string(),
+                                                "Registration Error ".to_string(),
                                                 e.to_string(),
                                                 NotificationType::Error,
                                                 Some(Duration::from_secs(3)),
@@ -258,8 +275,8 @@ pub async fn run_auth_page<B: ratatui::backend::Backend>(
                                 let loading_notification = app_state_guard
                                     .notification_manager
                                     .add(
-                                        "Logging in...".to_string(),
-                                        "Please wait...".to_string(),
+                                        "Logging in... ".to_string(),
+                                        "Please wait... 󰞌".to_string(),
                                         NotificationType::Loading,
                                         None,
                                         app_state.clone(),
@@ -295,17 +312,19 @@ pub async fn run_auth_page<B: ratatui::backend::Backend>(
 
                                 let mut app_state_guard = app_state.lock().await; // Re-acquire the lock once after the API call
 
-                                match login_result
-                                {
+                                match login_result {
                                     Ok(token_response) => {
                                         if let Some(loading) = loading_notification {
-                                            tokio::spawn(async move { loading.remove().await; });
+                                            tokio::spawn(async move {
+                                                loading.remove().await;
+                                            });
                                         }
                                         app_state_guard
                                             .notification_manager
                                             .add(
-                                                "Login Success".to_string(),
-                                                "You have been successfully logged in.".to_string(),
+                                                "Login Success 󰱨".to_string(),
+                                                "You have been successfully logged in. ⬱ "
+                                                    .to_string(),
                                                 NotificationType::Success,
                                                 Some(Duration::from_secs(3)),
                                                 app_state.clone(),
@@ -333,12 +352,14 @@ pub async fn run_auth_page<B: ratatui::backend::Backend>(
                                     }
                                     Err(e) => {
                                         if let Some(loading) = loading_notification {
-                                            tokio::spawn(async move { loading.remove().await; });
+                                            tokio::spawn(async move {
+                                                loading.remove().await;
+                                            });
                                         }
                                         app_state_guard
                                             .notification_manager
                                             .add(
-                                                "Login Error".to_string(),
+                                                "Login Error ".to_string(),
                                                 e.to_string(),
                                                 NotificationType::Error,
                                                 Some(Duration::from_secs(3)),

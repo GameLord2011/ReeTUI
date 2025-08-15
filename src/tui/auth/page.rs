@@ -2,29 +2,26 @@ use crate::themes::{interpolate_rgb, rgb_to_color, Theme};
 use crate::tui::auth::state::{AuthMode, SelectedField};
 use crate::tui::notification::notification::NotificationType;
 use crate::tui::notification::ui::draw_notifications;
-use std::sync::Arc;
 use ratatui::{
     prelude::*,
     widgets::{Block, BorderType, Borders, Paragraph},
 };
+use std::sync::Arc;
 
 pub const ICONS: [&str; 11] = ["󰱨", "󰱩", "󱃞", "󰱫", "󰱬", "󰱮", "󰱰", "󰽌", "󰱱", "󰱸", "󰇹"];
 
-pub fn validate_input(
-    username_input: &TextInput,
-    password_input: &TextInput,
-) -> Option<String> {
+pub fn validate_input(username_input: &TextInput, password_input: &TextInput) -> Option<String> {
     if username_input.text.trim().is_empty() {
-        return Some("Username cannot be empty.".to_string());
+        return Some("Username cannot be empty, try to type smt, magic will appear 󱈔".to_string());
     }
     if username_input.text.contains(' ') {
-        return Some("Username cannot contain spaces.".to_string());
+        return Some("Username cannot contain spaces, because the owner is too lazy to solve the bugs that will happen with the mention rendering .".to_string());
     }
     if password_input.text.trim().is_empty() {
-        return Some("Password cannot be empty.".to_string());
+        return Some("Password cannot be empty, make your account secure >:3.".to_string());
     }
     if password_input.text.contains(' ') {
-        return Some("Password cannot contain spaces.".to_string());
+        return Some(r"Password cannot contain spaces, the username and password have the same rules so ¯\_(ツ)_/¯.".to_string());
     }
     None
 }
@@ -38,13 +35,15 @@ pub async fn get_validation_error(
 ) -> Option<String> {
     let error = validate_input(username_input, password_input);
     if let Some(e) = &error {
-        notification_manager.add(
-            "Validation Error".to_string(),
-            e.clone(),
-            NotificationType::Error,
-            Some(std::time::Duration::from_secs(3)),
-            app_state,
-        ).await;
+        notification_manager
+            .add(
+                "Validation Error 󰱮".to_string(),
+                e.clone(),
+                NotificationType::Error,
+                Some(std::time::Duration::from_secs(3)),
+                app_state,
+            )
+            .await;
     }
     error
 }
@@ -316,8 +315,8 @@ pub fn draw_auth_ui<'a, B: Backend>(
 
     let button_chunk_index = visible_inputs;
     let button_text = match current_mode {
-        AuthMode::Register => "Register",
-        AuthMode::Login => "Login",
+        AuthMode::Register => " Register",
+        AuthMode::Login => " Login",
     };
 
     let button_is_selected = match selected_field {

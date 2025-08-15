@@ -1,5 +1,5 @@
-use std::time::{Duration, Instant};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use ratatui::style::Color;
 use serde::{Deserialize, Serialize};
@@ -75,7 +75,10 @@ pub struct LoadingNotification {
 }
 
 impl LoadingNotification {
-    pub fn new(id: usize, app_state: Arc<tokio::sync::Mutex<crate::app::app_state::AppState>>) -> Self {
+    pub fn new(
+        id: usize,
+        app_state: Arc<tokio::sync::Mutex<crate::app::app_state::AppState>>,
+    ) -> Self {
         Self { id, app_state }
     }
 
@@ -86,12 +89,16 @@ impl LoadingNotification {
 
     pub async fn replace(self, notification: Notification) {
         let mut app_state_guard = self.app_state.lock().await;
-        app_state_guard.notification_manager.replace(self.id, notification);
+        app_state_guard
+            .notification_manager
+            .replace(self.id, notification);
     }
 
     pub async fn update_content(&mut self, content: String) {
         let mut app_state_guard = self.app_state.lock().await;
-        app_state_guard.notification_manager.update_content(self.id, content);
+        app_state_guard
+            .notification_manager
+            .update_content(self.id, content);
     }
 }
 

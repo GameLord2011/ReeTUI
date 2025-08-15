@@ -36,18 +36,18 @@ pub enum ThemeName {
 impl ThemeName {
     pub fn icon(&self) -> &str {
         match self {
-            ThemeName::Default => "󰎓 ",
-            ThemeName::Oceanic => "󰥛 ",
-            ThemeName::Forest => "󰔱 ",
+            ThemeName::Default => r"󰆄 ",
+            ThemeName::Oceanic => "󰞍 ",
+            ThemeName::Forest => " ",
             ThemeName::Monochrome => "󰋰 ",
             ThemeName::CatppuccinMocha => "󰄛 ",
             ThemeName::Dracula => "󰭟 ",
-            ThemeName::SolarizedDark => "󰓠 ",
+            ThemeName::SolarizedDark => " ",
             ThemeName::GruvboxDark => "󰟾 ",
             ThemeName::Nord => " ",
-            ThemeName::Cyberpunk => "󰹫 ",
+            ThemeName::Cyberpunk => " ",
             ThemeName::AutumnLeaves => " ",
-            ThemeName::HighContrastLight => " ",
+            ThemeName::HighContrastLight => " ",
             ThemeName::Amethyst => "󰮊 ",
         }
     }
@@ -103,7 +103,7 @@ pub struct ThemeColors {
     pub success_color: Rgb,
     pub warning_color: Rgb,
     pub info_color: Rgb,
-        pub loading_color: Rgb,
+    pub loading_color: Rgb,
     pub username_colors: Vec<Rgb>,
 }
 

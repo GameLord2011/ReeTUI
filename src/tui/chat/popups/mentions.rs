@@ -68,7 +68,7 @@ pub fn draw_mentions_popup(f: &mut Frame, state: &mut AppState, area: Rect, popu
                 .fg(rgb_to_color(&current_theme.colors.button_text_active))
                 .bg(rgb_to_color(&current_theme.colors.button_bg_active)),
         )
-        .highlight_symbol(" ");
+        .highlight_symbol("󰨓");
 
     let mut list_state = ListState::default();
     list_state.select(Some(state.selected_mention_index));

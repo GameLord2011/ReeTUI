@@ -1,7 +1,9 @@
 use crate::app::app_state::AppState;
 use crate::themes::Theme;
 
-use crate::tui::settings::state::{FocusedPane, SettingsScreen, SettingsState, QuitConfirmationState, DisconnectConfirmationState};
+use crate::tui::settings::state::{
+    DisconnectConfirmationState, FocusedPane, QuitConfirmationState, SettingsScreen, SettingsState,
+};
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Modifier, Style, Stylize},
@@ -102,7 +104,9 @@ fn draw_left_pane(f: &mut Frame, settings_state: &mut SettingsState, theme: &The
         let item_style = if is_disabled {
             Style::default().fg(crate::themes::rgb_to_color(&theme.colors.dim))
         } else if is_selected && is_focused {
-            Style::default().fg(crate::themes::rgb_to_color(&theme.colors.accent)).add_modifier(Modifier::BOLD)
+            Style::default()
+                .fg(crate::themes::rgb_to_color(&theme.colors.accent))
+                .add_modifier(Modifier::BOLD)
         } else if is_selected {
             Style::default().fg(crate::themes::rgb_to_color(&theme.colors.border_focus))
         } else {
@@ -162,7 +166,9 @@ fn draw_right_pane<B: ratatui::backend::Backend>(
             draw_themes_pane::<B>(f, settings_state, theme, inner_area, app_state)
         }
         SettingsScreen::Help => draw_help_pane(f, theme, inner_area),
-        SettingsScreen::Disconnect => draw_disconnect_pane(f, settings_state, theme, inner_area, app_state),
+        SettingsScreen::Disconnect => {
+            draw_disconnect_pane(f, settings_state, theme, inner_area, app_state)
+        }
         SettingsScreen::Quit => {
             if settings_state.quit_confirmation_state == QuitConfirmationState::Active {
                 draw_quit_confirmation_pane(f, settings_state, theme, inner_area, app_state);
@@ -283,7 +289,7 @@ fn draw_help_pane(f: &mut Frame, theme: &Theme, area: Rect) {
 }
 
 fn draw_quit_message_pane(f: &mut Frame, theme: &Theme, area: Rect) {
-    let text = "Are you sure you want to quit?";
+    let text = "Ya really want to quit  ?   don't go pls...";
     let p = Paragraph::new(text)
         .style(
             Style::default()
@@ -314,13 +320,13 @@ fn draw_quit_confirmation_pane(
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Min(0), // Message
+            Constraint::Min(0),    // Message
             Constraint::Length(3), // Buttons
         ])
         .split(inner_area);
 
     // Message
-            let message = "do ya really want to disconnect/quit";
+    let message = "do ya really want to disconnect/quit";
     let p = Paragraph::new(message)
         .style(
             Style::default()
@@ -333,15 +339,14 @@ fn draw_quit_confirmation_pane(
     // Buttons
     let button_chunks = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage(50),
-            Constraint::Percentage(50),
-        ])
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
         .split(chunks[1]);
 
     let ye_button_style = if app_state.quit_selection == 0 {
         Style::default()
-            .fg(crate::themes::rgb_to_color(&theme.colors.button_text_active))
+            .fg(crate::themes::rgb_to_color(
+                &theme.colors.button_text_active,
+            ))
             .bg(crate::themes::rgb_to_color(&theme.colors.button_bg_active))
             .add_modifier(Modifier::BOLD)
     } else {
@@ -352,7 +357,9 @@ fn draw_quit_confirmation_pane(
 
     let no_button_style = if app_state.quit_selection == 1 {
         Style::default()
-            .fg(crate::themes::rgb_to_color(&theme.colors.button_text_active))
+            .fg(crate::themes::rgb_to_color(
+                &theme.colors.button_text_active,
+            ))
             .bg(crate::themes::rgb_to_color(&theme.colors.button_bg_active))
             .add_modifier(Modifier::BOLD)
     } else {
@@ -364,13 +371,21 @@ fn draw_quit_confirmation_pane(
     let ye_button = Paragraph::new("Ye")
         .style(ye_button_style)
         .alignment(Alignment::Center)
-        .block(Block::default().borders(Borders::ALL).border_type(BorderType::Rounded));
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_type(BorderType::Rounded),
+        );
     f.render_widget(ye_button, button_chunks[0]);
 
     let no_button = Paragraph::new("Hell no")
         .style(no_button_style)
         .alignment(Alignment::Center)
-        .block(Block::default().borders(Borders::ALL).border_type(BorderType::Rounded));
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_type(BorderType::Rounded),
+        );
     f.render_widget(no_button, button_chunks[1]);
 }
 
@@ -386,7 +401,9 @@ fn draw_disconnect_pane(
             .title("Confirm Disconnect")
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
-            .border_style(Style::default().fg(crate::themes::rgb_to_color(&theme.colors.border_focus)))
+            .border_style(
+                Style::default().fg(crate::themes::rgb_to_color(&theme.colors.border_focus)),
+            )
             .bg(crate::themes::rgb_to_color(&theme.colors.background));
 
         let inner_area = confirmation_block.inner(area);
@@ -395,7 +412,7 @@ fn draw_disconnect_pane(
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Min(0), // Message
+                Constraint::Min(0),    // Message
                 Constraint::Length(3), // Buttons
             ])
             .split(inner_area);
@@ -414,15 +431,14 @@ fn draw_disconnect_pane(
         // Buttons
         let button_chunks = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([
-                Constraint::Percentage(50),
-                Constraint::Percentage(50),
-            ])
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
             .split(chunks[1]);
 
         let ye_button_style = if app_state.disconnect_selection == 0 {
             Style::default()
-                .fg(crate::themes::rgb_to_color(&theme.colors.button_text_active))
+                .fg(crate::themes::rgb_to_color(
+                    &theme.colors.button_text_active,
+                ))
                 .bg(crate::themes::rgb_to_color(&theme.colors.button_bg_active))
                 .add_modifier(Modifier::BOLD)
         } else {
@@ -433,7 +449,9 @@ fn draw_disconnect_pane(
 
         let no_button_style = if app_state.disconnect_selection == 1 {
             Style::default()
-                .fg(crate::themes::rgb_to_color(&theme.colors.button_text_active))
+                .fg(crate::themes::rgb_to_color(
+                    &theme.colors.button_text_active,
+                ))
                 .bg(crate::themes::rgb_to_color(&theme.colors.button_bg_active))
                 .add_modifier(Modifier::BOLD)
         } else {
@@ -445,13 +463,21 @@ fn draw_disconnect_pane(
         let ye_button = Paragraph::new("Ye")
             .style(ye_button_style)
             .alignment(Alignment::Center)
-            .block(Block::default().borders(Borders::ALL).border_type(BorderType::Rounded));
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded),
+            );
         f.render_widget(ye_button, button_chunks[0]);
 
         let no_button = Paragraph::new("Hell no")
             .style(no_button_style)
             .alignment(Alignment::Center)
-            .block(Block::default().borders(Borders::ALL).border_type(BorderType::Rounded));
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded),
+            );
         f.render_widget(no_button, button_chunks[1]);
     } else {
         let text = "Press Enter to disconnect.";

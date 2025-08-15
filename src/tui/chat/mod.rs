@@ -45,9 +45,12 @@ fn apply_gizzy_transformations(mut content: String) -> String {
             m.insert(":3", "¿?");
             m.insert("eat it", "love it");
             m.insert("estrogen", "pizza");
-            m.insert("gay", "gigachad");
-            m.insert("femboy", "femboy (affectionate)");
+            m.insert("gay", "a gigachad");
+            m.insert("femboy", "a specimen");
             m.insert("vro", "bro");
+            m.insert("ram", "you");
+            m.insert("youssef", "sir youssef");
+            m.insert("hai", "uwu");
             m
         };
     }
@@ -92,10 +95,10 @@ pub async fn run_chat_page<B: Backend>(
         let token = state
             .auth_token
             .clone()
-            .expect("Auth token not found for WebSocket connection");
+            .expect(" Auth token not found for WebSocket connection");
         websocket::connect(&token)
             .await
-            .expect("Failed to connect to WebSocket")
+            .expect(" Failed to connect to WebSocket")
     };
 
     let (command_tx, mut command_rx) = mpsc::unbounded_channel::<WsCommand>();
@@ -163,8 +166,8 @@ pub async fn run_chat_page<B: Backend>(
                                 state
                                     .notification_manager
                                     .add(
-                                        "File Upload Success".to_string(),
-                                        "File uploaded successfully!".to_string(),
+                                        "File Upload Success 󰪹".to_string(),
+                                        "File uploaded successfully! 󰔓".to_string(),
                                         NotificationType::Success,
                                         Some(Duration::from_secs(3)),
                                         app_state_for_upload_clone.clone(),
@@ -176,10 +179,10 @@ pub async fn run_chat_page<B: Backend>(
                                 state
                                     .notification_manager
                                     .add(
-                                        "File Upload Error".to_string(),
-                                        format!("Failed to upload file: {}", e),
+                                        "File Upload Error 󰩋".to_string(),
+                                        format!("Failed to upload file: {}\nTell to the owner (Youssef 󰊤 :'YoussefDevPro')\nIn the repo 󰌷 https://github.com/YoussefDevPro/ReeTUI", e),
                                         NotificationType::Error,
-                                        Some(Duration::from_secs(3)),
+                                        Some(Duration::from_secs(5)),
                                         app_state_for_upload_clone.clone(),
                                     )
                                     .await;
@@ -206,8 +209,11 @@ pub async fn run_chat_page<B: Backend>(
                                 state
                                     .notification_manager
                                     .add(
-                                        "File Download Success".to_string(),
-                                        format!("File '{}' downloaded successfully!", file_name),
+                                        "File Download Success 󰈖".to_string(),
+                                        format!(
+                                            "File '{}' downloaded successfully! noice 󰔓",
+                                            file_name
+                                        ),
                                         NotificationType::Success,
                                         Some(Duration::from_secs(3)),
                                         app_state_for_download.clone(),
@@ -219,10 +225,10 @@ pub async fn run_chat_page<B: Backend>(
                                 state
                                     .notification_manager
                                     .add(
-                                        "File Download Error".to_string(),
-                                        format!("Failed to download file: {}", e),
+                                        "File Download Error 󱂱".to_string(),
+                                        format!("Failed to download file: {}\nTell to the owner (Youssef 󰊤 :'YoussefDevPro')\nIn the repo 󰌷 https://github.com/YoussefDevPro/ReeTUI", e),
                                         NotificationType::Error,
-                                        Some(Duration::from_secs(3)),
+                                        Some(Duration::from_secs(5)),
                                         app_state_for_download.clone(),
                                     )
                                     .await;
@@ -243,7 +249,7 @@ pub async fn run_chat_page<B: Backend>(
             state
                 .notification_manager
                 .add(
-                    "Download Progress".to_string(),
+                    "Download Progress ".to_string(),
                     format!("Downloading: {}%", progress),
                     NotificationType::Info,
                     Some(Duration::from_secs(3)),
@@ -290,15 +296,13 @@ pub async fn run_chat_page<B: Backend>(
                                         .unwrap_or("unknown")
                                         .to_string();
                                     let title = format!(
-                                        "New mention from {} in #{}",
+                                        ":O ⇶ New mention from {} in #{}",
                                         msg.user, channel_name
                                     );
                                     let body = msg.content.clone();
                                     tokio::spawn(async move {
-                                        let _ = Notification::new()
-                                            .summary(&title)
-                                            .body(&body)
-                                            .show();
+                                        let _ =
+                                            Notification::new().summary(&title).body(&body).show();
                                     });
                                 }
                             }
@@ -325,8 +329,6 @@ pub async fn run_chat_page<B: Backend>(
             }
         }
     });
-
-    
 
     loop {
         let mut state_guard = app_state.lock().await;
@@ -487,8 +489,9 @@ pub async fn run_chat_page<B: Backend>(
                                                 state_guard
                                                     .notification_manager
                                                     .add(
-                                                        "Channel Creation Error".to_string(),
-                                                        "Failed to create channel".to_string(),
+                                                        "Channel Creation Error ".to_string(),
+                                                        "Failed to create channel for some reason"
+                                                            .to_string(),
                                                         NotificationType::Error,
                                                         Some(Duration::from_secs(3)),
                                                         app_state.clone(),
@@ -498,7 +501,7 @@ pub async fn run_chat_page<B: Backend>(
                                                 state_guard
                                                     .notification_manager
                                                     .add(
-                                                        "Channel Creation Success".to_string(),
+                                                        "Channel Creation Success 󰔓".to_string(),
                                                         format!(
                                                             "Channel '{}' created!",
                                                             channel_name
@@ -518,7 +521,8 @@ pub async fn run_chat_page<B: Backend>(
                                                 .notification_manager
                                                 .add(
                                                     "Channel Creation Warning".to_string(),
-                                                    "Channel name cannot be empty!".to_string(),
+                                                    "Channel name cannot be empty! like bruh."
+                                                        .to_string(),
                                                     NotificationType::Warning,
                                                     Some(Duration::from_secs(3)),
                                                     app_state.clone(),
@@ -733,8 +737,9 @@ pub async fn run_chat_page<B: Backend>(
                                                 state_guard
                                                     .notification_manager
                                                     .add(
-                                                        "File Upload Error".to_string(),
-                                                        "Failed to send upload command".to_string(),
+                                                        "File Upload Error ;-;".to_string(),
+                                                        "Failed to send upload command D:\nTell to the owner (Youssef 󰊤 :'YoussefDevPro')\nIn the repo 󰌷 https://github.com/YoussefDevPro/ReeTUI"
+                                                            .to_string(),
                                                         NotificationType::Error,
                                                         Some(Duration::from_secs(3)),
                                                         app_state.clone(),
@@ -763,8 +768,8 @@ pub async fn run_chat_page<B: Backend>(
                                         state_guard
                                             .notification_manager
                                             .add(
-                                                "Download Error".to_string(),
-                                                "Failed to send download command".to_string(),
+                                                "Download Error 󱂱".to_string(),
+                                                "Failed to send download command \nTell to the owner (Youssef 󰊤 :'YoussefDevPro')\nIn the repo 󰌷 https://github.com/YoussefDevPro/ReeTUI".to_string(),
                                                 NotificationType::Error,
                                                 Some(Duration::from_secs(3)),
                                                 app_state.clone(),
@@ -827,8 +832,8 @@ pub async fn run_chat_page<B: Backend>(
                                                         state_guard
                                                             .notification_manager
                                                             .add(
-                                                                "Download Error".to_string(),
-                                                                "Failed to send download command"
+                                                                "Download Error ".to_string(),
+                                                                "Failed to send download command ;-;"
                                                                     .to_string(),
                                                                 NotificationType::Error,
                                                                 Some(Duration::from_secs(3)),
@@ -838,7 +843,7 @@ pub async fn run_chat_page<B: Backend>(
                                                     }
                                                 } else {
                                                     state_guard.notification_manager.add(
-                                                         "Download Error".to_string(),
+                                                         "Download Error ('-_-)".to_string(),
                                                          "Invalid /download command format. Usage: /download <file_id>".to_string(),
                                                          NotificationType::Error,
                                                          Some(Duration::from_secs(3)),
@@ -854,8 +859,11 @@ pub async fn run_chat_page<B: Backend>(
                                                         replace_shortcodes_with_emojis(&input_text);
 
                                                     if let Some(username) = &state_guard.username {
-                                                        if username.to_lowercase().contains("gizzy") {
-                                                            content = apply_gizzy_transformations(content);
+                                                        if username.to_lowercase().contains("gizzy")
+                                                        {
+                                                            content = apply_gizzy_transformations(
+                                                                content,
+                                                            );
                                                         }
                                                     }
 
@@ -869,8 +877,8 @@ pub async fn run_chat_page<B: Backend>(
                                                         state_guard
                                                             .notification_manager
                                                             .add(
-                                                                "Message Send Error".to_string(),
-                                                                "Failed to send message"
+                                                                "Message Send Error 󱙍".to_string(),
+                                                                "Failed to send message, this might be because the server is down, please restart ur client."
                                                                     .to_string(),
                                                                 NotificationType::Error,
                                                                 Some(Duration::from_secs(3)),
@@ -899,8 +907,9 @@ pub async fn run_chat_page<B: Backend>(
                                             state_guard
                                                 .notification_manager
                                                 .add(
-                                                    "Active Users Request Error".to_string(),
-                                                    "Failed to request active users".to_string(),
+                                                    "Active Users Request Error :O".to_string(),
+                                                    "Failed to request active users, but its fine."
+                                                        .to_string(),
                                                     NotificationType::Error,
                                                     Some(Duration::from_secs(3)),
                                                     app_state.clone(),

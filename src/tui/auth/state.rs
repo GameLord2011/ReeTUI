@@ -21,25 +21,23 @@ pub struct AuthState {
     pub selected_icon_index: usize,
     pub current_mode: AuthMode,
     pub selected_field: SelectedField,
-    
 }
 
 impl AuthState {
     pub fn new() -> Self {
-        let mut username_input = TextInput::new("Username".to_string());
+        let mut username_input = TextInput::new(" Username".to_string());
         username_input.is_focused = true;
         Self {
             username_input,
             password_input: {
-                let mut password_input = TextInput::new("Password".to_string());
+                let mut password_input = TextInput::new(" Password".to_string());
                 password_input.is_password = true;
-                password_input.password_char = Some('•');
+                password_input.password_char = Some('󱗼');
                 password_input
             },
             selected_icon_index: 0,
             current_mode: AuthMode::Register,
             selected_field: SelectedField::Username,
-            
         }
     }
 

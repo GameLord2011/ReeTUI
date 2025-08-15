@@ -12,10 +12,16 @@ pub enum AuthError {
 impl fmt::Display for AuthError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            AuthError::UsernameTaken => write!(f, "This username is already taken."),
-            AuthError::Unauthorized => write!(f, "Invalid username or password."),
-            AuthError::RequestFailed(e) => write!(f, "Request failed: {}", e),
-            AuthError::ServerError(sc) => write!(f, "Server returned an error: {}", sc),
+            AuthError::UsernameTaken => write!(f, "This username is already taken, be creative 󰇹."),
+            AuthError::Unauthorized => write!(f, "Invalid username or password 󱚳"),
+            AuthError::RequestFailed(e) => write!(
+                f,
+                "Request failed: {}\nLooks like the server is down or some f*cking reason \nTell to the owner (Youssef 󰊤 :'YoussefDevPro')\nIn the repo 󰌷 https://github.com/YoussefDevPro/ReeTUI",
+                e
+            ),
+            AuthError::ServerError(sc) => {
+                write!(f, "Server returned an error: {}\nTell to the owner (Youssef 󰊤 :'YoussefDevPro')\nIn the repo 󰌷 https://github.com/YoussefDevPro/ReeTUI", sc)
+            }
         }
     }
 }

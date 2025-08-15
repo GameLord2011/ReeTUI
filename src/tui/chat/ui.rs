@@ -306,11 +306,11 @@ pub fn draw_chat_ui<B: Backend>(
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .title(format!(
-            "Messages - {}",
+            "{}  Messages",
             state
                 .current_channel
                 .as_ref()
-                .map_or("No Channel Selected".to_string(), |c| c.name.clone())
+                .map_or("XXXXXX".to_string(), |c| c.name.clone())
         ))
         .style(
             Style::default()
@@ -473,8 +473,8 @@ pub fn draw_chat_ui<B: Backend>(
             PopupType::CreateChannel => "Create Channel",
             PopupType::Deconnection => "Deconnection",
             PopupType::None => "",
-            PopupType::Mentions => "Mentions",
-            PopupType::Emojis => "Emojis",
+            PopupType::Mentions => "",
+            PopupType::Emojis => "",
             PopupType::FileManager => "File Manager",
             PopupType::DownloadProgress => "Downloading",
 
@@ -616,8 +616,8 @@ pub fn format_message_lines(
     } else if msg.file_id.is_some() {
         content_lines.push(Line::from(vec![Span::styled(
             format!(
-                "{} {}.{} ({} MB)",
-                msg.file_icon.as_deref().unwrap_or("📁"),
+                "{} {}.{} 󰋊 {} MB",
+                msg.file_icon.as_deref().unwrap_or("󱧸"),
                 msg.file_name.as_deref().unwrap_or("Unknown"),
                 msg.file_extension.as_deref().unwrap_or(""),
                 msg.file_size_mb.unwrap_or(0.0)

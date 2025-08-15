@@ -11,7 +11,7 @@ Seriously, this thing is *fast*. We're talking Rust! Both the backend and fronte
 You can create as many accounts as your heart desires – infinite, even! (Though maybe don't tell the FBI about this feature). This app is built for people to chat freely and have a good time. And yeah, there will be admins (that's me, :orpheus-smirk:) to keep things chill.
 
 ### Noice TUI (purrfect, even!)
-Our TUI is, dare I say, *purrfect*. We've got theme switching, because who doesn't love a fresh look? And get this: there's even a random little surprise waiting for you if you pick a *very specific* username. Try your luck! ¯\\_(ツ)_/¯
+Our TUI is, dare I say, *purrfect*. We've got theme switching, because who doesn't love a fresh look? And get this: there's even a random little surprise waiting for you if you pick a *very specific* username. Try your luck! *¯\_(ツ)_/¯* 
 
 ### Image preview (with animated GIFs!)
 Yep, we support images! PNGs, JPEGs, JPGs, and even animated GIFs. Watch those memes come to life right in your terminal. It's magic!

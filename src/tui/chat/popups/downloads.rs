@@ -42,8 +42,7 @@ pub fn draw_downloads_popup(f: &mut Frame, app_state: &mut AppState) {
         let downloadable_files: Vec<_> = app_state.downloadable_files.values().collect();
         let visible_height = inner_area.height / 3; // Assuming 3 lines per item
         let start_index = app_state.download_scroll_offset;
-        let end_index =
-            (start_index + visible_height as usize).min(downloadable_files.len());
+        let end_index = (start_index + visible_height as usize).min(downloadable_files.len());
 
         let mut current_y = 0;
         for i in start_index..end_index {
@@ -62,14 +61,14 @@ pub fn draw_downloads_popup(f: &mut Frame, app_state: &mut AppState) {
             };
 
             let file_size_formatted = if file.file_size < 1024 {
-                format!("{} B", file.file_size)
+                format!("󰋊 {} B", file.file_size)
             } else if file.file_size < 1024 * 1024 {
-                format!("{:.2} KB", file.file_size as f64 / 1024.0)
+                format!("󰋊 {:.2} KB", file.file_size as f64 / 1024.0)
             } else if file.file_size < 1024 * 1024 * 1024 {
-                format!("{:.2} MB", file.file_size as f64 / (1024.0 * 1024.0))
+                format!("󰋊 {:.2} MB", file.file_size as f64 / (1024.0 * 1024.0))
             } else {
                 format!(
-                    "{:.2} GB",
+                    "󰋊 {:.2} GB",
                     file.file_size as f64 / (1024.0 * 1024.0 * 1024.0)
                 )
             };
@@ -98,7 +97,7 @@ pub fn draw_downloads_popup(f: &mut Frame, app_state: &mut AppState) {
                 .split(inner_file_area);
 
             let filename_paragraph = Paragraph::new(format!(
-                "{} {}.{}",
+                " {} {}.{}",
                 file.devicon, file.file_name, file.file_extension
             ))
             .alignment(Alignment::Left)
@@ -207,8 +206,7 @@ pub fn handle_downloads_popup_events(
                 if !downloadable_files.is_empty() {
                     let current_selection =
                         app_state.selected_download_index.selected().unwrap_or(0);
-                    let new_selection =
-                        (current_selection + 5).min(downloadable_files.len() - 1);
+                    let new_selection = (current_selection + 5).min(downloadable_files.len() - 1);
                     app_state
                         .selected_download_index
                         .select(Some(new_selection));

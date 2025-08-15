@@ -35,7 +35,8 @@ pub fn draw_notifications(f: &mut Frame, app_state: &AppState) {
     let mut total_height = 0;
     let mut heights = Vec::new();
     for n in &notifications_to_display {
-        let content_height = (n.content.len() as u16 / (notification_width.saturating_sub(2))).max(1);
+        let content_height =
+            (n.content.len() as u16 / (notification_width.saturating_sub(2))).max(1);
         let height = 2 + content_height;
         heights.push(height);
         total_height += height;
@@ -66,7 +67,7 @@ pub fn draw_notifications(f: &mut Frame, app_state: &AppState) {
     if num_notifications > NOTIFICATION_LIMIT {
         let remaining = num_notifications - NOTIFICATION_LIMIT;
         let area = Rect::new(popup_area.x, y_offset, popup_area.width, 3);
-        let text = format!("+ {} more...", remaining);
+        let text = format!("󰐖 {}", remaining);
 
         let block = Block::default()
             .borders(Borders::ALL)

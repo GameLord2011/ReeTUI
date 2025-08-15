@@ -4,15 +4,15 @@ use crate::tui::chat::ws_command::WsCommand;
 use futures_util::stream::{SplitSink, SplitStream};
 use futures_util::{SinkExt, StreamExt};
 use reqwest::Client;
+use rustls::client::danger::{ServerCertVerified, ServerCertVerifier};
+use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
+use rustls::{ClientConfig, RootCertStore, SignatureScheme};
 use std::sync::Arc;
 use tokio::net::TcpStream;
 use tokio::sync::{mpsc, Mutex};
-use tokio_tungstenite::tungstenite::protocol::Message;
-use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, Connector};
 use tokio_tungstenite::connect_async_tls_with_config;
-use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
-use rustls::client::danger::{ServerCertVerified, ServerCertVerifier};
-use rustls::{ClientConfig, RootCertStore, SignatureScheme};
+use tokio_tungstenite::tungstenite::protocol::Message;
+use tokio_tungstenite::{Connector, MaybeTlsStream, WebSocketStream};
 
 #[derive(Debug)]
 struct NoVerification;
@@ -24,17 +24,17 @@ impl ServerCertVerifier for NoVerification {
         _intermediates: &[CertificateDer<'_>],
         _server_name: &ServerName<'_>,
         _ocsp_response: &[u8],
-        _now: UnixTime
+        _now: UnixTime,
     ) -> Result<ServerCertVerified, rustls::Error> {
         Ok(ServerCertVerified::assertion())
     }
 
     fn verify_tls12_signature(
-            &self,
-            _message: &[u8],
-            _cert: &CertificateDer<'_>,
-            _dss: &rustls::DigitallySignedStruct,
-        ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+        &self,
+        _message: &[u8],
+        _cert: &CertificateDer<'_>,
+        _dss: &rustls::DigitallySignedStruct,
+    ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
         Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
     }
 
@@ -82,11 +82,12 @@ const WS_URL: &str = "wss://isock.reetui.hackclub.app";
 
 pub async fn connect(token: &str) -> Result<(WsWriter, WsReader), Box<dyn std::error::Error>> {
     rustls::crypto::CryptoProvider::install_default(rustls::crypto::ring::default_provider())
-        .expect("Failed to install default crypto provider");
+        .expect("Failed to install default crypto provider\nTell to the owner (Youssef 󰊤 :'YoussefDevPro')\nIn the repo 󰌷 https://github.com/YoussefDevPro/ReeTUI");
     // Create a custom rustls client config that trusts any certificate
     //
     // THIS IS INSECURE AND SHOULD NOT BE USED IN PRODUCTION
     //
+    // BUT IM LAZY AF SO ILL LET IT LIKE THAT
     let root_store = RootCertStore::empty();
     let mut client_config = ClientConfig::builder()
         .with_root_certificates(root_store)

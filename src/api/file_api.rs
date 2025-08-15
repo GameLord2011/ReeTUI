@@ -20,11 +20,11 @@ impl fmt::Display for FileApiError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             FileApiError::RequestFailedStatus(status) => {
-                write!(f, "Request failed with status: {}", status)
+                write!(f, "Request failed with status: {}\nTell to the owner (Youssef 󰊤 :'YoussefDevPro')\nIn the repo 󰌷 https://github.com/YoussefDevPro/ReeTUI", status)
             }
-            FileApiError::RequestError(e) => write!(f, "Request error: {}", e),
-            FileApiError::IoError(e) => write!(f, "IO error: {}", e),
-            FileApiError::Other(e) => write!(f, "Error: {}", e),
+            FileApiError::RequestError(e) => write!(f, "Request error: {}\nTell to the owner (Youssef 󰊤 :'YoussefDevPro')\nIn the repo 󰌷 https://github.com/YoussefDevPro/ReeTUI", e),
+            FileApiError::IoError(e) => write!(f, "IO error: {}\nTell to the owner (Youssef 󰊤 :'YoussefDevPro')\nIn the repo 󰌷 https://github.com/YoussefDevPro/ReeTUI", e),
+            FileApiError::Other(e) => write!(f, "Error: {}\nTell to the owner (Youssef 󰊤 :'YoussefDevPro')\nIn the repo 󰌷 https://github.com/YoussefDevPro/ReeTUI", e),
         }
     }
 }
@@ -52,9 +52,9 @@ pub async fn upload_file(
 ) -> Result<String, FileApiError> {
     let file_name = file_path
         .file_name()
-        .ok_or_else(|| FileApiError::Other("Invalid file name".to_string()))?
+        .ok_or_else(|| FileApiError::Other("Invalid file name ".to_string()))?
         .to_str()
-        .ok_or_else(|| FileApiError::Other("Invalid file name".to_string()))?
+        .ok_or_else(|| FileApiError::Other("Invalid file name ".to_string()))?
         .to_string();
     let file_extension = file_path
         .extension()
@@ -121,7 +121,8 @@ pub async fn download_file(
                     .and_then(|s| s.to_str())
                     .map(|s| format!(".{}", s))
                     .unwrap_or_default();
-                unique_file_path = downloads_dir.join(format!("{}({}){}", stem, counter, extension));
+                unique_file_path =
+                    downloads_dir.join(format!("{}({}){}", stem, counter, extension));
             }
             unique_file_path
         } else {
@@ -135,7 +136,10 @@ pub async fn download_file(
             file.write_all(&chunk).await?;
             downloaded_size += chunk.len() as u64;
             let progress = (((downloaded_size as f64 / total_size as f64) * 100.0) as u8).min(100);
-            if progress_sender.send((file_id.to_string(), progress)).is_err() {
+            if progress_sender
+                .send((file_id.to_string(), progress))
+                .is_err()
+            {
                 // The receiver has been dropped, so we can stop sending progress updates.
                 break;
             }

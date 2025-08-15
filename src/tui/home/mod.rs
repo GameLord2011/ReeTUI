@@ -14,6 +14,7 @@ use ratatui::widgets::Block;
 use ratatui::{backend::Backend, Terminal};
 use std::io;
 use std::sync::Arc;
+use std::thread::sleep;
 use std::time::Duration;
 
 pub async fn run_home_page<B: Backend>(
@@ -24,13 +25,18 @@ pub async fn run_home_page<B: Backend>(
     let _frame_count = ANIMATION_FRAMES.len();
     let frame_duration = Duration::from_millis(FRAME_DURATION_MS);
 
-    app_state.lock().await.notification_manager.add(
-        "Welcome to ReeTUI".to_string(),
-        "Press any key to continue.".to_string(),
-        NotificationType::Info,
-        Some(Duration::from_secs(5)),
-        app_state.clone(),
-    ).await;
+    app_state
+        .lock()
+        .await
+        .notification_manager
+        .add(
+            "Welcome to ReeTUI 󱠡".to_string(),
+            "Press any key to continue. 󰌏".to_string(),
+            NotificationType::Info,
+            Some(Duration::from_secs(5)),
+            app_state.clone(),
+        )
+        .await;
 
     loop {
         app_state.lock().await.notification_manager.update();
@@ -48,14 +54,20 @@ pub async fn run_home_page<B: Backend>(
 
         if let Some(page) = handle_home_event(Duration::from_millis(100))? {
             if page == TuiPage::Exit {
-                app_state.lock().await.notification_manager.add(
-                    "Exiting Application".to_string(),
-                    "Goodbye!".to_string(),
-                    NotificationType::Info,
-                    Some(Duration::from_secs(2)),
-                    app_state.clone(),
-                ).await;
+                app_state
+                    .lock()
+                    .await
+                    .notification_manager
+                    .add(
+                        "Exiting Application, REALLY  ?!".to_string(),
+                        "Goodbye  ! 󱠡".to_string(),
+                        NotificationType::Info,
+                        Some(Duration::from_secs(2)),
+                        app_state.clone(),
+                    )
+                    .await;
             }
+            sleep(Duration::from_secs(2));
             return Ok(Some(page));
         }
 

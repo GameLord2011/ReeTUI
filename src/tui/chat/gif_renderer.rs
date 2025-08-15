@@ -63,10 +63,10 @@ pub async fn convert_gif_to_chafa_frames_and_delays(
     use image::ImageEncoder;
 
     let decoder =
-        GifDecoder::new(Cursor::new(gif_data)).map_err(|e| format!("GIF decode error: {}", e))?;
+        GifDecoder::new(Cursor::new(gif_data)).map_err(|e| format!(" GIF decode error: {}", e))?;
     let frames_iter = decoder.into_frames();
     let all_frames: Vec<image::Frame> = frames_iter
-        .map(|f| f.map_err(|e| format!("GIF frame error: {}", e)))
+        .map(|f| f.map_err(|e| format!(" GIF frame error: {}", e)))
         .collect::<Result<Vec<image::Frame>, String>>()?;
 
     let mut frames = Vec::new();
@@ -112,7 +112,7 @@ pub async fn convert_gif_to_chafa_frames_and_delays(
                 frame.buffer().height(),
                 image::ExtendedColorType::Rgba8,
             )
-            .map_err(|e| format!("PNG encode error: {}", e))?;
+            .map_err(|e| format!(" PNG encode error: {}", e))?;
 
         let (numer, denom) = frame.delay().numer_denom_ms();
         let delay = if denom == 0 {
@@ -154,12 +154,12 @@ pub async fn spawn_gif_animation(
                     .get(state.current_frame)
                     .copied()
                     .unwrap_or(100);
-                
+
                 let message_id = state.message_id.clone();
                 let next_frame_index = (state.current_frame + 1) % state.frames.len();
                 state.current_frame = next_frame_index;
                 state.last_frame_time = Some(Instant::now());
-                
+
                 (frame_content, delay, message_id, next_frame_index)
             };
 

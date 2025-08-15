@@ -1024,13 +1024,13 @@ impl FileManager {
         const TIB: u64 = GIB * 1024;
 
         if size < KIB {
-            format!("{} B", size)
+            format!("󰋊 {} B", size)
         } else if size < MIB {
-            format!("{:.2} KiB", size as f64 / KIB as f64)
+            format!("󰋊 {:.2} KiB", size as f64 / KIB as f64)
         } else if size < GIB {
-            format!("{:.2} MiB", size as f64 / MIB as f64)
+            format!("󰋊 {:.2} MiB", size as f64 / MIB as f64)
         } else {
-            format!("{:.2} TiB", size as f64 / TIB as f64)
+            format!("󰋊{:.2} TiB", size as f64 / TIB as f64)
         }
     }
 }

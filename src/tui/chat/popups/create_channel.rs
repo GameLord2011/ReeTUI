@@ -71,7 +71,7 @@ pub fn draw_create_channel_popup(
     let name_block = Block::default()
         .borders(ratatui::widgets::Borders::ALL)
         .border_type(ratatui::widgets::BorderType::Rounded)
-        .title("Name ur channel")
+        .title(" Channel Name")
         .style(
             if create_channel_form.input_focused == CreateChannelInput::Name {
                 Style::default().fg(rgb_to_color(&current_theme.colors.input_border_active))
@@ -94,7 +94,7 @@ pub fn draw_create_channel_popup(
     let icon_block = Block::default()
         .borders(ratatui::widgets::Borders::ALL)
         .border_type(ratatui::widgets::BorderType::Rounded)
-        .title("give it a face")
+        .title("󰓺 icon")
         .style(
             if create_channel_form.input_focused == CreateChannelInput::Icon {
                 Style::default().fg(rgb_to_color(&current_theme.colors.input_border_active))
@@ -146,7 +146,7 @@ pub fn draw_create_channel_popup(
     let create_button_style = border_style;
 
     let create_button_paragraph = Paragraph::new(Line::from(Span::styled(
-        "Forge Channel! ",
+        "Forge Channel! 󰓥(—w—) ",
         create_button_style,
     )))
     .alignment(ratatui::layout::Alignment::Center)
