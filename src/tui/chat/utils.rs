@@ -2,7 +2,7 @@ use crate::themes::Rgb;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::Color;
 use std::hash::{Hash, Hasher};
-
+// E
 pub fn get_color_for_user(username: &str, colors: &Vec<Rgb>) -> Color {
     if colors.is_empty() {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
