@@ -7,6 +7,7 @@ use crate::app::app_state::AppState;
 use crate::app::TuiPage;
 use crate::tui::auth::run_auth_page;
 use crate::tui::home::run_home_page;
+use crate::tui::help::run_help_page;
 use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
@@ -48,6 +49,7 @@ async fn run_app<B: Backend>(
             TuiPage::Settings => {
                 tui::settings::run_settings_page(terminal, app_state.clone()).await?
             }
+            TuiPage::Help => run_help_page(terminal, app_state.clone()).await?,
             TuiPage::Exit => None,
         };
 

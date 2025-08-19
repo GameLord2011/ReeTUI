@@ -6,6 +6,7 @@ pub enum TuiPage {
     Auth,
     Exit,
     Settings,
+    Help,
 }
 
 pub mod app_state;

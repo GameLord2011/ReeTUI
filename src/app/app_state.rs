@@ -4,6 +4,7 @@ use crate::themes::{Theme, ThemeName, ThemesConfig};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::time::Duration;
+use crate::tui::help;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
 pub enum DebugView {
@@ -65,6 +66,7 @@ pub struct AppState {
     pub selected_mention_index: usize,
     pub emoji_query: String,
     pub selected_emoji_index: usize,
+    pub help_state: help::state::HelpState,
     pub cursor_position: usize,
     pub download_progress: u8,
     pub debug_json_content: String,
@@ -119,6 +121,7 @@ impl Default for AppState {
             active_users: Vec::new(),
             selected_mention_index: 0,
             selected_emoji_index: 0,
+            help_state: help::state::HelpState::new(3),
             mention_query: String::new(),
             emoji_query: String::new(),
             cursor_position: 0,

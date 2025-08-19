@@ -1,5 +1,5 @@
 use crate::api::models::BroadcastMessage;
-use crate::app::app_state::{self, AppState};
+use crate::app::app_state::{AppState};
 use image::ImageReader;
 use image::{GenericImageView, ImageFormat};
 
