@@ -6,15 +6,15 @@ pub fn handle_key_events(key: KeyEvent, app_state: &mut AppState) -> Option<TuiP
     let current_page = app_state.help_state.current_page;
 
     match key.code {
-        KeyCode::Enter => {
-            if current_page == 0 || current_page == 1 {
+        KeyCode::Enter => app_state.help_state.next_page(),
+        KeyCode::Char('s') => {
+            if current_page == 1 && key.modifiers.contains(KeyModifiers::CONTROL) {
                 app_state.help_state.next_page()
             } else {
                 None
             }
         }
-        // Keybinding for the test page will go here, once specified by the user.
-        KeyCode::Char('s') => {
+        KeyCode::Char('n') => {
             if current_page == 2 && key.modifiers.contains(KeyModifiers::CONTROL) {
                 app_state.help_state.next_page()
             } else {

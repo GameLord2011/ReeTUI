@@ -121,7 +121,7 @@ impl Default for AppState {
             active_users: Vec::new(),
             selected_mention_index: 0,
             selected_emoji_index: 0,
-            help_state: help::state::HelpState::new(3),
+            help_state: help::state::HelpState::default(),
             mention_query: String::new(),
             emoji_query: String::new(),
             cursor_position: 0,
