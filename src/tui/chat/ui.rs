@@ -1,19 +1,26 @@
 use crate::api::models::BroadcastMessage;
 use crate::app::{AppState, PopupType};
 use crate::themes::{
-    color_to_rgb, get_contrasting_text_color, interpolate_rgb, rgb_to_color, Theme,
+    color_to_rgb,
+    get_contrasting_text_color,
+    interpolate_rgb,
+    rgb_to_color,
+    Theme,
 };
 use crate::tui::chat::create_channel_form::CreateChannelForm;
 use crate::tui::chat::gif_renderer::GifAnimationState;
 use crate::tui::chat::popups::create_channel::{
-    draw_create_channel_popup, get_create_channel_popup_size,
+    draw_create_channel_popup,
+    get_create_channel_popup_size,
 };
 
 use crate::tui::chat::popups::deconnection::{
-    draw_deconnection_popup, get_deconnection_popup_size,
+    draw_deconnection_popup,
+    get_deconnection_popup_size,
 };
 use crate::tui::chat::popups::download_progress::{
-    draw_download_progress_popup, get_download_progress_popup_size,
+    draw_download_progress_popup,
+    get_download_progress_popup_size,
 };
 use crate::tui::chat::popups::emojis::{draw_emojis_popup, get_emojis_popup_size};
 use crate::tui::chat::popups::helpers::get_file_manager_popup_size;
@@ -554,7 +561,7 @@ pub fn draw_chat_ui<B: Backend>(
     }
 
     if state.show_settings {
-        settings::render_settings_popup::<B>(f, &state, settings_state, f.area()).unwrap();
+        settings::render_settings_popup::<B>(f, state, settings_state, f.area()).unwrap();
     }
 
     draw_notifications(f, state);

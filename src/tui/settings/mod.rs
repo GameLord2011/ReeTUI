@@ -94,7 +94,7 @@ pub async fn run_settings_page<B: Backend>(
         let mut app_state_locked = app_state.lock().await;
         app_state_locked.notification_manager.update();
         terminal.draw(|f| {
-            render_settings_popup::<B>(f, &app_state_locked, &mut current_settings_state, f.area())
+            render_settings_popup::<B>(f, &mut app_state_locked, &mut current_settings_state, f.area())
                 .unwrap();
         })?;
         drop(app_state_locked);
@@ -132,7 +132,7 @@ pub async fn run_settings_page<B: Backend>(
 
 pub fn render_settings_popup<B: Backend>(
     frame: &mut Frame<'_>,
-    app_state: &AppState,
+    app_state: &mut AppState,
     settings_state: &mut SettingsState,
     area: Rect,
 ) -> io::Result<()> {

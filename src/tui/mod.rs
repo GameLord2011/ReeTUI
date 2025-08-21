@@ -6,3 +6,4 @@ pub mod help;
 pub mod chat;
 pub mod file_manager_module;
 pub mod notification;
+pub mod animation;

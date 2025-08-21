@@ -41,15 +41,15 @@ pub async fn run_home_page<B: Backend>(
     loop {
         app_state.lock().await.notification_manager.update();
         let current_frame_index = animation_state.frame_index;
-        let app_state_locked = app_state.lock().await;
-        let theme = &app_state_locked.current_theme;
+        let mut app_state_locked = app_state.lock().await;
         terminal.draw(|f| {
+            let theme = &app_state_locked.current_theme;
             f.render_widget(
                 Block::default().bg(crate::themes::rgb_to_color(&theme.colors.background)),
                 f.area(),
             );
             draw_home_ui::<B>(f, current_frame_index, theme);
-            draw_notifications(f, &app_state_locked);
+            draw_notifications(f, &mut app_state_locked);
         })?;
 
         if let Some(page) = handle_home_event(Duration::from_millis(100))? {

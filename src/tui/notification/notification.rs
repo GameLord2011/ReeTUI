@@ -4,6 +4,8 @@ use std::time::{Duration, Instant};
 use ratatui::style::Color;
 use serde::{Deserialize, Serialize};
 
+use crate::tui::animation::{Animation, AnimationType};
+
 const SPINNER_FRAMES: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -25,6 +27,10 @@ pub struct Notification {
     #[serde(skip, default = "Instant::now")]
     pub created_at: Instant,
     pub current_animation_frame_index: Option<usize>,
+    #[serde(skip)]
+    pub animation: Option<Animation>,
+    #[serde(skip)]
+    pub animated_once: bool,
 }
 
 impl Notification {
@@ -43,6 +49,8 @@ impl Notification {
             timeout,
             created_at: Instant::now(),
             current_animation_frame_index: None,
+            animation: None, // Initialize animation to None
+            animated_once: false,
         }
     }
 
@@ -66,6 +74,11 @@ impl Notification {
             NotificationType::Info => crate::themes::rgb_to_color(&theme.colors.info_color),
             NotificationType::Loading => crate::themes::rgb_to_color(&theme.colors.loading_color),
         }
+    }
+
+    pub fn height(&self, max_width: u16) -> u16 {
+        let content_height = (self.content.len() as u16 / (max_width.saturating_sub(2))).max(1);
+        2 + content_height // 2 for borders/title, plus content lines
     }
 }
 
@@ -124,6 +137,7 @@ impl NotificationManager {
         if notification.notification_type == NotificationType::Loading {
             notification.current_animation_frame_index = Some(0);
         }
+
         self.notifications.push(notification.clone());
 
         if notification.notification_type == NotificationType::Loading {
@@ -173,5 +187,9 @@ impl NotificationManager {
 
     pub fn notifications(&self) -> &Vec<Notification> {
         &self.notifications
+    }
+
+    pub fn notifications_mut(&mut self) -> &mut Vec<Notification> {
+        &mut self.notifications
     }
 }
