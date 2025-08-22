@@ -206,10 +206,13 @@ pub async fn run_auth_page<B: ratatui::backend::Backend>(
                                             )
                                             .await;
                                         app_state_guard.set_user_auth(
-                                            token_response.token,
+                                            token_response.token.clone(),
                                             auth_state.username_input.text.clone(),
-                                            token_response.icon,
+                                            token_response.icon.clone(),
                                         );
+                                        app_state_guard.config.token = Some(token_response.token);
+                                        app_state_guard.config.username = Some(auth_state.username_input.text.clone());
+                                        app_state_guard.config.user_icon = Some(token_response.icon);
                                         terminal.draw(|f| {
                                             draw_auth_ui::<B>(
                                                 f,
@@ -331,10 +334,13 @@ pub async fn run_auth_page<B: ratatui::backend::Backend>(
                                             )
                                             .await;
                                         app_state_guard.set_user_auth(
-                                            token_response.token,
+                                            token_response.token.clone(),
                                             auth_state.username_input.text.clone(),
-                                            token_response.icon,
+                                            token_response.icon.clone(),
                                         );
+                                        app_state_guard.config.token = Some(token_response.token);
+                                        app_state_guard.config.username = Some(auth_state.username_input.text.clone());
+                                        app_state_guard.config.user_icon = Some(token_response.icon);
                                         terminal.draw(|f| {
                                             draw_auth_ui::<B>(
                                                 f,

@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 use ratatui::style::Color;
 use serde::{Deserialize, Serialize};
 
-use crate::tui::animation::{Animation, AnimationType};
+use crate::tui::animation::Animation;
 
 const SPINNER_FRAMES: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 

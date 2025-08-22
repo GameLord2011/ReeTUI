@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::time::Duration;
 use crate::tui::help;
+use crate::config::Config;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
 pub enum DebugView {
@@ -96,6 +97,7 @@ pub struct AppState {
     pub last_message_counts: HashMap<String, usize>,
     #[serde(skip_serializing, skip_deserializing)]
     pub initial_load_complete: bool,
+    pub config: Config,
 }
 
 impl Default for AppState {
@@ -156,13 +158,33 @@ impl Default for AppState {
             download_scroll_offset: 0,
             last_message_counts: HashMap::new(),
             initial_load_complete: false,
+            config: Config::default(),
         }
     }
 }
 
 impl AppState {
-    pub fn new() -> Self {
-        AppState::default()
+    pub fn new(config: Config) -> Self {
+        let auth_token = config.token.clone();
+        let username = config.username.clone();
+        let user_icon = config.user_icon.clone();
+        let current_theme_name = config.current_theme_name.clone();
+
+        let mut app_state = Self {
+            auth_token,
+            username,
+            user_icon,
+            config,
+            ..Default::default()
+        };
+
+        // Set the current theme based on the loaded config
+        app_state.current_theme = app_state.themes.get(&current_theme_name).unwrap_or_else(|| {
+            // Fallback to default theme if the saved theme is not found
+            app_state.themes.get(&ThemeName::CatppuccinMocha).unwrap()
+        }).clone();
+
+        app_state
     }
 
     pub fn update_last_message_count(&mut self, channel_id: String, count: usize) {

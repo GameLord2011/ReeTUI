@@ -27,7 +27,7 @@ pub fn draw_notifications(f: &mut Frame, app_state: &mut AppState) {
         .unwrap_or(0)
         .clamp(20, max_width) as u16;
 
-    let num_notifications = notifications.len();
+    let _num_notifications = notifications.len();
     let mut notifications_to_display: Vec<&mut Notification> = notifications
         .iter_mut()
         .filter(|n| n.animation.is_some() || n.timeout.map_or(true, |t| n.created_at.elapsed() < t))

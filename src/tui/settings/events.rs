@@ -1,5 +1,7 @@
 use crate::app::app_state::AppState;
 use crate::app::TuiPage;
+use std::fs;
+use crate::config;
 
 use crate::tui::settings::state::{
     DisconnectConfirmationState, FocusedPane, QuitConfirmationState, SettingsScreen, SettingsState,
@@ -111,15 +113,17 @@ fn handle_themes_events(
         KeyCode::Left => settings_state.focused_pane = FocusedPane::Left, // Re-added
         KeyCode::Enter => {
             if let Some(selected_index) = settings_state.theme_list_state.selected() {
+                let selected_theme_name = settings_state.themes[selected_index];
                 app_state.current_theme = app_state
                     .themes
-                    .get(&settings_state.themes[selected_index])
+                    .get(&selected_theme_name)
                     .unwrap()
                     .clone();
+                app_state.config.current_theme_name = selected_theme_name;
             }
         }
         KeyCode::Esc => return Some(TuiPage::Chat),
-        _ => {}
+        _ => {} 
     }
     None
 }
@@ -142,6 +146,10 @@ async fn handle_disconnect_events(
     match key_code {
         KeyCode::Enter => {
             app_state.clear_user_auth().await;
+            let config_path = config::get_config_path();
+            if config_path.exists() {
+                let _ = fs::remove_file(config_path);
+            }
             return Some(TuiPage::Auth);
         }
         KeyCode::Left => settings_state.focused_pane = FocusedPane::Left,
@@ -222,6 +230,10 @@ async fn handle_disconnect_confirmation_events(
         KeyCode::Enter => {
             if app_state.disconnect_selection == 0 {
                 app_state.clear_user_auth().await;
+                let config_path = config::get_config_path();
+                if config_path.exists() {
+                    let _ = fs::remove_file(config_path);
+                }
                 return Some(TuiPage::Auth);
             } else {
                 app_state.disconnect_confirmation_state = DisconnectConfirmationState::Inactive;

@@ -33,6 +33,12 @@ pub enum ThemeName {
     Amethyst,
 }
 
+impl Default for ThemeName {
+    fn default() -> Self {
+        ThemeName::CatppuccinMocha
+    }
+}
+
 impl ThemeName {
     pub fn icon(&self) -> &str {
         match self {

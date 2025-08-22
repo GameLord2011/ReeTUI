@@ -27,7 +27,7 @@ use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers, MouseEv
 use lazy_static::lazy_static;
 use ratatui::{prelude::Backend, widgets::ListState, Terminal};
 use regex::Regex;
-use std::{collections::HashMap, io, sync::Arc, time::Duration};
+use std::{io, sync::Arc, time::Duration};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use unicode_segmentation::UnicodeSegmentation;
@@ -39,28 +39,7 @@ lazy_static! {
     static ref EMOJI_REGEX: Regex = Regex::new(r":[a-zA-Z0-9_]+:").unwrap();
 }
 
-fn apply_gizzy_transformations(mut content: String) -> String {
-    lazy_static! {
-        static ref REPLACEMENTS: HashMap<&'static str, &'static str> = {
-            let mut m = HashMap::new();
-            m.insert(":3", "¿?");
-            m.insert("eat it", "love it");
-            m.insert("estrogen", "pizza");
-            m.insert("gay", "a gigachad");
-            m.insert("femboy", "a specimen");
-            m.insert("vro", "bro");
-            m.insert("ram", "you");
-            m.insert("youssef", "sir youssef");
-            m.insert("hai", "uwu");
-            m
-        };
-    }
 
-    for (old, new) in REPLACEMENTS.iter() {
-        content = content.replace(old, new);
-    }
-    content
-}
 
 pub async fn run_chat_page<B: Backend>(
     terminal: &mut Terminal<B>,
@@ -851,17 +830,10 @@ pub async fn run_chat_page<B: Backend>(
                                                     &state_guard.current_channel
                                                 {
                                                     let channel_id = current_channel.id.clone();
-                                                    let mut content =
+                                                    let content =
                                                         replace_shortcodes_with_emojis(&input_text);
 
-                                                    if let Some(username) = &state_guard.username {
-                                                        if username.to_lowercase().contains("gizzy")
-                                                        {
-                                                            content = apply_gizzy_transformations(
-                                                                content,
-                                                            );
-                                                        }
-                                                    }
+                                                    
 
                                                     if command_tx
                                                         .send(WsCommand::Message {
