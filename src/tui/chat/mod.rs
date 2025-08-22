@@ -1006,30 +1006,23 @@ pub async fn run_chat_page<B: Backend>(
                                         if state_guard.chat_focused_pane
                                             == crate::app::app_state::ChatFocusedPane::Input
                                         {
-                                            if state_guard.cursor_position > 0 {
-                                                let old_pos = state_guard.cursor_position;
-                                                let new_pos = input_text[..old_pos]
-                                                    .grapheme_indices(true)
-                                                    .last()
-                                                    .map(|(i, _)| i)
-                                                    .unwrap_or(0);
-                                                state_guard.cursor_position = new_pos;
-                                            }
+                                            let current_grapheme_offset = input_text[..state_guard.cursor_position]
+                                                .graphemes(true)
+                                                .rev()
+                                                .nth(0)
+                                                .map_or(0, |g| g.len());
+                                            state_guard.cursor_position = state_guard.cursor_position.saturating_sub(current_grapheme_offset);
                                         }
                                     }
                                     KeyCode::Right => {
                                         if state_guard.chat_focused_pane
                                             == crate::app::app_state::ChatFocusedPane::Input
                                         {
-                                            let old_pos = state_guard.cursor_position;
-                                            if old_pos < input_text.len() {
-                                                let new_pos = input_text[old_pos..]
-                                                    .grapheme_indices(true)
-                                                    .nth(1)
-                                                    .map(|(i, _)| old_pos + i)
-                                                    .unwrap_or_else(|| input_text.len());
-                                                state_guard.cursor_position = new_pos;
-                                            }
+                                            let next_grapheme_offset = input_text[state_guard.cursor_position..]
+                                                .graphemes(true)
+                                                .nth(0)
+                                                .map_or(0, |g| g.len());
+                                            state_guard.cursor_position = (state_guard.cursor_position + next_grapheme_offset).min(input_text.len());
                                         }
                                     }
                                     KeyCode::Home => {

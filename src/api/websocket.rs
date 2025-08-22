@@ -202,13 +202,25 @@ pub async fn handle_websocket_communication(
                         match server_msg {
                             ServerMessage::ChannelList(wrapper) => {
                                 state.channels = wrapper.channels;
-                                if let Some(first_channel) = state.channels.get(0).cloned() {
-                                    let channel_id = first_channel.id.clone();
-                                    state.set_current_channel(first_channel);
-                                    let _ = command_tx.send(WsCommand::Message {
-                                        channel_id: channel_id.clone(),
-                                        content: format!("/get_history {} 0", channel_id),
-                                    });
+                                // Check if the current channel is still in the updated list
+                                let current_channel_id = state.current_channel.as_ref().map(|c| c.id.clone());
+                                if let Some(id) = current_channel_id {
+                                    if !state.channels.iter().any(|c| c.id == id) {
+                                        // Current channel no longer exists, reset it
+                                        state.current_channel = None;
+                                    }
+                                }
+
+                                // If no current channel or it was just removed, set to the first available channel
+                                if state.current_channel.is_none() {
+                                    if let Some(first_channel) = state.channels.get(0).cloned() {
+                                        let channel_id = first_channel.id.clone();
+                                        state.set_current_channel(first_channel);
+                                        let _ = command_tx.send(WsCommand::Message {
+                                            channel_id: channel_id.clone(),
+                                            content: format!("/get_history {} 0", channel_id),
+                                        });
+                                    }
                                 }
                             }
                             ServerMessage::Broadcast(mut message) => {
