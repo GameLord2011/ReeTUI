@@ -280,17 +280,20 @@ impl FileManager {
                                 );
                                 f.render_widget(p, inner_preview_area);
 
-                                // Prepare update for next frame
-                                let next_frame_index =
-                                    (current_frame_index + 1) % frames_with_delays.len();
-                                gif_frame_to_update = Some((item.path.clone(), next_frame_index));
+                                if frames_with_delays.len() > 1 {
+                                    // Prepare update for next frame
+                                    let next_frame_index =
+                                        (current_frame_index + 1) % frames_with_delays.len();
+                                    gif_frame_to_update =
+                                        Some((item.path.clone(), next_frame_index));
 
-                                // Schedule redraw for next frame
-                                let redraw_tx_clone = self.redraw_tx.clone();
-                                tokio::spawn(async move {
-                                    sleep(Duration::from_millis(delay_ms as u64)).await;
-                                    let _ = redraw_tx_clone.send("redraw".to_string());
-                                });
+                                    // Schedule redraw for next frame
+                                    let redraw_tx_clone = self.redraw_tx.clone();
+                                    tokio::spawn(async move {
+                                        sleep(Duration::from_millis(delay_ms as u64)).await;
+                                        let _ = redraw_tx_clone.send("redraw".to_string());
+                                    });
+                                }
                             } else {
                                 let p = Paragraph::new("GIF frame error").style(
                                     Style::default()
@@ -935,18 +938,13 @@ async fn decode_gif_frames(
         .map_err(|e| format!("Failed to read GIF info: {}", e))?;
 
     let mut frames_with_delays = Vec::new();
-    // Read all frames first to avoid borrowing issues
-    let mut gif_frames_data: Vec<gif::Frame> = Vec::new();
     let (gif_width, gif_height) = (decoder.width() as u32, decoder.height() as u32);
 
-    while let Some(frame) = decoder
+    if let Some(frame) = decoder
         .read_next_frame()
         .map_err(|e| format!("Failed to read GIF frame: {}", e))?
     {
-        gif_frames_data.push(frame.to_owned());
-    }
-
-    for frame in gif_frames_data {
+        let frame = frame.to_owned();
         let mut image_buffer = image::RgbaImage::new(gif_width, gif_height);
         // Copy the frame data into the correct position within the full buffer
         image::imageops::overlay(
