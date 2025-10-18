@@ -64,7 +64,13 @@ pub async fn run_chafa(image_data: &[u8], size: &str) -> Result<String, String> 
         .map_err(|e| format!(" Failed to wait for chafa command: {}", e))?;
 
     if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+        let mut chafa_string = String::from_utf8_lossy(&output.stdout).to_string();
+
+        #[cfg(windows)]
+        {
+            chafa_string = chafa_string.replace("\n", "\r\n");
+        }
+        Ok(chafa_string)
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let _stdout = String::from_utf8_lossy(&output.stdout);

@@ -370,10 +370,12 @@ impl FileManager {
                                     match cmd {
                                         Ok(output) => {
                                             if output.status.success() {
-                                                Ok(String::from_utf8_lossy(&output.stdout)
-                                                    .to_string()
-                                                    .into_text()
-                                                    .unwrap())
+                                                let mut chafa_string = String::from_utf8_lossy(&output.stdout).to_string();
+                                                #[cfg(windows)]
+                                                {
+                                                    chafa_string = chafa_string.replace("\n", "\r\n");
+                                                }
+                                                Ok(chafa_string.into_text().unwrap())
                                             } else {
                                                 Err(String::from_utf8_lossy(&output.stderr)
                                                     .into_owned())
@@ -998,8 +1000,12 @@ async fn decode_gif_frames(
             .map_err(|e| format!("Failed to wait for chafa: {}", e))?;
 
         if output.status.success() {
-            let text_frame = String::from_utf8_lossy(&output.stdout)
-                .to_string()
+            let mut chafa_string = String::from_utf8_lossy(&output.stdout).to_string();
+            #[cfg(windows)]
+            {
+                chafa_string = chafa_string.replace("\n", "\r\n");
+            }
+            let text_frame = chafa_string
                 .into_text()
                 .map_err(|e| format!("Failed to convert ANSI to Text: {:?}", e))?;
             let delay_ms = frame.delay as u32 * 10; // Convert 1/100s to ms
