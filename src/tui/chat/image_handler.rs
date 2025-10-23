@@ -39,7 +39,10 @@ pub async fn run_chafa(image_data: &[u8], size: &str) -> Result<String, String> 
     let mut command = Command::new("chafa");
     command.args(&args);
     command.stdin(std::process::Stdio::piped());
+    #[cfg(not(windows))]
     command.stdout(std::process::Stdio::piped());
+    #[cfg(windows)]
+    command.stdout(std::process::Stdio::inherit());
     command.stderr(std::process::Stdio::piped());
 
     let mut child = command.spawn().map_err(|e| {
